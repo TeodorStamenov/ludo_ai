@@ -1,0 +1,25 @@
+[gd_scene load_steps=2 format=3 uid="uid://dice_world_scene"]
+
+[ext_resource type="PackedScene" path="res://scenes/Dice.tscn" id="1_dice"]
+
+[node name="DiceWorld" type="Node3D"]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.707107, -0.444444, 0.549972, 0, 0.777778, 0.628539, -0.707107, -0.444444, 0.549972, 2.6, 2.9, 2.6)
+projection = 1
+current = true
+size = 2.8
+near = 0.05
+far = 40.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 6, 0)
+shadow_enabled = true
+
+[node name="OmniLight3D" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 2.5, 1.2)
+light_energy = 1.4
+omni_range = 10.0
+
+[node name="Dice" parent="." instance=ExtResource("1_dice")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0, 0)

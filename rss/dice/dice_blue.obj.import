@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://bvokoocprlykg"
+path="res://.godot/imported/dice_blue.obj-5279727a6976a863485e3f852baa13fd.mesh"
+
+[deps]
+
+files=["res://.godot/imported/dice_blue.obj-5279727a6976a863485e3f852baa13fd.mesh"]
+
+source_file="res://rss/dice/dice_blue.obj"
+dest_files=["res://.godot/imported/dice_blue.obj-5279727a6976a863485e3f852baa13fd.mesh", "res://.godot/imported/dice_blue.obj-5279727a6976a863485e3f852baa13fd.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

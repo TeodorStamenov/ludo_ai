@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3 uid="uid://pawn_scene_01"]
+
+[ext_resource type="Script" path="res://scripts/pawn.gd" id="1_pawn"]
+[ext_resource type="Texture2D" path="res://rss/pawns/User05.png" id="2_tex"]
+
+[node name="Pawn" type="Sprite2D"]
+texture = ExtResource("2_tex")
+centered = true
+script = ExtResource("1_pawn")
