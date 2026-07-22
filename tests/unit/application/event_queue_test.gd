@@ -59,11 +59,11 @@ func test_multiple_batches_maintain_order() -> void:
 
 func test_drained_signal_emitted() -> void:
 	var q := EventQueue.new()
-	var fired := false
-	q.drained.connect(func(): fired = true)
+	var captured := {"fired": false}
+	q.drained.connect(func(): captured.fired = true)
 	q.enqueue([_make_event(&"TurnChanged")])
 	q.dequeue()
-	assert_true(fired, "drained signal must fire when last event consumed")
+	assert_true(captured.fired, "drained signal must fire when last event consumed")
 
 
 func test_clear_empties_queue() -> void:

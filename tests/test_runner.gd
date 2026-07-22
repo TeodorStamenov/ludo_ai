@@ -25,7 +25,8 @@ func _init() -> void:
 func _run_file(path: String) -> void:
 	var script: GDScript = load(path)
 	if not script:
-		_fail_file(path, "cannot load script")
+		_failed += 1
+		print("  FAIL  %s — cannot load script" % path)
 		return
 	var suite: RefCounted = script.new()
 	var methods: Array = suite.get_method_list()

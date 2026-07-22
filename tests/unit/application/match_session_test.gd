@@ -88,12 +88,11 @@ func test_start_applies_start_match_command() -> void:
 
 func test_events_published_signal_emitted() -> void:
 	var parts := _make_parts()
-	var emitted_seq: int = -1
-	var emitted_events: Array = []
+	var captured := {"seq": -1, "events": []}
 	var session := MatchSession.new()
 	session.events_published.connect(func(seq, evts):
-		emitted_seq = seq
-		emitted_events = evts
+		captured.seq = seq
+		captured.events = evts
 	)
 	var e := DomainEvent.new()
 	e.event_type = &"MatchStarted"
@@ -101,9 +100,9 @@ func test_events_published_signal_emitted() -> void:
 	session.start(_make_config(), parts["state"], parts["engine"], parts["rng"],
 			parts["controllers"], parts["event_queue"])
 
-	assert_eq(emitted_seq, 1, "First sequence must be 1")
-	assert_eq(emitted_events.size(), 1)
-	assert_eq(emitted_events[0].event_type, &"MatchStarted")
+	assert_eq(captured.seq, 1, "First sequence must be 1")
+	assert_eq(captured.events.size(), 1)
+	assert_eq((captured.events[0] as DomainEvent).event_type, &"MatchStarted")
 
 
 func test_receive_command_blocked_while_pending() -> void:
@@ -137,16 +136,16 @@ func test_events_presented_clears_block() -> void:
 
 func test_human_turn_signal_emitted_after_advance() -> void:
 	var parts := _make_parts()
-	var awaiting_id: StringName = &""
+	var captured := {"pid": &""}
 	var session := MatchSession.new()
-	session.awaiting_human_action.connect(func(pid, _sv, _la): awaiting_id = pid)
+	session.awaiting_human_action.connect(func(pid, _sv, _la): captured.pid = pid)
 	(parts["engine"] as StubEngine).set_next_events([])
 	session.start(_make_config(), parts["state"], parts["engine"], parts["rng"],
 			parts["controllers"], parts["event_queue"])
 
 	session.events_presented(1)
 
-	assert_eq(awaiting_id, &"p1",
+	assert_eq(captured.pid, &"p1",
 			"awaiting_human_action must fire with active human player_id")
 
 
@@ -155,13 +154,13 @@ func test_match_finished_signal_on_match_finished_event() -> void:
 	var finish_event := DomainEvent.new()
 	finish_event.event_type = &"MatchFinished"
 	var session := MatchSession.new()
-	var finished := false
-	session.match_finished.connect(func(_summary): finished = true)
+	var captured := {"finished": false}
+	session.match_finished.connect(func(_summary): captured.finished = true)
 	(parts["engine"] as StubEngine).set_next_events([finish_event])
 	session.start(_make_config(), parts["state"], parts["engine"], parts["rng"],
 			parts["controllers"], parts["event_queue"])
 
-	assert_true(finished, "match_finished signal must fire when MatchFinished event is present")
+	assert_true(captured.finished, "match_finished signal must fire when MatchFinished event is present")
 	assert_false(session.is_active(), "session must be inactive after MatchFinished")
 
 

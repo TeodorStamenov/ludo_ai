@@ -225,4 +225,3 @@ func _calculate_positions() -> void:
 	home_stretch_positions[&"yellow"] = [
 		Vector2i(7, 11), Vector2i(7, 10), Vector2i(7, 9), Vector2i(7, 8),
 	]
-
