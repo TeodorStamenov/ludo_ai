@@ -4,5 +4,7 @@ extends GameCommand
 ##
 ## Не носи резултат — GameEngine го генерира чрез инжектирания RandomSource.
 ## Валидно само в TurnState.AWAITING_ROLL за активния играч.
-##
-## Пълната имплементация е обхваната от задача "Създаване на RollDiceCommand".
+
+
+func _init(p_player_id: StringName = &"") -> void:
+	player_id = p_player_id

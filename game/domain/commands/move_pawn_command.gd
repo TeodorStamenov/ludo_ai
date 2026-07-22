@@ -5,5 +5,10 @@ extends GameCommand
 ## Носи player_id и pawn_id; GameEngine изчислява дестинацията от
 ## текущия TurnState (хвърлен зар) и BoardDefinition.
 ## Валидно само в TurnState.AWAITING_MOVE за активния играч.
-##
-## Пълната имплементация е обхваната от задача "Създаване на MovePawnCommand".
+
+var pawn_id: StringName = &""
+
+
+func _init(p_player_id: StringName = &"", p_pawn_id: StringName = &"") -> void:
+	player_id = p_player_id
+	pawn_id = p_pawn_id

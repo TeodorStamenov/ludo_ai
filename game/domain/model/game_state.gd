@@ -17,3 +17,22 @@ extends RefCounted
 ##   - "Добавяне на RNG state към GameState"
 ##   - "Създаване на сериализация и десериализация на GameState"
 ##   - "Създаване на стабилен state hash"
+
+var match_id: StringName = &""
+var ranking: Array = []
+
+
+func get_active_player_id() -> StringName:
+	return &""
+
+
+func to_view() -> Dictionary:
+	return {}
+
+
+func get_legal_actions() -> Array:
+	return []
+
+
+func to_dict() -> Dictionary:
+	return {}

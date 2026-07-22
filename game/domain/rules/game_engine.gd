@@ -3,13 +3,12 @@ extends RefCounted
 ## Централна точка на domain логиката (docs/V1_ARCHITECTURE.md, раздел 4, 14).
 ##
 ## Приема команда, валидира я спрямо текущия GameState и RandomSource,
-## прилага я и връща CommandResult:
+## прилага я и връща Dictionary с полета:
 ##
-##   CommandResult
-##   ├── accepted: bool
-##   ├── state: GameState
-##   ├── events: Array[DomainEvent]
-##   └── error: CommandError?
+##   accepted : bool
+##   state    : GameState
+##   events   : Array[DomainEvent]
+##   error    : String    (празно при успех)
 ##
 ## GameEngine не познава Node, сцени, сигнали, input, анимации, файлове,
 ## реклами или Android. Може да се тества изцяло без зареждане на Godot сцена.
@@ -25,3 +24,7 @@ extends RefCounted
 ##   - FinishRules  (rules/finish_rules.gd)
 ##
 ## Пълната имплементация е обхваната от задача "Създаване на базов GameEngine".
+
+
+func apply_command(state: GameState, command: GameCommand, rng: RandomSource) -> Dictionary:
+	return {"accepted": false, "state": state, "events": [], "error": "not_implemented"}
