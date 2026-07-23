@@ -3,11 +3,21 @@
 extends SceneTree
 
 const TEST_FILES: Array[String] = [
+	# domain
+	"res://tests/unit/domain/seeded_rng_test.gd",
+	"res://tests/unit/domain/movement_rules_test.gd",
+	"res://tests/unit/domain/stack_rules_test.gd",
+	"res://tests/unit/domain/capture_rules_test.gd",
+	"res://tests/unit/domain/home_stretch_test.gd",
+	"res://tests/unit/domain/power_up_test.gd",
+	"res://tests/unit/domain/turn_rules_test.gd",
+	# application
 	"res://tests/unit/application/match_config_test.gd",
 	"res://tests/unit/application/event_queue_test.gd",
 	"res://tests/unit/application/ai_policy_test.gd",
 	"res://tests/unit/application/match_session_test.gd",
-	"res://tests/unit/domain/seeded_rng_test.gd",
+	"res://tests/unit/application/persistence_test.gd",
+	# platform
 	"res://tests/unit/platform/stub_save_repository_test.gd",
 	"res://tests/unit/platform/local_save_repository_test.gd",
 	"res://tests/unit/platform/stub_ads_service_test.gd",
@@ -15,6 +25,9 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/platform/null_audio_service_test.gd",
 	"res://tests/unit/platform/null_telemetry_sink_test.gd",
 	"res://tests/unit/platform/local_telemetry_sink_test.gd",
+	# simulation
+	"res://tests/simulation/deterministic_replay_test.gd",
+	"res://tests/simulation/thousands_of_matches_test.gd",
 ]
 
 var _passed: int = 0
