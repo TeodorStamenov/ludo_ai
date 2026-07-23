@@ -1,0 +1,7 @@
+# Изисква Python 3.10+
+# Инсталация:
+#   python3.12 -m venv tools/.venv
+#   source tools/.venv/bin/activate
+#   pip install -r tools/requirements.txt
+cursor-sdk>=1.0.24
+python-dotenv>=1.0.0
