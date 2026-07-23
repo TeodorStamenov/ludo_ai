@@ -8,6 +8,13 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/application/ai_policy_test.gd",
 	"res://tests/unit/application/match_session_test.gd",
 	"res://tests/unit/domain/seeded_rng_test.gd",
+	"res://tests/unit/platform/stub_save_repository_test.gd",
+	"res://tests/unit/platform/local_save_repository_test.gd",
+	"res://tests/unit/platform/stub_ads_service_test.gd",
+	"res://tests/unit/platform/haptic_service_test.gd",
+	"res://tests/unit/platform/null_audio_service_test.gd",
+	"res://tests/unit/platform/null_telemetry_sink_test.gd",
+	"res://tests/unit/platform/local_telemetry_sink_test.gd",
 ]
 
 var _passed: int = 0
