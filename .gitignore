@@ -2,4 +2,14 @@
 .godot/
 /android/
 /addons/
+
+# Игнорирай виртуалната среда
+.venv/
+venv/
+.env
+
+# Игнорирай кеш файлове на Python
+__pycache__/
+*.pyc
+
 *.translation
