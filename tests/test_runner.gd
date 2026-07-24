@@ -1,10 +1,16 @@
-## Headless test runner — запазен за обратна съвместимост.
-## Предпочитан headless runner: godot --headless -s addons/gut/gut_cmdln.gd
+## Headless test runner — пълен suite (domain + application + platform + simulation).
+##
+## Бързи команди (препоръчани):
+##   ./run_tests.sh              — пълен suite
+##   ./run_tests.sh domain       — само unit/domain/ (GUT CLI)
+##   make test                   — пълен suite чрез Makefile
+##   make test-domain            — само unit/domain/ чрез Makefile
+##
+## Директно стартиране:
+##   godot --headless --script tests/test_runner.gd
 ##
 ## Поддържа пълния GUT lifecycle: before_all / after_all / before_each / after_each.
 ## setUp() / tearDown() се извикват преди/след before_each / after_each.
-##
-## Run: godot --headless --script tests/test_runner.gd
 extends SceneTree
 
 const TEST_FILES: Array[String] = [
