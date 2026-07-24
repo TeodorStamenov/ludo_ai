@@ -1,0 +1,16 @@
+{
+  "_comment": "GUT 9.6.1 configuration for Cosy Ludo v1. Used by: godot --headless -s addons/gut/gut_cmdln.gd",
+  "dirs": [
+    "res://tests/unit/domain/"
+  ],
+  "prefix": "",
+  "suffix": "_test.gd",
+  "include_subdirs": false,
+  "log_level": 1,
+  "opacity": 100,
+  "hide_orphans": false,
+  "should_exit": true,
+  "should_exit_on_success": true,
+  "compact_mode": false,
+  "_note_frozen": "tests/unit/application/, tests/unit/platform/ and tests/simulation/ are managed only via tests/test_runner.gd"
+}
