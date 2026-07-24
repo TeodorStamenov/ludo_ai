@@ -1,46 +1,17 @@
 class_name TestCase
-extends RefCounted
-## Базов клас за всички unit тестови файлове.
+extends GutTest
+## Обратно-съвместим alias на GutTest за съществуващите тестови файлове.
 ##
-## Наследяващите класове дефинират методи с префикс test_.
-## setUp() и tearDown() се извикват около всеки test_ метод ако съществуват.
-
-var _current_label: String = ""
-var _case_failed: bool = false
-
-
-func assert_true(value: bool, msg: String = "") -> void:
-	if not value:
-		_case_failed = true
-		var suffix := (": " + msg) if msg else ""
-		push_error("ASSERT FAILED [%s] assert_true%s" % [_current_label, suffix])
+## Всички тестове, наследяващи TestCase, автоматично получават пълния
+## GUT 9.6.1 API от реалния framework (bitwes/Gut).
+##
+## setUp() / tearDown() продължават да работят — runner-ите ги извикват
+## преди/след before_each() / after_each().
 
 
-func assert_false(value: bool, msg: String = "") -> void:
-	assert_true(not value, msg)
-
-
-func assert_eq(a: Variant, b: Variant, msg: String = "") -> void:
-	if a != b:
-		_case_failed = true
-		var suffix := (": " + msg) if msg else ""
-		push_error("ASSERT FAILED [%s] assert_eq — expected %s, got %s%s" % [
-			_current_label, str(b), str(a), suffix
-		])
-
-
-func assert_ne(a: Variant, b: Variant, msg: String = "") -> void:
-	if a == b:
-		_case_failed = true
-		var suffix := (": " + msg) if msg else ""
-		push_error("ASSERT FAILED [%s] assert_ne — expected != %s%s" % [
-			_current_label, str(b), suffix
-		])
-
-
-func assert_not_null(value: Variant, msg: String = "") -> void:
-	assert_true(value != null, msg if msg else "expected non-null")
-
-
-func assert_null(value: Variant, msg: String = "") -> void:
-	assert_true(value == null, msg if msg else "expected null")
+## Псевдоним за обратна съвместимост с тестове написани под fake-GUT.
+## Реалният GUT 9.x метод е assert_string_starts_with().
+func assert_string_begins_with(
+		value: String, prefix: String,
+		match_case: bool = true, _msg: String = "") -> void:
+	assert_string_starts_with(value, prefix, match_case)
