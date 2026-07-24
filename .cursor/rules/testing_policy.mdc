@@ -1,0 +1,41 @@
+---
+description: Политика за unit тестове в проекта
+globs: tests/**/*.gd
+alwaysApply: true
+---
+
+# Политика за тестове
+
+## Единственото място за нови тестове: `tests/unit/domain/`
+
+Нови unit тестове се пишат **само** за класове в `game/domain/`.
+
+**Защо:** Domain слоят съдържа чистата игрова логика без зависимости.
+Той е единственото място, където тестовете носят висока стойност и
+се поддържат лесно при рефактор.
+
+## Какво НЕ се тества
+
+- **Stub / Null / Adapter класове** — те са тривиални по дефиниция.
+- **Platform адаптери** (освен вече съществуващите `local_save_repository_test`
+  и `local_telemetry_sink_test`).
+- **Presentation слоят** — UI логиката се верифицира ръчно или с
+  интеграционни тестове (бъдещо).
+- **Application слоят** — съществуващите тестове остават, нови не се добавят.
+
+## Структура на тест файл (domain)
+
+```gdscript
+extends TestCase
+## Тества <ClassName> от game/domain/<path>.gd
+
+func test_<invariant_name>() -> void:
+    # Arrange
+    # Act
+    # Assert — само assert_* методи от TestCase
+```
+
+## Регистрация
+
+След добавяне на нов файл в `tests/unit/domain/` — добави го в
+`tests/test_runner.gd` в секцията `# domain`.

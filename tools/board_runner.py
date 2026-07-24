@@ -355,6 +355,9 @@ _PROJECT_CONTEXT = """\
 
 _ARCH_RULES = """\
 АРХИТЕКТУРНИ ПРАВИЛА (задължителни — всяко нарушение = FAIL):
+- Нови unit тестове се добавят САМО в tests/unit/domain/.
+  Тестовете за application/, platform/ и presentation/ са замразени.
+  Stub, Null и Adapter класове не се тестват.
 - game/domain/     → само `extends RefCounted`. Никога Node/сцени.
                      Не импортира от application/, presentation/, platform/, app/.
 - game/application/→ може да импортира от game/domain/ и content/ САМО.
