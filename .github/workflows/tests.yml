@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      GODOT_VERSION: "4.6.0"
+      GODOT_VERSION: "4.6"
 
     steps:
       - name: Checkout
@@ -34,19 +34,9 @@ jobs:
           sudo chmod +x /usr/local/bin/godot
           godot --version
 
-      # Import all resources so class_name declarations are registered.
       - name: Import project
-        run: |
-          godot --headless --import 2>&1 || true
+        run: godot --headless --import 2>&1 || true
 
-      # Primary runner — domain tests via GUT CLI (auto-discovery).
-      - name: Run domain tests (GUT CLI)
-        run: |
-          godot --headless -s addons/gut/gut_cmdln.gd 2>&1
-        timeout-minutes: 5
-
-      # Secondary runner — full suite including application/platform/simulation.
-      - name: Run full test suite (legacy runner)
-        run: |
-          godot --headless --script tests/test_runner.gd 2>&1
+      - name: Run tests
+        run: godot --headless --script tests/test_runner.gd
         timeout-minutes: 10
