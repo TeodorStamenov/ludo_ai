@@ -248,12 +248,55 @@ def move_item_status(
 
 # ── Git helpers ────────────────────────────────────────────────────────────────
 
+MAIN_BRANCH = "main"
+
+
 def current_branch() -> str:
     r = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         cwd=PROJECT_ROOT, capture_output=True, text=True, check=True,
     )
     return r.stdout.strip()
+
+
+def checkout_main_and_pull() -> None:
+    """
+    Гарантира, че сме на main с последните промени преди нов batch.
+    - Ако има uncommitted промени → грешка (не можем безопасно да switch-нем).
+    - Ако сме на друг бранч → автоматично checkout main.
+    - Винаги пула от origin/main.
+    """
+    # Uncommitted промени блокират checkout — проверяваме първо
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=PROJECT_ROOT, capture_output=True, text=True, check=True,
+    )
+    if status.stdout.strip():
+        raise RuntimeError(
+            "Има uncommitted промени — не мога да превключа към main.\n"
+            "Commit или stash ги преди да стартираш скрипта:\n"
+            + status.stdout.strip()
+        )
+
+    branch = current_branch()
+    if branch != MAIN_BRANCH:
+        print(f"  Текущ бранч: «{branch}» → превключвам към «{MAIN_BRANCH}»…")
+        subprocess.run(
+            ["git", "checkout", MAIN_BRANCH],
+            cwd=PROJECT_ROOT, check=True,
+        )
+
+    print(f"  git pull origin {MAIN_BRANCH}…")
+    result = subprocess.run(
+        ["git", "pull", "origin", MAIN_BRANCH],
+        cwd=PROJECT_ROOT, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"git pull се провали:\n{result.stderr.strip()}\n{result.stdout.strip()}"
+        )
+    summary = (result.stdout.strip().splitlines() or [""])[-1]
+    print(f"  ✓ {summary}")
 
 
 def create_branch(issue_numbers: list[int]) -> str:
@@ -631,14 +674,19 @@ def main() -> None:
         for it in ready_items:
             print(f"    #{it['issue_number']}: {it['title']}")
 
-    # 3. Бранч — при resume ползваме текущия; при нови batch създаваме нов
+    # 3. Бранч — при resume ползваме текущия; при нови batch: pull main + нов бранч
     all_items = review_items + ready_items
     print(f"\n▸ Бранч…")
     if review_items and not ready_items:
-        # Само resume — оставаме на текущия бранч
+        # Само resume — оставаме на текущия feature бранч
         branch = current_branch()
         print(f"  ✓ Текущ бранч (resume): {branch}")
     else:
+        # Нов batch — превключваме към main (ако не сме) и пулваме
+        try:
+            checkout_main_and_pull()
+        except RuntimeError as e:
+            sys.exit(f"\nГРЕШКА: {e}")
         issue_numbers = [it["issue_number"] for it in all_items]
         try:
             branch = create_branch(issue_numbers)
