@@ -1,6 +1,6 @@
 class_name Classic15x15Board
 extends RefCounted
-## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#39).
+## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#40).
 ##
 ## Премества геометрията от scripts/ludo_board.gd в BoardDefinition.cells:
 ## всяка заета клетка носи стабилен cell_id (CellId формат "c_{col}_{row}"),
@@ -12,9 +12,13 @@ extends RefCounted
 ##
 ## Task #39: base_cells_for(player_id) дефинира 2×2 BASE клетките за всеки seat
 ## (PlayerId → Array[cell_id]). Същите стойности влизат в
-## PlayerBoardDefinition.base_cells при Tasks #40–#42.
+## PlayerBoardDefinition.base_cells при Tasks #41–#42.
 ##
-## spawn / main_loop / home_stretch / player_definitions — Tasks #40–#42;
+## Task #40: spawn_cell_for(player_id) дефинира SPAWN клетката за всеки seat
+## (PlayerId → cell_id). Същата стойност влиза в
+## PlayerBoardDefinition.spawn_cell при Tasks #41–#42.
+##
+## main_loop / home_stretch / player_definitions — Tasks #41–#42;
 ## маршрутите — в Task #43. create() връща BoardDefinition с попълнени cells.
 ##
 ## Layout (docs/V1_GAME_DESIGN.md §3.3, ludo_board.gd):
@@ -31,6 +35,12 @@ const BASE_CELLS_PER_PLAYER: int = 4
 
 ## Общ брой BASE клетки (4 seats × 4) — съвпада с CellType.BASE count в cells.
 const BASE_CELL_COUNT: int = 16
+
+## Брой SPAWN клетки на seat (вход на трасето при зар 6).
+const SPAWN_CELLS_PER_PLAYER: int = 1
+
+## Общ брой SPAWN клетки (4 seats × 1) — съвпада с CellType.SPAWN count в cells.
+const SPAWN_CELL_COUNT: int = 4
 
 
 ## BoardDefinition с board_id classic_15x15 и пълна cells карта (без loop/seats).
@@ -136,6 +146,54 @@ static func is_base_cell_of(player_id: StringName, cell_id: StringName) -> bool:
 	return false
 
 
+## Grid позиция на SPAWN клетката за seat — съвпада с ludo_board.gd spawn_cells.
+## GREEN (8,2) NW, ORANGE (12,8) NE, YELLOW (6,12) SE, CYAN (2,6) SW.
+## При невалиден player_id → Vector2i(-1, -1).
+static func spawn_grid_position_for(player_id: StringName) -> Vector2i:
+	match player_id:
+		PlayerId.GREEN:
+			return Vector2i(8, 2)
+		PlayerId.ORANGE:
+			return Vector2i(12, 8)
+		PlayerId.YELLOW:
+			# CURRENT_YELLOW_BEHAVIOR YEL-020 / YEL-041
+			return Vector2i(6, 12)
+		PlayerId.CYAN:
+			return Vector2i(2, 6)
+		_:
+			return Vector2i(-1, -1)
+
+
+## Стабилен cell_id за SPAWN клетката на seat (Task #40).
+## При невалиден player_id → &"".
+static func spawn_cell_for(player_id: StringName) -> StringName:
+	var pos := spawn_grid_position_for(player_id)
+	if pos.x < 0:
+		return &""
+	return CellId.from_grid(pos.x, pos.y)
+
+
+## Всички 4 SPAWN cell_id в seat ред PlayerId.ALL (GREEN → ORANGE → YELLOW → CYAN).
+static func all_spawn_cell_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for player_id in PlayerId.ALL:
+		ids.append(spawn_cell_for(player_id))
+	return ids
+
+
+## PlayerId на собственика на SPAWN клетката, или &"" ако cell_id не е spawn.
+static func spawn_owner(cell_id: StringName) -> StringName:
+	for player_id in PlayerId.ALL:
+		if spawn_cell_for(player_id) == cell_id:
+			return player_id
+	return &""
+
+
+## True ако cell_id е SPAWN клетката на дадения seat.
+static func is_spawn_cell_of(player_id: StringName, cell_id: StringName) -> bool:
+	return spawn_cell_for(player_id) == cell_id and cell_id != &""
+
+
 ## Логически тип на клетката в (col, row), или -1 ако позицията е празна.
 static func cell_type_at(col: int, row: int) -> int:
 	if col < 0 or col >= CellId.BOARD_SIZE or row < 0 or row >= CellId.BOARD_SIZE:
@@ -181,25 +239,25 @@ static func _arm_cell_type(col: int, row: int) -> int:
 	if is_north:
 		if col == 7 and row >= 3 and row <= 6:
 			return CellType.HOME
-		if col == 8 and row == 2:
+		if _is_spawn_at(col, row):
 			return CellType.SPAWN
 		return CellType.PATH
 	if is_east:
 		if row == 7 and col >= 8 and col <= 11:
 			return CellType.HOME
-		if col == 12 and row == 8:
+		if _is_spawn_at(col, row):
 			return CellType.SPAWN
 		return CellType.PATH
 	if is_south:
 		if col == 7 and row >= 8 and row <= 11:
 			return CellType.HOME
-		if col == 6 and row == 12:
+		if _is_spawn_at(col, row):
 			return CellType.SPAWN
 		return CellType.PATH
 	if is_west:
 		if row == 7 and col >= 3 and col <= 6:
 			return CellType.HOME
-		if col == 2 and row == 6:
+		if _is_spawn_at(col, row):
 			return CellType.SPAWN
 		return CellType.PATH
 	return -1
@@ -210,6 +268,15 @@ static func _is_base_cell(col: int, row: int) -> bool:
 		for pos in base_grid_positions_for(player_id):
 			if pos.x == col and pos.y == row:
 				return true
+	return false
+
+
+## Единствен source of truth за SPAWN координати: spawn_grid_position_for (Task #40).
+static func _is_spawn_at(col: int, row: int) -> bool:
+	for player_id in PlayerId.ALL:
+		var pos := spawn_grid_position_for(player_id)
+		if pos.x == col and pos.y == row:
+			return true
 	return false
 
 
