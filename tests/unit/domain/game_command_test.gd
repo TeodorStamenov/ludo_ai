@@ -227,8 +227,14 @@ func test_start_match_command_is_game_command() -> void:
 	var cmd := StartMatchCommand.new(null)
 	assert_true(cmd is GameCommand)
 	assert_eq(cmd.player_id, &"")
-	assert_true(cmd.is_valid(),
+	assert_eq(cmd.command_type, GameCommand.TYPE_START_MATCH,
+			"StartMatchCommand трябва да зададе command_type в _init")
+	# Envelope без player_id е валиден; subclass is_valid изисква и MatchConfig (#65).
+	var envelope := GameCommand.from_dict(cmd.to_dict())
+	assert_true(envelope.is_valid(),
 			"StartMatch без player_id трябва да е валиден envelope")
+	assert_false(cmd.is_valid(),
+			"StartMatch без MatchConfig не е готов за apply (Task #65)")
 
 
 func test_subclass_stamp_uses_base_envelope() -> void:
