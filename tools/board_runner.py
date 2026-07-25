@@ -368,6 +368,51 @@ def git_commit_and_push(issue_number: int, title: str, branch: str) -> None:
 
 # ── Test suite ─────────────────────────────────────────────────────────────────
 
+def run_import_check() -> tuple[bool, str]:
+    """
+    Ниво 2: godot --headless --import
+    Хваща broken resources, липсващи файлове, import грешки.
+    Бърза проверка преди Review агента (~5s).
+    """
+    if not GODOT_BIN.exists():
+        return False, (
+            f"Godot не е намерен на {GODOT_BIN}.\n"
+            "Задай GODOT_BIN=/path/to/godot env var."
+        )
+    try:
+        result = subprocess.run(
+            [str(GODOT_BIN), "--headless", "--import"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True,
+            encoding="utf-8", timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "ГРЕШКА: godot --import надхвърли timeout от 60s."
+    output = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, output
+
+
+def run_scene_load_check() -> tuple[bool, str]:
+    """
+    Ниво 3: godot --headless --script tests/scene_load_test.gd
+    Хваща @onready crashes, missing nodes, script грешки при load на главната сцена (~1s).
+    """
+    if not GODOT_BIN.exists():
+        return False, (
+            f"Godot не е намерен на {GODOT_BIN}.\n"
+            "Задай GODOT_BIN=/path/to/godot env var."
+        )
+    try:
+        result = subprocess.run(
+            [str(GODOT_BIN), "--headless", "--script", "tests/scene_load_test.gd"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True,
+            encoding="utf-8", timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "ГРЕШКА: scene load надхвърли timeout от 30s."
+    output = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, output
+
+
 def run_test_suite() -> tuple[bool, str]:
     """
     Стартира godot --headless --script tests/test_runner.gd.
@@ -786,6 +831,54 @@ def main() -> None:
                     except RuntimeError as e:
                         sys.exit(f"\nГРЕШКА: {e}")
                 continue
+
+            # ── Ниво 2: Import check ──
+            print(f"  → Import check…")
+            import_ok, import_out = run_import_check()
+            if not import_ok:
+                print(f"  ✗ Import FAIL — счупени ресурси:")
+                for ln in import_out.splitlines()[-15:]:
+                    print(f"    {ln}")
+                review_feedback = (
+                    "Godot import check провали след промените — счупени или липсващи ресурси.\n"
+                    f"Изход:\n{import_out[-800:]}"
+                )
+                git_unstage_all()
+                if attempt < MAX_RETRIES:
+                    try:
+                        move_item_status(
+                            meta["project_id"], item["item_id"],
+                            meta["status_field_id"],
+                            options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
+                        )
+                    except RuntimeError as e:
+                        sys.exit(f"\nГРЕШКА: {e}")
+                continue
+            print(f"  ✓ Import OK")
+
+            # ── Ниво 3: Scene load check ──
+            print(f"  → Scene load check…")
+            scene_ok, scene_out = run_scene_load_check()
+            if not scene_ok:
+                print(f"  ✗ Scene load FAIL — главната сцена крашва:")
+                for ln in scene_out.splitlines()[-15:]:
+                    print(f"    {ln}")
+                review_feedback = (
+                    "Scene load check провали: главната сцена крашва при зареждане headless.\n"
+                    f"Изход:\n{scene_out[-800:]}"
+                )
+                git_unstage_all()
+                if attempt < MAX_RETRIES:
+                    try:
+                        move_item_status(
+                            meta["project_id"], item["item_id"],
+                            meta["status_field_id"],
+                            options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
+                        )
+                    except RuntimeError as e:
+                        sys.exit(f"\nГРЕШКА: {e}")
+                continue
+            print(f"  ✓ Scene load OK")
 
             # ── Тест suite ──
             print(f"  → Стартирам тест suite…")
