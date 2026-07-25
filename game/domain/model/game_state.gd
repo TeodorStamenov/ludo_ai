@@ -17,8 +17,14 @@ extends RefCounted
 ## schema_version (docs/V1_ARCHITECTURE.md §4.1 / §9):
 ##   SCHEMA_VERSION, is_schema_supported(), migrate_dict() N → N+1, from_dict().
 ##
+## command_sequence (docs/V1_ARCHITECTURE.md §4.1 / §11):
+##   Брой приети команди от старта на мача (0 = нито една).
+##   Следващата команда носи sequence == command_sequence + 1
+##   (next_command_sequence()). След приемане record_accepted_command()
+##   задава command_sequence = sequence на командата.
+##   Част от snapshot / divergence / replay; НЕ влиза в to_view().
+##
 ## По-нататъшно задълбочаване (отделни roadmap задачи):
-##   - command_sequence семантика в MatchSession (#59)
 ##   - RNG sync / restore политика (#60)
 ##   - to_json / from_json (#61)
 ##   - стабилен state hash (#62)
@@ -33,6 +39,9 @@ const MAX_PLAYERS := MatchConfig.MAX_SEATS
 
 ## active_player_index когато няма активен ход (напр. преди setup / след край).
 const ACTIVE_PLAYER_NONE: int = -1
+
+## Начална стойност на command_sequence преди първата приета команда.
+const COMMAND_SEQUENCE_START: int = 0
 
 
 ## Поддържана е само текущата SCHEMA_VERSION (след успешна миграция).
@@ -86,8 +95,8 @@ var gifts: Array = []
 var ranking: Array = []
 ## JSON-safe RNG snapshot {"seed","state"} от SeededRandomSource.get_state().
 var rng_state: Dictionary = {}
-## Пореден номер на приета команда (за snapshot / divergence / replay).
-var command_sequence: int = 0
+## Брой приети команди от старта (COMMAND_SEQUENCE_START = 0). Виж § header.
+var command_sequence: int = COMMAND_SEQUENCE_START
 
 
 ## Фабрика за пълно конфигуриран GameState (колекциите се копират плитко по елемент).
@@ -103,7 +112,7 @@ static func create(
 		p_gifts: Array = [],
 		p_ranking: Array = [],
 		p_rng_state: Dictionary = {},
-		p_command_sequence: int = 0
+		p_command_sequence: int = COMMAND_SEQUENCE_START
 ) -> GameState:
 	var state := GameState.new()
 	state.match_id = p_match_id
@@ -155,7 +164,7 @@ static func create_from_match_config(
 			[],
 			[],
 			rng.get_state(),
-			0)
+			COMMAND_SEQUENCE_START)
 
 
 func player_count() -> int:
@@ -314,9 +323,45 @@ func get_ranked_player_ids() -> Array[StringName]:
 	return ids
 
 
+## Sequence номер, който следващата приета команда трябва да носи (§11).
+func next_command_sequence() -> int:
+	return command_sequence + 1
+
+
+## True ако `sequence` е точно следващият очакван номер (без пропуск/дубликат).
+func is_expected_command_sequence(sequence: int) -> bool:
+	return sequence == next_command_sequence()
+
+
+## Записва приета команда. Връща false при out-of-order / дубликат —
+## тогава command_sequence не се променя (инвариант: невалидна команда
+## не пипа state; §12). При успех command_sequence = sequence.
+func record_accepted_command(sequence: int) -> bool:
+	if not is_expected_command_sequence(sequence):
+		return false
+	command_sequence = sequence
+	return true
+
+
+## Инкрементира с 1 (еквивалент на record_accepted_command(next_command_sequence())).
 func advance_command_sequence() -> int:
 	command_sequence += 1
 	return command_sequence
+
+
+## Задава sequence при restore от snapshot. Отрицателни стойности → START.
+func set_command_sequence(value: int) -> void:
+	command_sequence = value if value >= COMMAND_SEQUENCE_START else COMMAND_SEQUENCE_START
+
+
+## Попълва match_id и sequence на команда според текущия GameState.
+## Не променя command_sequence — това става едва след приемане.
+func stamp_command(command: GameCommand) -> GameCommand:
+	if command == null:
+		return null
+	command.match_id = match_id
+	command.sequence = next_command_sequence()
+	return command
 
 
 func set_rng_state(state: Dictionary) -> void:
@@ -366,16 +411,11 @@ func get_legal_actions() -> Array:
 	if active_id == &"":
 		return actions
 	if turn.allows_roll_dice():
-		var roll := RollDiceCommand.new(active_id)
-		roll.match_id = match_id
-		roll.sequence = command_sequence
-		actions.append(roll)
+		actions.append(stamp_command(RollDiceCommand.new(active_id)))
 	if turn.allows_move_pawn():
 		for pawn_entry in turn.valid_pawn_ids:
-			var move := MovePawnCommand.new(active_id, StringName(str(pawn_entry)))
-			move.match_id = match_id
-			move.sequence = command_sequence
-			actions.append(move)
+			actions.append(stamp_command(
+					MovePawnCommand.new(active_id, StringName(str(pawn_entry)))))
 	return actions
 
 
@@ -481,7 +521,7 @@ static func from_dict(data: Dictionary) -> GameState:
 	state.board_id = StringName(str(working.get("board_id", "")))
 	state.phase = int(working.get("phase", MatchPhase.SETUP))
 	state.active_player_index = int(working.get("active_player_index", ACTIVE_PLAYER_NONE))
-	state.command_sequence = int(working.get("command_sequence", 0))
+	state.command_sequence = int(working.get("command_sequence", COMMAND_SEQUENCE_START))
 	var rng = working.get("rng_state", {})
 	if rng is Dictionary:
 		state.rng_state = (rng as Dictionary).duplicate(true)

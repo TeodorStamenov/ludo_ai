@@ -1,6 +1,6 @@
 class_name GameStateTest
 extends TestCase
-## Unit тестове за GameState (Task #57 / #58 / docs/V1_ARCHITECTURE.md, §4.1).
+## Unit тестове за GameState (Task #57 / #58 / #59 / docs/V1_ARCHITECTURE.md, §4.1).
 ##
 ## Покрива:
 ##   - Domain: extends RefCounted, път game/domain/model/, без Vector2/NodePath.
@@ -8,6 +8,7 @@ extends TestCase
 ##     players[], active_player_index, turn, dice, gifts[], ranking[],
 ##     rng_state, command_sequence.
 ##   - schema_version: константа, сериализация, миграция N→N+1, валидация (#58).
+##   - command_sequence: next / record / stamp / restore / legal actions (#59).
 ##   - Фабрики create / create_from_match_config (YEL-001 start в база).
 ##   - Accessors: active player, get_player/pawn, gifts, ranking, legal actions.
 ##   - to_view() read-only snapshot за Presentation.
@@ -68,7 +69,7 @@ func test_default_fields_are_invalid() -> void:
 	assert_eq(state.gifts.size(), 0)
 	assert_eq(state.ranking.size(), 0)
 	assert_eq(state.rng_state.size(), 0)
-	assert_eq(state.command_sequence, 0)
+	assert_eq(state.command_sequence, GameState.COMMAND_SEQUENCE_START)
 	assert_false(state.is_valid(),
 			"празен GameState → is_valid() == false")
 	assert_eq(state.get_active_player_id(), &"")
@@ -93,7 +94,7 @@ func test_create_from_match_config_builds_setup_with_base_pawns() -> void:
 	assert_false(state.dice.has_result())
 	assert_eq(state.gifts.size(), 0)
 	assert_eq(state.ranking.size(), 0)
-	assert_eq(state.command_sequence, 0)
+	assert_eq(state.command_sequence, GameState.COMMAND_SEQUENCE_START)
 	assert_true(state.rng_state.has("seed"))
 	assert_true(state.rng_state.has("state"))
 	assert_eq(str(state.rng_state["seed"]), "7")
@@ -219,14 +220,6 @@ func test_rank_player_appends_and_sets_player_rank() -> void:
 	assert_eq(state.get_player(PlayerId.GREEN).rank, 2)
 
 
-func test_advance_command_sequence() -> void:
-	var state := _valid_two_player_setup()
-	assert_eq(state.command_sequence, 0)
-	assert_eq(state.advance_command_sequence(), 1)
-	assert_eq(state.advance_command_sequence(), 2)
-	assert_eq(state.command_sequence, 2)
-
-
 func test_set_rng_state_copies_dictionary() -> void:
 	var state := _valid_two_player_setup()
 	var payload := {"seed": "11", "state": "22"}
@@ -269,7 +262,8 @@ func test_get_legal_actions_roll_dice() -> void:
 	var roll := actions[0] as RollDiceCommand
 	assert_eq(roll.player_id, PlayerId.GREEN)
 	assert_eq(roll.match_id, state.match_id)
-	assert_eq(roll.sequence, state.command_sequence)
+	assert_eq(roll.sequence, state.next_command_sequence(),
+			"legal action трябва да носи следващия очакван sequence")
 
 
 func test_get_legal_actions_move_pawns() -> void:
@@ -470,6 +464,140 @@ func test_create_from_match_config_uses_current_schema_version() -> void:
 	assert_eq(state.to_dict().get("schema_version"), GameState.SCHEMA_VERSION)
 
 
+# ── command_sequence (docs/V1_ARCHITECTURE.md, §4.1 и §11 / Task #59) ─────────
+
+func test_command_sequence_start_constant() -> void:
+	assert_eq(GameState.COMMAND_SEQUENCE_START, 0,
+			"мачът започва с 0 приети команди")
+
+
+func test_command_sequence_starts_at_zero_on_create() -> void:
+	var state := _valid_two_player_setup()
+	assert_eq(state.command_sequence, GameState.COMMAND_SEQUENCE_START)
+	assert_eq(state.next_command_sequence(), 1,
+			"първата команда трябва да носи sequence 1")
+
+
+func test_next_command_sequence_is_current_plus_one() -> void:
+	var state := _valid_two_player_setup()
+	state.command_sequence = 4
+	assert_eq(state.next_command_sequence(), 5)
+	assert_true(state.is_expected_command_sequence(5))
+	assert_false(state.is_expected_command_sequence(4),
+			"текущият sequence вече е приложен")
+	assert_false(state.is_expected_command_sequence(6),
+			"пропуск в sequence не е позволен")
+
+
+func test_record_accepted_command_advances_monotonically() -> void:
+	var state := _valid_two_player_setup()
+	assert_true(state.record_accepted_command(1))
+	assert_eq(state.command_sequence, 1)
+	assert_true(state.record_accepted_command(2))
+	assert_true(state.record_accepted_command(3))
+	assert_eq(state.command_sequence, 3)
+	assert_eq(state.next_command_sequence(), 4)
+
+
+func test_record_accepted_command_rejects_out_of_order() -> void:
+	var state := _valid_two_player_setup()
+	assert_true(state.record_accepted_command(1))
+	assert_false(state.record_accepted_command(3),
+			"пропуск (1→3) не трябва да променя state")
+	assert_eq(state.command_sequence, 1,
+			"отхвърлен sequence не пипа command_sequence (§12)")
+	assert_false(state.record_accepted_command(1),
+			"дубликат на вече приет sequence се отхвърля")
+	assert_eq(state.command_sequence, 1)
+	assert_false(state.record_accepted_command(0))
+	assert_false(state.record_accepted_command(-1))
+
+
+func test_advance_command_sequence() -> void:
+	var state := _valid_two_player_setup()
+	assert_eq(state.command_sequence, GameState.COMMAND_SEQUENCE_START)
+	assert_eq(state.advance_command_sequence(), 1)
+	assert_eq(state.advance_command_sequence(), 2)
+	assert_eq(state.command_sequence, 2)
+	assert_true(state.is_expected_command_sequence(3))
+
+
+func test_set_command_sequence_for_snapshot_restore() -> void:
+	var state := _valid_two_player_setup()
+	state.set_command_sequence(12)
+	assert_eq(state.command_sequence, 12)
+	assert_eq(state.next_command_sequence(), 13)
+	state.set_command_sequence(-5)
+	assert_eq(state.command_sequence, GameState.COMMAND_SEQUENCE_START,
+			"отрицателен restore се клампва до START")
+
+
+func test_stamp_command_sets_match_id_and_next_sequence() -> void:
+	var state := _valid_two_player_setup()
+	state.record_accepted_command(1)
+	state.record_accepted_command(2)
+	var cmd := RollDiceCommand.new(PlayerId.GREEN)
+	cmd.match_id = &"stale"
+	cmd.sequence = 99
+	var stamped := state.stamp_command(cmd)
+	assert_true(stamped == cmd, "stamp_command връща същата инстанция")
+	assert_eq(cmd.match_id, state.match_id)
+	assert_eq(cmd.sequence, 3)
+	assert_eq(state.command_sequence, 2,
+			"stamp не трябва да инкрементира — само record след accept")
+
+
+func test_stamp_command_null_is_safe() -> void:
+	var state := _valid_two_player_setup()
+	assert_true(state.stamp_command(null) == null)
+
+
+func test_is_valid_rejects_negative_command_sequence() -> void:
+	var state := _valid_two_player_setup()
+	assert_true(state.is_valid())
+	state.command_sequence = -1
+	assert_false(state.is_valid(),
+			"отрицателен command_sequence прави GameState невалиден")
+
+
+func test_command_sequence_round_trip_and_equals() -> void:
+	var original := _valid_two_player_setup()
+	assert_true(original.record_accepted_command(1))
+	assert_true(original.record_accepted_command(2))
+	var restored := GameState.from_dict(original.to_dict())
+	assert_eq(restored.command_sequence, 2)
+	assert_true(original.equals(restored))
+	assert_eq(restored.to_dict().get("command_sequence"), 2)
+	restored.command_sequence = 3
+	assert_false(original.equals(restored),
+			"equals трябва да включва command_sequence")
+
+
+func test_command_sequence_missing_in_dict_defaults_to_start() -> void:
+	var data := _valid_two_player_setup().to_dict()
+	data.erase("command_sequence")
+	var restored := GameState.from_dict(data)
+	assert_eq(restored.command_sequence, GameState.COMMAND_SEQUENCE_START)
+
+
+func test_get_legal_actions_stamp_next_sequence_after_advances() -> void:
+	var state := _valid_two_player_setup()
+	state.record_accepted_command(1)
+	state.turn.begin_player_turn(1, true)
+	var actions := state.get_legal_actions()
+	assert_eq(actions.size(), 1)
+	assert_eq((actions[0] as RollDiceCommand).sequence, 2)
+	assert_eq((actions[0] as RollDiceCommand).match_id, state.match_id)
+
+
+func test_to_view_excludes_command_sequence() -> void:
+	var state := _valid_two_player_setup()
+	state.record_accepted_command(1)
+	var view := state.to_view()
+	assert_false(view.has("command_sequence"),
+			"command_sequence е engine/snapshot поле, не presentation view")
+
+
 # ── Сериализация ──────────────────────────────────────────────────────────────
 
 func test_to_dict_contains_all_schema_keys() -> void:
@@ -518,7 +646,7 @@ func test_from_dict_missing_fields_use_defaults() -> void:
 	assert_true(state.dice != null)
 	assert_eq(state.gifts.size(), 0)
 	assert_eq(state.ranking.size(), 0)
-	assert_eq(state.command_sequence, 0)
+	assert_eq(state.command_sequence, GameState.COMMAND_SEQUENCE_START)
 
 
 func test_duplicate_state_is_independent_deep_copy() -> void:
@@ -531,7 +659,7 @@ func test_duplicate_state_is_independent_deep_copy() -> void:
 	copy.gifts.clear()
 	copy.turn.begin_player_turn(1, true)
 	assert_false(original.equals(copy))
-	assert_eq(original.command_sequence, 0)
+	assert_eq(original.command_sequence, GameState.COMMAND_SEQUENCE_START)
 	assert_eq(original.get_player(PlayerId.GREEN).rank, PlayerState.RANK_UNRANKED)
 	assert_eq(original.gifts.size(), 1)
 	assert_true(original.turn.is_match_start())
