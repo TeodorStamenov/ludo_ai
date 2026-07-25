@@ -18,25 +18,51 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      GODOT_VERSION: "4.6"
+      GODOT_VERSION: "4.6.3"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache Godot binary
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-bin/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+
       - name: Install Godot ${{ env.GODOT_VERSION }}
+        if: steps.cache-godot.outputs.cache-hit != 'true'
         run: |
+          mkdir -p ~/godot-bin
           wget -q \
             "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
             -O godot.zip
           unzip -q godot.zip
-          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
-          sudo chmod +x /usr/local/bin/godot
-          godot --version
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" ~/godot-bin/godot
+          chmod +x ~/godot-bin/godot
+
+      - name: Add Godot to PATH
+        run: echo "$HOME/godot-bin" >> $GITHUB_PATH
+
+      - name: Verify Godot version
+        run: godot --version
+
+      - name: Cache import artifacts
+        uses: actions/cache@v4
+        with:
+          path: .godot/
+          key: godot-import-${{ env.GODOT_VERSION }}-${{ hashFiles('**/*.gd', '**/*.tscn', '**/*.tres', 'project.godot') }}
+          restore-keys: |
+            godot-import-${{ env.GODOT_VERSION }}-
 
       - name: Import project
         run: godot --headless --import 2>&1 || true
 
-      - name: Run tests
+      - name: Run domain tests (GUT CLI)
+        run: godot --headless -s addons/gut/gut_cmdln.gd 2>&1
+        timeout-minutes: 5
+
+      - name: Run full suite (legacy runner)
         run: godot --headless --script tests/test_runner.gd
         timeout-minutes: 10
