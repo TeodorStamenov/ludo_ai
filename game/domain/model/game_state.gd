@@ -38,6 +38,8 @@ extends RefCounted
 ## Persistence API (docs/V1_ARCHITECTURE.md §9 / §16.2 / Task #61):
 ##   to_dict() / from_dict() — JSON-safe Dictionary snapshot;
 ##   to_json() / from_json() — текст за active_match.json / resume / replay.
+##   DoD §16.2 (Task #63): serialize → deserialize без загуба — виж
+##   tests/unit/domain/serialize_deserialize_lossless_test.gd.
 ##
 ## State hash (docs/V1_ARCHITECTURE.md §11 / §16.3 / Task #62):
 ##   compute_hash() — стабилен int за divergence / replay.
