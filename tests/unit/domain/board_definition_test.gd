@@ -87,6 +87,17 @@ func test_has_and_get_cell() -> void:
 	assert_true(def.get_cell(&"c_0_0") == null)
 
 
+func test_get_cell_at_grid() -> void:
+	var def := _mini_board()
+	var spawn := def.get_cell_at_grid(6, 12)
+	assert_true(spawn != null)
+	assert_eq(spawn.cell_id, &"c_6_12")
+	assert_true(def.has_cell_at_grid(6, 12))
+	assert_false(def.has_cell_at_grid(0, 0))
+	assert_true(def.get_cell_at_grid(-1, 0) == null)
+	assert_true(def.get_cell_at_grid(15, 0) == null)
+
+
 func test_put_cell_adds_and_replaces() -> void:
 	var def := BoardDefinition.new()
 	def.board_id = &"tmp"

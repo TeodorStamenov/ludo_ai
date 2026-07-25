@@ -101,6 +101,17 @@ func get_cell(cell_id: StringName) -> CellDefinition:
 	return cells[cell_id] as CellDefinition
 
 
+## Клетка по изометрични grid координати, или null ако липсва / е извън BOARD_SIZE.
+func get_cell_at_grid(col: int, row: int) -> CellDefinition:
+	if col < 0 or col >= BOARD_SIZE or row < 0 or row >= BOARD_SIZE:
+		return null
+	return get_cell(CellId.from_grid(col, row))
+
+
+func has_cell_at_grid(col: int, row: int) -> bool:
+	return get_cell_at_grid(col, row) != null
+
+
 ## Независимо копие на main_loop като Array[StringName].
 func get_main_loop() -> Array[StringName]:
 	var ids: Array[StringName] = []
