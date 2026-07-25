@@ -1,6 +1,6 @@
 class_name Classic15x15Board
 extends RefCounted
-## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#40).
+## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#41).
 ##
 ## Премества геометрията от scripts/ludo_board.gd в BoardDefinition.cells:
 ## всяка заета клетка носи стабилен cell_id (CellId формат "c_{col}_{row}"),
@@ -12,14 +12,18 @@ extends RefCounted
 ##
 ## Task #39: base_cells_for(player_id) дефинира 2×2 BASE клетките за всеки seat
 ## (PlayerId → Array[cell_id]). Същите стойности влизат в
-## PlayerBoardDefinition.base_cells при Tasks #41–#42.
+## PlayerBoardDefinition.base_cells при Task #42.
 ##
 ## Task #40: spawn_cell_for(player_id) дефинира SPAWN клетката за всеки seat
 ## (PlayerId → cell_id). Същата стойност влиза в
-## PlayerBoardDefinition.spawn_cell при Tasks #41–#42.
+## PlayerBoardDefinition.spawn_cell при Task #42.
 ##
-## main_loop / home_stretch / player_definitions — Tasks #41–#42;
-## маршрутите — в Task #43. create() връща BoardDefinition с попълнени cells.
+## Task #41: main_loop_cell_ids() е затвореното общо трасе като наредени
+## cell_id (PATH + SPAWN). Редът следва ludo_board.gd / CURRENT_YELLOW_BEHAVIOR
+## жълтия маршрут без home stretch; индекс 0 = yellow spawn (6,12).
+## create() попълва BoardDefinition.main_loop.
+##
+## home_stretch / player_definitions — Task #42; маршрутите — Task #43.
 ##
 ## Layout (docs/V1_GAME_DESIGN.md §3.3, ludo_board.gd):
 ##   4× бази 2×2, кръстовидни рамене 3×5, 4 home колони по 4, център (7,7).
@@ -42,10 +46,13 @@ const SPAWN_CELLS_PER_PLAYER: int = 1
 ## Общ брой SPAWN клетки (4 seats × 1) — съвпада с CellType.SPAWN count в cells.
 const SPAWN_CELL_COUNT: int = 4
 
+## Дължина на общото трасе (36 PATH + 4 SPAWN) — BoardDefinition.main_loop.
+const MAIN_LOOP_LENGTH: int = 40
 
-## BoardDefinition с board_id classic_15x15 и пълна cells карта (без loop/seats).
+
+## BoardDefinition с board_id classic_15x15, cells и main_loop (без seats).
 static func create() -> BoardDefinition:
-	return BoardDefinition.create(BOARD_ID, build_cells())
+	return BoardDefinition.create(BOARD_ID, build_cells(), main_loop_cell_ids())
 
 
 ## Dictionary[cell_id: StringName, CellDefinition] за всички заети клетки.
@@ -192,6 +199,62 @@ static func spawn_owner(cell_id: StringName) -> StringName:
 ## True ако cell_id е SPAWN клетката на дадения seat.
 static func is_spawn_cell_of(player_id: StringName, cell_id: StringName) -> bool:
 	return spawn_cell_for(player_id) == cell_id and cell_id != &""
+
+
+## Grid позиции на затвореното общо трасе в ред на движение (Task #41).
+## Индекс 0 = yellow spawn (6,12); последната клетка (7,12) граничи с индекс 0.
+## Съвпада с ludo_board.gd player_paths[&"yellow"] без home stretch.
+## Не включва BASE, HOME или CENTER.
+static func main_loop_grid_positions() -> Array[Vector2i]:
+	return [
+		# South arm, west column (north) — YELLOW spawn
+		Vector2i(6, 12), Vector2i(6, 11), Vector2i(6, 10), Vector2i(6, 9), Vector2i(6, 8),
+		# West arm, south row (west)
+		Vector2i(5, 8), Vector2i(4, 8), Vector2i(3, 8), Vector2i(2, 8),
+		# West arm, west column (north) — CYAN spawn at (2,6)
+		Vector2i(2, 7), Vector2i(2, 6),
+		# West arm, north row (east)
+		Vector2i(3, 6), Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6),
+		# North arm, west column (north)
+		Vector2i(6, 5), Vector2i(6, 4), Vector2i(6, 3), Vector2i(6, 2),
+		# North arm, north row (east) — GREEN spawn at (8,2)
+		Vector2i(7, 2), Vector2i(8, 2),
+		# North arm, east column (south)
+		Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6),
+		# East arm, north row (east)
+		Vector2i(9, 6), Vector2i(10, 6), Vector2i(11, 6), Vector2i(12, 6),
+		# East arm, east column (south) — ORANGE spawn at (12,8)
+		Vector2i(12, 7), Vector2i(12, 8),
+		# East arm, south row (west)
+		Vector2i(11, 8), Vector2i(10, 8), Vector2i(9, 8), Vector2i(8, 8),
+		# South arm, east column (south)
+		Vector2i(8, 9), Vector2i(8, 10), Vector2i(8, 11), Vector2i(8, 12),
+		# Approach yellow home — YELLOW home_entry
+		Vector2i(7, 12),
+	]
+
+
+## Стабилни cell_id на общото трасе в ред на движение (Task #41).
+## Авторитетна стойност за BoardDefinition.main_loop; размерът е MAIN_LOOP_LENGTH.
+static func main_loop_cell_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for pos in main_loop_grid_positions():
+		ids.append(CellId.from_grid(pos.x, pos.y))
+	return ids
+
+
+## Индекс в main_loop за cell_id, или -1 ако клетката не е на общото трасе.
+static func main_loop_index_of(cell_id: StringName) -> int:
+	var ids := main_loop_cell_ids()
+	for i in ids.size():
+		if ids[i] == cell_id:
+			return i
+	return -1
+
+
+## True ако cell_id е част от общото трасе (PATH или SPAWN в main_loop).
+static func is_main_loop_cell(cell_id: StringName) -> bool:
+	return main_loop_index_of(cell_id) >= 0
 
 
 ## Логически тип на клетката в (col, row), или -1 ако позицията е празна.
