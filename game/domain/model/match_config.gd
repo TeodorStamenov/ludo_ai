@@ -36,8 +36,8 @@ class SeatConfig extends RefCounted:
 	static func from_dict(data: Dictionary) -> SeatConfig:
 		var seat := SeatConfig.new()
 		seat.player_id = StringName(data.get("player_id", ""))
-		seat.controller_type = data.get("controller_type", ControllerType.HUMAN)
-		seat.ai_difficulty = data.get("ai_difficulty", AIDifficulty.EASY)
+		seat.controller_type = int(data.get("controller_type", ControllerType.HUMAN))
+		seat.ai_difficulty = int(data.get("ai_difficulty", AIDifficulty.EASY))
 		seat.animal_id = StringName(data.get("animal_id", "pig"))
 		return seat
 
@@ -68,6 +68,8 @@ func add_seat(p_player_id: StringName, p_controller_type: int, p_animal_id: Stri
 
 
 func is_valid() -> bool:
+	if mode != Mode.FREE_PLAY and mode != Mode.CAMPAIGN:
+		return false
 	if seats.size() < 2 or seats.size() > 4:
 		return false
 	var ids_seen: Dictionary = {}
@@ -79,6 +81,8 @@ func is_valid() -> bool:
 		if seat.player_id in ids_seen:
 			return false
 		ids_seen[seat.player_id] = true
+		if seat.controller_type < ControllerType.HUMAN or seat.controller_type > ControllerType.REMOTE:
+			return false
 		if seat.controller_type == ControllerType.AI:
 			if seat.ai_difficulty < AIDifficulty.EASY or seat.ai_difficulty > AIDifficulty.HARD:
 				return false
@@ -104,15 +108,18 @@ func to_dict() -> Dictionary:
 
 static func from_dict(data: Dictionary) -> MatchConfig:
 	var cfg := MatchConfig.new()
-	cfg.schema_version = data.get("schema_version", SCHEMA_VERSION)
-	cfg.mode = data.get("mode", Mode.FREE_PLAY)
+	cfg.schema_version = int(data.get("schema_version", SCHEMA_VERSION))
+	cfg.mode = int(data.get("mode", Mode.FREE_PLAY))
 	cfg.board_id = StringName(data.get("board_id", "classic_15x15"))
 	cfg.theme_id = StringName(data.get("theme_id", "jungle"))
 	cfg.campaign_level_id = StringName(data.get("campaign_level_id", ""))
 	cfg.level_modifiers = data.get("level_modifiers", []).duplicate()
 	cfg.pre_match_bonus = data.get("pre_match_bonus", {}).duplicate()
-	cfg.rng_seed = data.get("rng_seed", 0)
+	# Липсващ rng_seed запазва авто-генерирания от _init (не форсира 0).
+	if data.has("rng_seed"):
+		cfg.rng_seed = int(data["rng_seed"])
 	cfg.seats.clear()
 	for sd in data.get("seats", []):
-		cfg.seats.append(SeatConfig.from_dict(sd))
+		if sd is Dictionary:
+			cfg.seats.append(SeatConfig.from_dict(sd))
 	return cfg
