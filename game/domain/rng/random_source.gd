@@ -1,9 +1,17 @@
 class_name RandomSource
 extends RefCounted
-## Интерфейс за инжектируем детерминиран RNG (docs/V1_ARCHITECTURE.md, раздел 4.5).
+## Интерфейс за инжектируем детерминиран RNG (docs/V1_ARCHITECTURE.md, §4.5).
 ##
-## Domain получава RandomSource отвън — никога не създава собствен RandomNumberGenerator.
-## Това прави целия gameplay детерминиран и тестируем без Godot сцена.
+## Domain получава RandomSource отвън — никога не създава собствен
+## RandomNumberGenerator. Това прави gameplay детерминиран и тестируем
+## без Godot сцена.
+##
+## Договор:
+##   next_int(min, max) — цяло число в затворения интервал [min, max]
+##   pick(array)        — елемент от непразен масив
+##   get_state()        — export на сериализируемо вътрешно състояние
+##                        (JSON-safe; за GameState.rng_state / snapshot)
+##   set_state(state)   — restore от get_state() (вкл. след JSON round-trip)
 ##
 ## Един seed от MatchConfig управлява:
 ##   - зар;
@@ -11,32 +19,38 @@ extends RefCounted
 ##   - съдържание на подаръци;
 ##   - случайни параметри на power-up.
 ##
-## Козметичните вариации на анимации използват отделен presentation RNG
-## и не минават оттук.
+## Козметичните вариации на анимации ползват отделен
+## PresentationRandomSource (game/presentation/common/) и не минават оттук.
 ##
-## Имплементации:
-##   - SeededRandomSource  — production (rng/seeded_random_source.gd)
-##   - [stub за тестове]   — фиксирани стойности при unit тестване
+## Базовите методи са фиксиран test double (винаги min / първи елемент),
+## удобен за unit тестове на правила без случайност.
 ##
-## Пълната имплементация е обхваната от задача
-## "Създаване на интерфейс RandomSource".
+## Production имплементация: SeededRandomSource (rng/seeded_random_source.gd).
 
 
-## Връща произволно цяло число в затворения интервал [min_val, max_val].
+## Връща цяло число в затворения интервал [min_val, max_val].
+## Базовата имплементация винаги връща min_val (фиксиран test double).
 func next_int(min_val: int, max_val: int) -> int:
-	return min_val  # override в имплементацията
+	assert(min_val <= max_val,
+			"RandomSource.next_int: min_val (%d) трябва да е <= max_val (%d)" % [
+				min_val, max_val])
+	return min_val
 
 
-## Избира произволен елемент от масива. Масивът не трябва да е празен.
+## Избира елемент от масива. Масивът не трябва да е празен.
+## Базовата имплементация винаги връща първия елемент (фиксиран test double).
 func pick(array: Array) -> Variant:
-	return array[0]  # override в имплементацията
+	assert(not array.is_empty(), "RandomSource.pick() called on empty array")
+	return array[0]
 
 
-## Връща сериализируемо представяне на текущото вътрешно RNG състояние.
+## Експортира сериализируемо JSON-safe представяне на RNG състоянието.
+## Базовата имплементация няма състояние.
 func get_state() -> Dictionary:
-	return {}  # override в имплементацията
+	return {}
 
 
-## Възстановява RNG от предишно записано get_state().
-func set_state(state: Dictionary) -> void:
-	pass  # override в имплементацията
+## Възстановява RNG от предишно експортирано get_state() (вкл. JSON round-trip).
+## Базовата имплементация е no-op.
+func set_state(_state: Dictionary) -> void:
+	pass
