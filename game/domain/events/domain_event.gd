@@ -19,7 +19,8 @@ extends RefCounted
 ## Конкретни типове (подкласове / бъдещи задачи #69+):
 ##   MatchStartedEvent (events/match_started_event.gd),
 ##   DiceRolledEvent (events/dice_rolled_event.gd),
-##   ValidMovesChanged, PawnMoved, PawnExitedBase, PawnCaptured,
+##   ValidMovesChangedEvent (events/valid_moves_changed_event.gd),
+##   PawnMoved, PawnExitedBase, PawnCaptured,
 ##   PawnSentHome, PawnStackFormed, PawnFinished, GiftSpawned,
 ##   GiftCollected, PowerUpResolved, ShieldApplied, TurnChanged,
 ##   PlayerRanked, MatchFinished

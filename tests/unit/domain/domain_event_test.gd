@@ -210,6 +210,16 @@ func test_dice_rolled_event_is_domain_event() -> void:
 	assert_true(event.is_valid())
 
 
+func test_valid_moves_changed_event_is_domain_event() -> void:
+	var event := ValidMovesChangedEvent.create_changed(
+			PlayerId.YELLOW, [PawnId.for_player(PlayerId.YELLOW, 0)])
+	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_VALID_MOVES_CHANGED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
+
+
 func test_pawn_moved_event_is_domain_event() -> void:
 	var event := PawnMovedEvent.new()
 	assert_true(event is DomainEvent)
