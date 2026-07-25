@@ -1,10 +1,14 @@
 class_name Classic15x15Board
 extends RefCounted
-## Класическа 15×15 изометрична дъска като domain данни (Task #37).
+## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#38).
 ##
 ## Премества геометрията от scripts/ludo_board.gd в BoardDefinition.cells:
-## всяка заета клетка носи изометрични grid координати (grid_col/grid_row)
-## и логически CellType. Темата/текстурите остават в presentation.
+## всяка заета клетка носи стабилен cell_id (CellId формат "c_{col}_{row}"),
+## изометрични grid координати (grid_col/grid_row) и логически CellType.
+## Темата/текстурите остават в presentation.
+##
+## Task #38: all_cell_ids() е авторитетният каталог от стабилни cell ID стойности
+## за всички заети клетки — без NodePath / editor-generated имена.
 ##
 ## main_loop и player_definitions се допълват в Tasks #39–#42;
 ## маршрутите — в Task #43. create() връща BoardDefinition с попълнени cells.
@@ -25,12 +29,31 @@ static func create() -> BoardDefinition:
 
 
 ## Dictionary[cell_id: StringName, CellDefinition] за всички заети клетки.
+## Ключът на всяка клетка е нейният стабилен CellId (съвпада с cell.cell_id).
 static func build_cells() -> Dictionary:
 	var cells: Dictionary = {}
 	_add_base_cells(cells)
 	_add_center_cell(cells)
 	_add_arm_cells(cells)
 	return cells
+
+
+## Всички стабилни cell_id за заетите клетки в детерминиран ред (row-major).
+## Авторитетен каталог за classic_15x15 (Task #38); размерът е CELL_COUNT.
+static func all_cell_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for row in CellId.BOARD_SIZE:
+		for col in CellId.BOARD_SIZE:
+			if has_grid_cell(col, row):
+				ids.append(CellId.from_grid(col, row))
+	return ids
+
+
+## Стабилен cell_id за заета позиция, или &"" ако клетката не съществува.
+static func cell_id_at(col: int, row: int) -> StringName:
+	if not has_grid_cell(col, row):
+		return &""
+	return CellId.from_grid(col, row)
 
 
 ## Логически тип на клетката в (col, row), или -1 ако позицията е празна.

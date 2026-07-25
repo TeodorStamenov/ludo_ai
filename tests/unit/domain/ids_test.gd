@@ -161,6 +161,12 @@ func test_pawn_id_roundtrip_player_and_index() -> void:
 
 func test_cell_id_center_constant() -> void:
 	assert_eq(CellId.CENTER, &"c_7_7", "CENTER трябва да е &\"c_7_7\"")
+	assert_true(CellId.is_center(CellId.CENTER))
+	assert_false(CellId.is_center(&"c_8_2"))
+
+
+func test_cell_id_prefix_constant() -> void:
+	assert_eq(CellId.PREFIX, "c_", "PREFIX трябва да е \"c_\"")
 
 
 func test_cell_id_from_grid_format() -> void:
@@ -203,6 +209,9 @@ func test_cell_id_to_vec_invalid_returns_minus_one() -> void:
 	assert_eq(CellId.to_vec(&""), Vector2i(-1, -1), "празен → (-1,-1)")
 	assert_eq(CellId.to_vec(&"yellow"), Vector2i(-1, -1), "без c_ префикс → (-1,-1)")
 	assert_eq(CellId.to_vec(&"c_7"), Vector2i(-1, -1), "непълен формат → (-1,-1)")
+	assert_eq(CellId.to_vec(&"c_15_0"), Vector2i(-1, -1), "col извън граници → (-1,-1)")
+	assert_eq(CellId.to_vec(&"c_0_15"), Vector2i(-1, -1), "row извън граници → (-1,-1)")
+	assert_eq(CellId.to_vec(&"c_-1_0"), Vector2i(-1, -1), "отрицателна колона → (-1,-1)")
 
 
 func test_cell_id_is_valid_accepts_in_bounds() -> void:
