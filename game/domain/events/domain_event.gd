@@ -17,7 +17,8 @@ extends RefCounted
 ## MatchSession.stamp-ва command_sequence след приета команда.
 ##
 ## Конкретни типове (подкласове / бъдещи задачи #69+):
-##   MatchStartedEvent (events/match_started_event.gd), DiceRolled,
+##   MatchStartedEvent (events/match_started_event.gd),
+##   DiceRolledEvent (events/dice_rolled_event.gd),
 ##   ValidMovesChanged, PawnMoved, PawnExitedBase, PawnCaptured,
 ##   PawnSentHome, PawnStackFormed, PawnFinished, GiftSpawned,
 ##   GiftCollected, PowerUpResolved, ShieldApplied, TurnChanged,

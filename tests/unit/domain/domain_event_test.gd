@@ -202,12 +202,12 @@ func test_equals() -> void:
 # ── Подкласове наследяват envelope ────────────────────────────────────────────
 
 func test_dice_rolled_event_is_domain_event() -> void:
-	var event := DiceRolledEvent.new()
+	var event := DiceRolledEvent.create_rolled(PlayerId.GREEN, 3)
 	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_DICE_ROLLED)
 	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
 	assert_false(event.is_stamped())
-	assert_true(event.is_valid(),
-			"празен stub subclass envelope трябва да е валиден")
+	assert_true(event.is_valid())
 
 
 func test_pawn_moved_event_is_domain_event() -> void:
@@ -241,12 +241,13 @@ func test_turn_changed_event_is_domain_event() -> void:
 
 
 func test_subclass_stamp_uses_base_envelope() -> void:
-	var event := DiceRolledEvent.new()
-	event.event_type = DomainEvent.TYPE_DICE_ROLLED
+	var event := DiceRolledEvent.create_rolled(PlayerId.YELLOW, 6)
 	event.stamp(5)
 	assert_true(event.is_stamped())
 	assert_eq(event.command_sequence, 5)
 	assert_eq(event.event_type, DomainEvent.TYPE_DICE_ROLLED)
+	assert_eq(event.player_id, PlayerId.YELLOW)
+	assert_eq(event.value, 6)
 	assert_true(event.is_valid())
 
 
