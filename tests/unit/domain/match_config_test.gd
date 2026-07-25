@@ -6,8 +6,9 @@ extends TestCase
 ##          docs/V1_GAME_DESIGN.md §3.3 / §8.2):
 ##   - Правилни стойности по подразбиране.
 ##   - schema_version: константа, сериализация, миграция N→N+1, валидация.
-##   - Всички enum стойности (Mode, ControllerType, AIDifficulty).
+##   - Всички enum стойности (Mode, ControllerType) и domain AIDifficulty.
 ##   - Конфигурация за 2/3/4 активни места (PlayerId seats).
+##   - Seat полета: controller_type, ai_difficulty?, animal_id (Task #24).
 ##   - Сериализация/десериализация (to_dict / from_dict).
 ##   - Валидационни правила.
 ##   - Кампанийна конфигурация (campaign_level_id, level_modifiers, pre_match_bonus).
@@ -206,15 +207,15 @@ func test_controller_type_remote_value() -> void:
 
 
 func test_ai_difficulty_easy_value() -> void:
-	assert_eq(MatchConfig.AIDifficulty.EASY, 0)
+	assert_eq(AIDifficulty.EASY, 0)
 
 
 func test_ai_difficulty_medium_value() -> void:
-	assert_eq(MatchConfig.AIDifficulty.MEDIUM, 1)
+	assert_eq(AIDifficulty.MEDIUM, 1)
 
 
 func test_ai_difficulty_hard_value() -> void:
-	assert_eq(MatchConfig.AIDifficulty.HARD, 2)
+	assert_eq(AIDifficulty.HARD, 2)
 
 
 # ── SeatConfig ────────────────────────────────────────────────────────────────
@@ -226,12 +227,13 @@ func test_seat_config_default_controller_type_is_human() -> void:
 
 func test_seat_config_default_animal_id_is_pig() -> void:
 	var seat := MatchConfig.SeatConfig.new()
-	assert_eq(seat.animal_id, &"pig")
+	assert_eq(seat.animal_id, AnimalId.DEFAULT)
+	assert_eq(seat.animal_id, AnimalId.PIG)
 
 
 func test_seat_config_default_ai_difficulty_is_easy() -> void:
 	var seat := MatchConfig.SeatConfig.new()
-	assert_eq(seat.ai_difficulty, MatchConfig.AIDifficulty.EASY)
+	assert_eq(seat.ai_difficulty, AIDifficulty.EASY)
 
 
 func test_add_seat_human() -> void:
@@ -246,10 +248,10 @@ func test_add_seat_human() -> void:
 
 func test_add_seat_ai_with_difficulty() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit", MatchConfig.AIDifficulty.HARD)
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit", AIDifficulty.HARD)
 	var seat: MatchConfig.SeatConfig = cfg.seats[0]
 	assert_eq(seat.controller_type, MatchConfig.ControllerType.AI)
-	assert_eq(seat.ai_difficulty, MatchConfig.AIDifficulty.HARD)
+	assert_eq(seat.ai_difficulty, AIDifficulty.HARD)
 
 
 func test_add_seat_remote() -> void:
@@ -388,8 +390,8 @@ func test_valid_two_player_config() -> void:
 func test_valid_three_player_config() -> void:
 	var cfg := MatchConfig.new()
 	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit", MatchConfig.AIDifficulty.MEDIUM)
-	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog", MatchConfig.AIDifficulty.EASY)
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit", AIDifficulty.MEDIUM)
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog", AIDifficulty.EASY)
 	assert_true(cfg.is_valid(), "3-player config трябва да е валиден")
 
 
@@ -632,7 +634,7 @@ func test_seat_to_dict_contains_all_keys() -> void:
 	var seat := MatchConfig.SeatConfig.new()
 	seat.player_id = PlayerId.GREEN
 	seat.controller_type = MatchConfig.ControllerType.AI
-	seat.ai_difficulty = MatchConfig.AIDifficulty.MEDIUM
+	seat.ai_difficulty = AIDifficulty.MEDIUM
 	seat.animal_id = &"cow"
 	var d := seat.to_dict()
 	assert_true(d.has("player_id"))
@@ -645,12 +647,12 @@ func test_seat_from_dict_round_trip() -> void:
 	var seat := MatchConfig.SeatConfig.new()
 	seat.player_id = PlayerId.GREEN
 	seat.controller_type = MatchConfig.ControllerType.AI
-	seat.ai_difficulty = MatchConfig.AIDifficulty.MEDIUM
+	seat.ai_difficulty = AIDifficulty.MEDIUM
 	seat.animal_id = &"cow"
 	var restored := MatchConfig.SeatConfig.from_dict(seat.to_dict())
 	assert_eq(restored.player_id, PlayerId.GREEN)
 	assert_eq(restored.controller_type, MatchConfig.ControllerType.AI)
-	assert_eq(restored.ai_difficulty, MatchConfig.AIDifficulty.MEDIUM)
+	assert_eq(restored.ai_difficulty, AIDifficulty.MEDIUM)
 	assert_eq(restored.animal_id, &"cow")
 
 
@@ -664,7 +666,7 @@ func test_campaign_config_round_trip() -> void:
 	cfg.pre_match_bonus = {"type": "shield", "pawn_index": 0}
 	cfg.rng_seed = 99999
 	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog", MatchConfig.AIDifficulty.EASY)
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog", AIDifficulty.EASY)
 
 	var restored := MatchConfig.from_dict(cfg.to_dict())
 
@@ -747,3 +749,119 @@ func test_start_match_command_config_rng_seed_is_accessible() -> void:
 	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog")
 	var cmd := StartMatchCommand.new(cfg)
 	assert_eq(cmd.config.rng_seed, 42, "rng_seed трябва да е достъпен от командата")
+
+
+# ── Seat controller / difficulty / animal (Task #24) ──────────────────────────
+
+func test_seat_config_create_sets_all_three_fields() -> void:
+	var seat := MatchConfig.SeatConfig.create(
+			PlayerId.GREEN, MatchConfig.ControllerType.AI, AnimalId.HEN, AIDifficulty.HARD)
+	assert_eq(seat.player_id, PlayerId.GREEN)
+	assert_eq(seat.controller_type, MatchConfig.ControllerType.AI)
+	assert_eq(seat.animal_id, AnimalId.HEN)
+	assert_eq(seat.ai_difficulty, AIDifficulty.HARD)
+	assert_true(seat.is_seat_valid())
+
+
+func test_seat_is_human_ai_remote_helpers() -> void:
+	var human := MatchConfig.SeatConfig.create(
+			PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
+	var ai := MatchConfig.SeatConfig.create(
+			PlayerId.YELLOW, MatchConfig.ControllerType.AI, AnimalId.RABBIT, AIDifficulty.MEDIUM)
+	var remote := MatchConfig.SeatConfig.create(
+			PlayerId.ORANGE, MatchConfig.ControllerType.REMOTE, AnimalId.DOG)
+	assert_true(human.is_human())
+	assert_false(human.is_ai())
+	assert_false(human.requires_ai_difficulty())
+	assert_true(ai.is_ai())
+	assert_true(ai.requires_ai_difficulty())
+	assert_true(remote.is_remote())
+	assert_false(remote.requires_ai_difficulty())
+
+
+func test_seat_configure_updates_controller_animal_and_difficulty() -> void:
+	var seat := MatchConfig.SeatConfig.create(
+			PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
+	seat.configure(MatchConfig.ControllerType.AI, AnimalId.COW, AIDifficulty.MEDIUM)
+	assert_eq(seat.controller_type, MatchConfig.ControllerType.AI)
+	assert_eq(seat.animal_id, AnimalId.COW)
+	assert_eq(seat.ai_difficulty, AIDifficulty.MEDIUM)
+
+
+func test_seat_is_seat_valid_rejects_unknown_animal() -> void:
+	var seat := MatchConfig.SeatConfig.create(
+			PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"dragon")
+	assert_false(seat.is_seat_valid(), "непознат animal_id трябва да е невалиден")
+
+
+func test_seat_is_seat_valid_rejects_ai_with_bad_difficulty() -> void:
+	var seat := MatchConfig.SeatConfig.create(
+			PlayerId.GREEN, MatchConfig.ControllerType.AI, AnimalId.PIG, 99)
+	assert_false(seat.is_seat_valid())
+
+
+func test_seat_is_seat_valid_allows_human_with_any_stored_difficulty() -> void:
+	# ai_difficulty е опционално за HUMAN — стойността се игнорира при валидация.
+	var seat := MatchConfig.SeatConfig.create(
+			PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.PIG, 99)
+	assert_true(seat.is_seat_valid())
+
+
+func test_configure_seat_sets_fields_on_active_seat() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	assert_true(cfg.configure_seat(
+			PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.PIG))
+	assert_true(cfg.configure_seat(
+			PlayerId.YELLOW, MatchConfig.ControllerType.AI, AnimalId.RABBIT, AIDifficulty.HARD))
+	var green := cfg.get_seat(PlayerId.GREEN)
+	var yellow := cfg.get_seat(PlayerId.YELLOW)
+	assert_eq(green.controller_type, MatchConfig.ControllerType.HUMAN)
+	assert_eq(green.animal_id, AnimalId.PIG)
+	assert_eq(yellow.controller_type, MatchConfig.ControllerType.AI)
+	assert_eq(yellow.ai_difficulty, AIDifficulty.HARD)
+	assert_eq(yellow.animal_id, AnimalId.RABBIT)
+	assert_true(cfg.is_valid())
+
+
+func test_configure_seat_returns_false_for_inactive_player() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	assert_false(cfg.configure_seat(
+			PlayerId.CYAN, MatchConfig.ControllerType.AI, AnimalId.DOG, AIDifficulty.EASY),
+			"CYAN не е активен в default 2P config")
+
+
+func test_get_seat_returns_null_for_missing_player() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	assert_null(cfg.get_seat(PlayerId.ORANGE))
+
+
+func test_mixed_human_ai_seats_with_animals_are_valid() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, AnimalId.HEN, AIDifficulty.EASY)
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, AnimalId.COW, AIDifficulty.HARD)
+	cfg.add_seat(PlayerId.CYAN, MatchConfig.ControllerType.REMOTE, AnimalId.DOG)
+	assert_true(cfg.is_valid(),
+			"произволна Human/AI/Remote комбинация с валидни животни трябва да е валидна")
+
+
+func test_invalid_unknown_animal_id_on_seat() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"unicorn", AIDifficulty.EASY)
+	assert_false(cfg.is_valid(), "непознат animal_id трябва да прави config невалиден")
+
+
+func test_seat_fields_round_trip_preserves_controller_difficulty_animal() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.HEN)
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, AnimalId.DOG, AIDifficulty.MEDIUM)
+	var restored := MatchConfig.from_dict(cfg.to_dict())
+	var s0: MatchConfig.SeatConfig = restored.seats[0]
+	var s1: MatchConfig.SeatConfig = restored.seats[1]
+	assert_eq(s0.controller_type, MatchConfig.ControllerType.HUMAN)
+	assert_eq(s0.animal_id, AnimalId.HEN)
+	assert_eq(s1.controller_type, MatchConfig.ControllerType.AI)
+	assert_eq(s1.ai_difficulty, AIDifficulty.MEDIUM)
+	assert_eq(s1.animal_id, AnimalId.DOG)
+	assert_true(restored.is_valid())

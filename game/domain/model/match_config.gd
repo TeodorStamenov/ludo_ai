@@ -16,6 +16,9 @@ extends RefCounted
 ##   дъската има винаги 4 seats (PlayerId); мачът активира 2, 3 или 4 от тях.
 ##   При 2 играчи — само срещуположни бази; при 3 — кои да е три от четирите;
 ##   при 4 — всички.
+##
+## Всяко място носи (docs/V1_ARCHITECTURE.md §5.1 / docs/V1_GAME_DESIGN.md §8.2):
+##   player_id, controller_type (HUMAN|AI|REMOTE), ai_difficulty? (само при AI), animal_id.
 
 ## Текуща версия на сериализираната схема (docs/V1_ARCHITECTURE.md, §5.1 и §9).
 ## При промяна на формата: увеличава се и се добавя миграция N → N+1 в `_migrate_one_step`.
@@ -38,8 +41,9 @@ const DEFAULT_SEATS_4P: Array[StringName] = [
 ]
 
 enum Mode { FREE_PLAY = 0, CAMPAIGN = 1 }
+## Controller типове за seats[] (docs/V1_ARCHITECTURE.md §5.1: HUMAN | AI | REMOTE).
+## REMOTE е placeholder за v2; AI difficulty живее в domain AIDifficulty.
 enum ControllerType { HUMAN = 0, AI = 1, REMOTE = 2 }
-enum AIDifficulty { EASY = 0, MEDIUM = 1, HARD = 2 }
 
 
 ## Поддържана е само текущата SCHEMA_VERSION (след успешна миграция).
@@ -72,11 +76,46 @@ static func _migrate_one_step(data: Dictionary, from_version: int) -> Dictionary
 			return data
 
 
+## Конфигурация на едно активно място в мача.
+## Задължителни полета: player_id, controller_type, animal_id.
+## ai_difficulty е значимо само при controller_type == AI.
 class SeatConfig extends RefCounted:
 	var player_id: StringName = &""
 	var controller_type: int = ControllerType.HUMAN
 	var ai_difficulty: int = AIDifficulty.EASY
-	var animal_id: StringName = &"pig"
+	var animal_id: StringName = AnimalId.DEFAULT
+
+	func is_human() -> bool:
+		return controller_type == ControllerType.HUMAN
+
+	func is_ai() -> bool:
+		return controller_type == ControllerType.AI
+
+	func is_remote() -> bool:
+		return controller_type == ControllerType.REMOTE
+
+	## ai_difficulty е задължителен само за AI (docs/V1_ARCHITECTURE.md §5.1: ai_difficulty?).
+	func requires_ai_difficulty() -> bool:
+		return controller_type == ControllerType.AI
+
+	## Задава controller_type, animal_id и (при AI) ai_difficulty на мястото.
+	func configure(p_controller_type: int, p_animal_id: StringName,
+			p_ai_difficulty: int = AIDifficulty.EASY) -> void:
+		controller_type = p_controller_type
+		animal_id = p_animal_id
+		ai_difficulty = p_ai_difficulty
+
+	## Seat-ниво валидация на controller_type, animal_id и ai_difficulty.
+	func is_seat_valid() -> bool:
+		if not PlayerId.is_valid(player_id):
+			return false
+		if not AnimalId.is_valid(animal_id):
+			return false
+		if controller_type < ControllerType.HUMAN or controller_type > ControllerType.REMOTE:
+			return false
+		if requires_ai_difficulty() and not AIDifficulty.is_valid(ai_difficulty):
+			return false
+		return true
 
 	func to_dict() -> Dictionary:
 		return {
@@ -91,7 +130,15 @@ class SeatConfig extends RefCounted:
 		seat.player_id = StringName(data.get("player_id", ""))
 		seat.controller_type = int(data.get("controller_type", ControllerType.HUMAN))
 		seat.ai_difficulty = int(data.get("ai_difficulty", AIDifficulty.EASY))
-		seat.animal_id = StringName(data.get("animal_id", "pig"))
+		seat.animal_id = StringName(data.get("animal_id", AnimalId.DEFAULT))
+		return seat
+
+	## Фабрика за пълно конфигурирано място.
+	static func create(p_player_id: StringName, p_controller_type: int,
+			p_animal_id: StringName, p_ai_difficulty: int = AIDifficulty.EASY) -> SeatConfig:
+		var seat := SeatConfig.new()
+		seat.player_id = p_player_id
+		seat.configure(p_controller_type, p_animal_id, p_ai_difficulty)
 		return seat
 
 
@@ -128,12 +175,26 @@ func create_random_source() -> SeededRandomSource:
 
 func add_seat(p_player_id: StringName, p_controller_type: int, p_animal_id: StringName,
 		p_ai_difficulty: int = AIDifficulty.EASY) -> void:
-	var seat := SeatConfig.new()
-	seat.player_id = p_player_id
-	seat.controller_type = p_controller_type
-	seat.animal_id = p_animal_id
-	seat.ai_difficulty = p_ai_difficulty
-	seats.append(seat)
+	seats.append(SeatConfig.create(p_player_id, p_controller_type, p_animal_id, p_ai_difficulty))
+
+
+## Връща SeatConfig за даден player_id, или null ако мястото не е активно.
+func get_seat(player_id: StringName) -> SeatConfig:
+	for seat: SeatConfig in seats:
+		if seat.player_id == player_id:
+			return seat
+	return null
+
+
+## Задава controller_type, animal_id и ai_difficulty на вече активно място.
+## Връща false ако player_id не е сред активните seats.
+func configure_seat(player_id: StringName, p_controller_type: int, p_animal_id: StringName,
+		p_ai_difficulty: int = AIDifficulty.EASY) -> bool:
+	var seat := get_seat(player_id)
+	if seat == null:
+		return false
+	seat.configure(p_controller_type, p_animal_id, p_ai_difficulty)
+	return true
 
 
 ## True ако count е 2, 3 или 4.
@@ -184,22 +245,19 @@ func get_active_player_ids() -> Array[StringName]:
 
 
 func has_active_seat(player_id: StringName) -> bool:
-	for seat: SeatConfig in seats:
-		if seat.player_id == player_id:
-			return true
-	return false
+	return get_seat(player_id) != null
 
 
 func clear_seats() -> void:
 	seats.clear()
 
 
-## Замества seats[] с нови активни места (controller HUMAN, animal pig по подразбиране).
-## Match Setup / Campaign попълват controller/difficulty/animal след това.
+## Замества seats[] с нови активни места (controller HUMAN, animal DEFAULT).
+## Match Setup / Campaign попълват controller/difficulty/animal чрез configure_seat().
 func set_active_seats(player_ids: Array) -> void:
 	seats.clear()
 	for pid in player_ids:
-		add_seat(StringName(pid), ControllerType.HUMAN, &"pig")
+		add_seat(StringName(pid), ControllerType.HUMAN, AnimalId.DEFAULT)
 
 
 func is_valid() -> bool:
@@ -211,18 +269,11 @@ func is_valid() -> bool:
 		return false
 	var ids_seen: Dictionary = {}
 	for seat: SeatConfig in seats:
-		if not PlayerId.is_valid(seat.player_id):
-			return false
-		if seat.animal_id.is_empty():
+		if not seat.is_seat_valid():
 			return false
 		if seat.player_id in ids_seen:
 			return false
 		ids_seen[seat.player_id] = true
-		if seat.controller_type < ControllerType.HUMAN or seat.controller_type > ControllerType.REMOTE:
-			return false
-		if seat.controller_type == ControllerType.AI:
-			if seat.ai_difficulty < AIDifficulty.EASY or seat.ai_difficulty > AIDifficulty.HARD:
-				return false
 	# При 2 играчи се изискват срещуположни бази (docs/V1_GAME_DESIGN.md §3.3).
 	if seats.size() == 2:
 		if not are_opposite_seats(seats[0].player_id, seats[1].player_id):

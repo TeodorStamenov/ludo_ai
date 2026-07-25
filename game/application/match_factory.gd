@@ -55,11 +55,11 @@ func _build_controller(seat: MatchConfig.SeatConfig) -> PlayerController:
 
 func _build_ai_policy(difficulty: int) -> AIPolicy:
 	match difficulty:
-		MatchConfig.AIDifficulty.EASY:
+		AIDifficulty.EASY:
 			return EasyAIPolicy.new()
-		MatchConfig.AIDifficulty.MEDIUM:
+		AIDifficulty.MEDIUM:
 			return MediumAIPolicy.new()
-		MatchConfig.AIDifficulty.HARD:
+		AIDifficulty.HARD:
 			return HardAIPolicy.new()
 	push_error("MatchFactory: неизвестна AI трудност %d, използвам Easy" % difficulty)
 	return EasyAIPolicy.new()
