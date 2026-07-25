@@ -9,6 +9,7 @@ extends TestCase
 ##   - Всички enum стойности (Mode, ControllerType) и domain AIDifficulty.
 ##   - Конфигурация за 2/3/4 активни места (PlayerId seats).
 ##   - Seat полета: controller_type, ai_difficulty?, animal_id (Task #24).
+##   - Тема / кампания: theme_id, campaign_level_id?, level_modifiers[] (Task #25).
 ##   - Сериализация/десериализация (to_dict / from_dict).
 ##   - Валидационни правила.
 ##   - Кампанийна конфигурация (campaign_level_id, level_modifiers, pre_match_bonus).
@@ -56,7 +57,8 @@ func test_default_board_id() -> void:
 
 func test_default_theme_id() -> void:
 	var cfg := MatchConfig.new()
-	assert_eq(cfg.theme_id, &"jungle", "default theme_id трябва да е jungle")
+	assert_eq(cfg.theme_id, ThemeId.DEFAULT, "default theme_id трябва да е ThemeId.DEFAULT")
+	assert_eq(cfg.theme_id, ThemeId.JUNGLE, "default theme_id трябва да е jungle")
 
 
 func test_default_seats_is_empty() -> void:
@@ -658,11 +660,9 @@ func test_seat_from_dict_round_trip() -> void:
 
 func test_campaign_config_round_trip() -> void:
 	var cfg := MatchConfig.new()
-	cfg.mode = MatchConfig.Mode.CAMPAIGN
+	cfg.configure_campaign(
+			&"jungle_03", ThemeId.DESERT, [LevelModifierId.GIFTS_DOUBLE_FREQUENCY])
 	cfg.board_id = &"classic_15x15"
-	cfg.theme_id = &"desert"
-	cfg.campaign_level_id = &"jungle_level_3"
-	cfg.level_modifiers = ["double_gifts"]
 	cfg.pre_match_bonus = {"type": "shield", "pawn_index": 0}
 	cfg.rng_seed = 99999
 	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
@@ -672,13 +672,15 @@ func test_campaign_config_round_trip() -> void:
 
 	assert_eq(restored.schema_version, MatchConfig.SCHEMA_VERSION, "schema_version")
 	assert_eq(restored.mode, MatchConfig.Mode.CAMPAIGN, "mode")
-	assert_eq(restored.theme_id, &"desert", "theme_id")
-	assert_eq(restored.campaign_level_id, &"jungle_level_3", "campaign_level_id")
+	assert_eq(restored.theme_id, ThemeId.DESERT, "theme_id")
+	assert_eq(restored.campaign_level_id, &"jungle_03", "campaign_level_id")
 	assert_eq(restored.level_modifiers.size(), 1, "level_modifiers size")
-	assert_eq(restored.level_modifiers[0], "double_gifts", "level_modifiers[0]")
+	assert_eq(restored.level_modifiers[0], LevelModifierId.GIFTS_DOUBLE_FREQUENCY,
+			"level_modifiers[0]")
 	assert_eq(restored.pre_match_bonus.get("type"), "shield", "pre_match_bonus type")
 	assert_eq(restored.rng_seed, 99999, "rng_seed")
 	assert_eq(restored.seats.size(), 2, "seats count")
+	assert_true(restored.is_valid(), "мигрираният campaign config трябва да е валиден")
 
 
 func test_from_dict_missing_optional_fields_use_defaults() -> void:
@@ -690,7 +692,7 @@ func test_from_dict_missing_optional_fields_use_defaults() -> void:
 	assert_eq(cfg.schema_version, MatchConfig.SCHEMA_VERSION, "default schema_version след миграция")
 	assert_eq(cfg.mode, MatchConfig.Mode.FREE_PLAY, "default mode")
 	assert_eq(cfg.board_id, &"classic_15x15", "default board_id")
-	assert_eq(cfg.theme_id, &"jungle", "default theme_id")
+	assert_eq(cfg.theme_id, ThemeId.DEFAULT, "default theme_id")
 	assert_eq(cfg.campaign_level_id, &"", "default campaign_level_id")
 	assert_eq(cfg.level_modifiers.size(), 0, "default level_modifiers")
 	assert_eq(cfg.pre_match_bonus.size(), 0, "default pre_match_bonus")
@@ -711,7 +713,7 @@ func test_from_dict_ignores_non_dictionary_seat_entries() -> void:
 
 func test_to_dict_produces_independent_copy_of_level_modifiers() -> void:
 	var cfg := MatchConfig.new()
-	cfg.level_modifiers = ["mod_a"]
+	cfg.set_level_modifiers([LevelModifierId.GIFTS_DOUBLE_FREQUENCY])
 	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
 	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.HUMAN, &"dog")
 	var d := cfg.to_dict()
@@ -864,4 +866,117 @@ func test_seat_fields_round_trip_preserves_controller_difficulty_animal() -> voi
 	assert_eq(s1.controller_type, MatchConfig.ControllerType.AI)
 	assert_eq(s1.ai_difficulty, AIDifficulty.MEDIUM)
 	assert_eq(s1.animal_id, AnimalId.DOG)
+	assert_true(restored.is_valid())
+
+
+# ── Theme / campaign / level modifiers (Task #25) ─────────────────────────────
+
+func test_set_theme_updates_theme_id() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.set_theme(ThemeId.DESERT)
+	assert_eq(cfg.theme_id, ThemeId.DESERT)
+	assert_true(cfg.is_valid())
+
+
+func test_configure_campaign_sets_mode_level_theme_and_modifiers() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.configure_campaign(
+			&"desert_01", ThemeId.DESERT, [LevelModifierId.GIFTS_DOUBLE_FREQUENCY])
+	assert_true(cfg.is_campaign())
+	assert_false(cfg.is_free_play())
+	assert_eq(cfg.mode, MatchConfig.Mode.CAMPAIGN)
+	assert_eq(cfg.campaign_level_id, &"desert_01")
+	assert_eq(cfg.theme_id, ThemeId.DESERT)
+	assert_true(cfg.has_level_modifier(LevelModifierId.GIFTS_DOUBLE_FREQUENCY))
+	assert_true(cfg.is_valid())
+
+
+func test_clear_campaign_restores_free_play_and_keeps_theme() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.configure_campaign(
+			&"jungle_01", ThemeId.DESERT, [LevelModifierId.GIFTS_DOUBLE_FREQUENCY])
+	cfg.clear_campaign()
+	assert_true(cfg.is_free_play())
+	assert_eq(cfg.campaign_level_id, &"")
+	assert_eq(cfg.level_modifiers.size(), 0)
+	assert_eq(cfg.theme_id, ThemeId.DESERT,
+			"clear_campaign запазва избраната тема")
+	assert_true(cfg.is_valid())
+
+
+func test_add_level_modifier_rejects_duplicates() -> void:
+	var cfg := MatchConfig.new()
+	assert_true(cfg.add_level_modifier(LevelModifierId.GIFTS_DOUBLE_FREQUENCY))
+	assert_false(cfg.add_level_modifier(LevelModifierId.GIFTS_DOUBLE_FREQUENCY),
+			"дубликат не трябва да се добавя втори път")
+	assert_eq(cfg.level_modifiers.size(), 1)
+
+
+func test_clear_level_modifiers() -> void:
+	var cfg := MatchConfig.new()
+	cfg.set_level_modifiers([LevelModifierId.GIFTS_DOUBLE_FREQUENCY])
+	cfg.clear_level_modifiers()
+	assert_eq(cfg.level_modifiers.size(), 0)
+	assert_false(cfg.has_level_modifier(LevelModifierId.GIFTS_DOUBLE_FREQUENCY))
+
+
+func test_get_level_modifier_ids_returns_string_names() -> void:
+	var cfg := MatchConfig.new()
+	cfg.set_level_modifiers([LevelModifierId.GIFTS_DOUBLE_FREQUENCY])
+	var ids := cfg.get_level_modifier_ids()
+	assert_eq(ids.size(), 1)
+	assert_eq(ids[0], LevelModifierId.GIFTS_DOUBLE_FREQUENCY)
+
+
+func test_invalid_unknown_theme_id() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.set_theme(&"ice")
+	assert_false(cfg.are_theme_and_campaign_fields_valid())
+	assert_false(cfg.is_valid(), "непознат theme_id трябва да прави config невалиден")
+
+
+func test_invalid_campaign_mode_without_level_id() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.mode = MatchConfig.Mode.CAMPAIGN
+	cfg.campaign_level_id = &""
+	assert_false(cfg.are_theme_and_campaign_fields_valid())
+	assert_false(cfg.is_valid(),
+			"CAMPAIGN без campaign_level_id трябва да е невалиден")
+
+
+func test_invalid_free_play_with_campaign_level_id() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.mode = MatchConfig.Mode.FREE_PLAY
+	cfg.campaign_level_id = &"jungle_01"
+	assert_false(cfg.are_theme_and_campaign_fields_valid())
+	assert_false(cfg.is_valid(),
+			"FREE_PLAY с campaign_level_id трябва да е невалиден")
+
+
+func test_invalid_unknown_level_modifier() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.set_level_modifiers([&"double_gifts"])
+	assert_false(cfg.are_theme_and_campaign_fields_valid())
+	assert_false(cfg.is_valid(),
+			"непознат level_modifier трябва да прави config невалиден")
+
+
+func test_free_play_with_valid_theme_and_empty_modifiers_is_valid() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.set_theme(ThemeId.DESERT)
+	assert_true(cfg.is_free_play())
+	assert_true(cfg.are_theme_and_campaign_fields_valid())
+	assert_true(cfg.is_valid())
+
+
+func test_theme_and_modifiers_round_trip_preserves_values() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	cfg.configure_campaign(
+			&"jungle_02", ThemeId.JUNGLE, [LevelModifierId.GIFTS_DOUBLE_FREQUENCY])
+	var restored := MatchConfig.from_dict(cfg.to_dict())
+	assert_eq(restored.theme_id, ThemeId.JUNGLE)
+	assert_eq(restored.campaign_level_id, &"jungle_02")
+	assert_eq(restored.get_level_modifier_ids(),
+			[LevelModifierId.GIFTS_DOUBLE_FREQUENCY] as Array[StringName])
+	assert_true(restored.is_campaign())
 	assert_true(restored.is_valid())

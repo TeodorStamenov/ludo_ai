@@ -19,6 +19,10 @@ extends RefCounted
 ##
 ## Всяко място носи (docs/V1_ARCHITECTURE.md §5.1 / docs/V1_GAME_DESIGN.md §8.2):
 ##   player_id, controller_type (HUMAN|AI|REMOTE), ai_difficulty? (само при AI), animal_id.
+##
+## Тема / кампания (docs/V1_ARCHITECTURE.md §5.1 / docs/V1_GAME_DESIGN.md §5.1 / §8.2):
+##   theme_id (ThemeId), campaign_level_id? (задължителен при Mode.CAMPAIGN),
+##   level_modifiers[] (LevelModifierId; типично от CampaignLevelDefinition).
 
 ## Текуща версия на сериализираната схема (docs/V1_ARCHITECTURE.md, §5.1 и §9).
 ## При промяна на формата: увеличава се и се добавя миграция N → N+1 в `_migrate_one_step`.
@@ -145,9 +149,11 @@ class SeatConfig extends RefCounted:
 var schema_version: int = SCHEMA_VERSION
 var mode: int = Mode.FREE_PLAY
 var board_id: StringName = &"classic_15x15"
-var theme_id: StringName = &"jungle"
+var theme_id: StringName = ThemeId.DEFAULT
 var seats: Array = []
+## Задължителен при Mode.CAMPAIGN; празен при Mode.FREE_PLAY (§5.1: campaign_level_id?).
 var campaign_level_id: StringName = &""
+## Кампанийни модификатори (LevelModifierId); празен списък е валиден.
 var level_modifiers: Array = []
 var pre_match_bonus: Dictionary = {}
 ## Един seed за целия мач (зар, подаръци, power-up параметри) — §4.5 / §5.1.
@@ -260,10 +266,94 @@ func set_active_seats(player_ids: Array) -> void:
 		add_seat(StringName(pid), ControllerType.HUMAN, AnimalId.DEFAULT)
 
 
+func is_free_play() -> bool:
+	return mode == Mode.FREE_PLAY
+
+
+func is_campaign() -> bool:
+	return mode == Mode.CAMPAIGN
+
+
+## Задава визуалната тема на мача (ThemeId). Не влияе на правилата.
+func set_theme(p_theme_id: StringName) -> void:
+	theme_id = p_theme_id
+
+
+## Конфигурира кампанийен мач: mode=CAMPAIGN, level, theme и modifiers.
+## Match Setup ползва FREE_PLAY; Campaign екранът вика този метод.
+func configure_campaign(p_level_id: StringName, p_theme_id: StringName,
+		p_modifiers: Array = []) -> void:
+	mode = Mode.CAMPAIGN
+	campaign_level_id = p_level_id
+	theme_id = p_theme_id
+	set_level_modifiers(p_modifiers)
+
+
+## Връща към свободна игра: mode=FREE_PLAY, празен level и modifiers.
+## Запазва текущия theme_id (играчът може да е избрал тема в Match Setup).
+func clear_campaign() -> void:
+	mode = Mode.FREE_PLAY
+	campaign_level_id = &""
+	level_modifiers.clear()
+
+
+## Замества level_modifiers[] с нормализирани LevelModifierId стойности.
+func set_level_modifiers(modifiers: Array) -> void:
+	level_modifiers.clear()
+	for mod in modifiers:
+		level_modifiers.append(StringName(mod))
+
+
+## Добавя level modifier, ако още го няма. Връща false при дубликат.
+func add_level_modifier(modifier_id: StringName) -> bool:
+	if has_level_modifier(modifier_id):
+		return false
+	level_modifiers.append(modifier_id)
+	return true
+
+
+func clear_level_modifiers() -> void:
+	level_modifiers.clear()
+
+
+func has_level_modifier(modifier_id: StringName) -> bool:
+	for mod in level_modifiers:
+		if StringName(mod) == modifier_id:
+			return true
+	return false
+
+
+func get_level_modifier_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for mod in level_modifiers:
+		ids.append(StringName(mod))
+	return ids
+
+
+## True ако theme_id, campaign_level_id? и level_modifiers[] са в договорните граници.
+func are_theme_and_campaign_fields_valid() -> bool:
+	if not ThemeId.is_valid(theme_id):
+		return false
+	if mode == Mode.CAMPAIGN:
+		if campaign_level_id.is_empty():
+			return false
+	elif mode == Mode.FREE_PLAY:
+		if not campaign_level_id.is_empty():
+			return false
+	else:
+		return false
+	for mod in level_modifiers:
+		if not LevelModifierId.is_valid(StringName(mod)):
+			return false
+	return true
+
+
 func is_valid() -> bool:
 	if not is_schema_supported(schema_version):
 		return false
 	if mode != Mode.FREE_PLAY and mode != Mode.CAMPAIGN:
+		return false
+	if not are_theme_and_campaign_fields_valid():
 		return false
 	if not is_supported_seat_count(seats.size()):
 		return false
@@ -285,6 +375,9 @@ func to_dict() -> Dictionary:
 	var seat_dicts: Array = []
 	for seat: SeatConfig in seats:
 		seat_dicts.append(seat.to_dict())
+	var modifier_ids: Array = []
+	for mod in level_modifiers:
+		modifier_ids.append(StringName(mod))
 	return {
 		"schema_version": schema_version,
 		"mode": mode,
@@ -292,7 +385,7 @@ func to_dict() -> Dictionary:
 		"theme_id": theme_id,
 		"seats": seat_dicts,
 		"campaign_level_id": campaign_level_id,
-		"level_modifiers": level_modifiers.duplicate(),
+		"level_modifiers": modifier_ids,
 		"pre_match_bonus": pre_match_bonus.duplicate(),
 		"rng_seed": rng_seed,
 	}
@@ -311,9 +404,9 @@ static func from_dict(data: Dictionary) -> MatchConfig:
 	cfg.schema_version = int(working.get("schema_version", SCHEMA_VERSION))
 	cfg.mode = int(working.get("mode", Mode.FREE_PLAY))
 	cfg.board_id = StringName(working.get("board_id", "classic_15x15"))
-	cfg.theme_id = StringName(working.get("theme_id", "jungle"))
+	cfg.theme_id = StringName(working.get("theme_id", ThemeId.DEFAULT))
 	cfg.campaign_level_id = StringName(working.get("campaign_level_id", ""))
-	cfg.level_modifiers = working.get("level_modifiers", []).duplicate()
+	cfg.set_level_modifiers(working.get("level_modifiers", []))
 	cfg.pre_match_bonus = working.get("pre_match_bonus", {}).duplicate()
 	# Липсващ rng_seed запазва авто-генерирания от _init (не форсира 0).
 	if working.has("rng_seed"):
