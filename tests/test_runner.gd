@@ -45,6 +45,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/board_definition_test.gd",
 	"res://tests/unit/domain/classic_15x15_board_test.gd",
 	"res://tests/unit/domain/classic_15x15_cell_ids_test.gd",
+	"res://tests/unit/domain/classic_15x15_base_cells_test.gd",
 	"res://tests/unit/domain/ids_test.gd",
 	# application — съществуващи тестове за важна оркестрационна логика
 	"res://tests/unit/application/event_queue_test.gd",

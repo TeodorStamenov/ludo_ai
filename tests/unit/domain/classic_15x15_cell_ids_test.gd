@@ -6,7 +6,7 @@ extends TestCase
 ##   - Domain ползва стабилни cell_id, не NodePath / editor-generated имена.
 ##   - Всяка заета клетка има уникален CellId формат "c_{col}_{row}".
 ##   - Classic15x15Board.all_cell_ids() е авторитетният каталог (CELL_COUNT=73).
-## base / spawn / main_loop / home — Tasks #39–#42.
+## base per seat — Task #39; spawn / main_loop / home — Tasks #40–#42.
 
 
 # ── Каталог all_cell_ids ──────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ extends TestCase
 ##
 ## Покрива преместването на 15×15 grid координатите от ludo_board.gd
 ## в BoardDefinition.cells (изометрични col/row + CellType).
-## main_loop / player_definitions / маршрути — Tasks #39–#43.
+## base cells per seat — Task #39; spawn/loop/home/маршрути — Tasks #40–#43.
 
 
 # ── Архитектурни изисквания ───────────────────────────────────────────────────
@@ -44,7 +44,7 @@ func test_cell_count_matches_prototype_geometry() -> void:
 
 
 func test_create_leaves_main_loop_and_players_for_later_tasks() -> void:
-	# Tasks #39–#42 попълват seats/loop; #37 е само grid cells.
+	# Tasks #40–#42 попълват seats/loop; base клетките са в Classic15x15Board API (#39).
 	var board := Classic15x15Board.create()
 	assert_eq(board.main_loop_length(), 0)
 	assert_eq(board.player_definition_count(), 0)

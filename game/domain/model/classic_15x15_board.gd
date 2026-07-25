@@ -1,6 +1,6 @@
 class_name Classic15x15Board
 extends RefCounted
-## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#38).
+## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#39).
 ##
 ## Премества геометрията от scripts/ludo_board.gd в BoardDefinition.cells:
 ## всяка заета клетка носи стабилен cell_id (CellId формат "c_{col}_{row}"),
@@ -10,7 +10,11 @@ extends RefCounted
 ## Task #38: all_cell_ids() е авторитетният каталог от стабилни cell ID стойности
 ## за всички заети клетки — без NodePath / editor-generated имена.
 ##
-## main_loop и player_definitions се допълват в Tasks #39–#42;
+## Task #39: base_cells_for(player_id) дефинира 2×2 BASE клетките за всеки seat
+## (PlayerId → Array[cell_id]). Същите стойности влизат в
+## PlayerBoardDefinition.base_cells при Tasks #40–#42.
+##
+## spawn / main_loop / home_stretch / player_definitions — Tasks #40–#42;
 ## маршрутите — в Task #43. create() връща BoardDefinition с попълнени cells.
 ##
 ## Layout (docs/V1_GAME_DESIGN.md §3.3, ludo_board.gd):
@@ -21,6 +25,12 @@ const BOARD_ID: StringName = &"classic_15x15"
 
 ## Брой логически клетки: 36 PATH + 16 BASE + 16 HOME + 4 SPAWN + 1 CENTER.
 const CELL_COUNT: int = 73
+
+## Брой BASE клетки на seat — съвпада с PlayerBoardDefinition.BASE_CELL_COUNT.
+const BASE_CELLS_PER_PLAYER: int = 4
+
+## Общ брой BASE клетки (4 seats × 4) — съвпада с CellType.BASE count в cells.
+const BASE_CELL_COUNT: int = 16
 
 
 ## BoardDefinition с board_id classic_15x15 и пълна cells карта (без loop/seats).
@@ -56,6 +66,76 @@ static func cell_id_at(col: int, row: int) -> StringName:
 	return CellId.from_grid(col, row)
 
 
+## Grid позиции (col, row) на 2×2 базата за seat — редът е row-major в блока.
+## Съвпада с ludo_board.gd base_positions и PlayerId seat картата (NW/NE/SE/SW).
+## При невалиден player_id → празен масив.
+static func base_grid_positions_for(player_id: StringName) -> Array[Vector2i]:
+	var positions: Array[Vector2i] = []
+	match player_id:
+		PlayerId.GREEN:
+			# NW
+			positions = [
+				Vector2i(2, 2), Vector2i(3, 2),
+				Vector2i(2, 3), Vector2i(3, 3),
+			]
+		PlayerId.ORANGE:
+			# NE
+			positions = [
+				Vector2i(11, 2), Vector2i(12, 2),
+				Vector2i(11, 3), Vector2i(12, 3),
+			]
+		PlayerId.YELLOW:
+			# SE — CURRENT_YELLOW_BEHAVIOR YEL-001
+			positions = [
+				Vector2i(11, 11), Vector2i(12, 11),
+				Vector2i(11, 12), Vector2i(12, 12),
+			]
+		PlayerId.CYAN:
+			# SW
+			positions = [
+				Vector2i(2, 11), Vector2i(3, 11),
+				Vector2i(2, 12), Vector2i(3, 12),
+			]
+		_:
+			pass
+	return positions
+
+
+## Стабилни cell_id за BASE клетките на seat (Task #39).
+## Редът съвпада с base_grid_positions_for; размерът е BASE_CELLS_PER_PLAYER.
+## При невалиден player_id → празен масив.
+static func base_cells_for(player_id: StringName) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for pos in base_grid_positions_for(player_id):
+		ids.append(CellId.from_grid(pos.x, pos.y))
+	return ids
+
+
+## Всички 16 BASE cell_id в seat ред PlayerId.ALL (GREEN → ORANGE → YELLOW → CYAN).
+static func all_base_cell_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for player_id in PlayerId.ALL:
+		ids.append_array(base_cells_for(player_id))
+	return ids
+
+
+## PlayerId на собственика на BASE клетката, или &"" ако cell_id не е base.
+static func base_owner(cell_id: StringName) -> StringName:
+	for player_id in PlayerId.ALL:
+		for base_id in base_cells_for(player_id):
+			if base_id == cell_id:
+				return player_id
+	return &""
+
+
+## True ако cell_id е една от BASE клетките на дадения seat.
+static func is_base_cell_of(player_id: StringName, cell_id: StringName) -> bool:
+	for base_id in base_cells_for(player_id):
+		if base_id == cell_id:
+			return true
+	return false
+
+
 ## Логически тип на клетката в (col, row), или -1 ако позицията е празна.
 static func cell_type_at(col: int, row: int) -> int:
 	if col < 0 or col >= CellId.BOARD_SIZE or row < 0 or row >= CellId.BOARD_SIZE:
@@ -73,15 +153,10 @@ static func has_grid_cell(col: int, row: int) -> bool:
 
 
 static func _add_base_cells(cells: Dictionary) -> void:
-	# NW green, NE orange, SE yellow, SW cyan — същите 2×2 като ludo_board.gd.
-	var bases: Array[Vector2i] = [
-		Vector2i(2, 2), Vector2i(3, 2), Vector2i(2, 3), Vector2i(3, 3),
-		Vector2i(11, 2), Vector2i(12, 2), Vector2i(11, 3), Vector2i(12, 3),
-		Vector2i(11, 11), Vector2i(12, 11), Vector2i(11, 12), Vector2i(12, 12),
-		Vector2i(2, 11), Vector2i(3, 11), Vector2i(2, 12), Vector2i(3, 12),
-	]
-	for pos in bases:
-		_put(cells, pos.x, pos.y, CellType.BASE)
+	# Единствен source of truth: base_grid_positions_for (Task #39).
+	for player_id in PlayerId.ALL:
+		for pos in base_grid_positions_for(player_id):
+			_put(cells, pos.x, pos.y, CellType.BASE)
 
 
 static func _add_center_cell(cells: Dictionary) -> void:
@@ -131,11 +206,11 @@ static func _arm_cell_type(col: int, row: int) -> int:
 
 
 static func _is_base_cell(col: int, row: int) -> bool:
-	var in_nw := col >= 2 and col <= 3 and row >= 2 and row <= 3
-	var in_ne := col >= 11 and col <= 12 and row >= 2 and row <= 3
-	var in_se := col >= 11 and col <= 12 and row >= 11 and row <= 12
-	var in_sw := col >= 2 and col <= 3 and row >= 11 and row <= 12
-	return in_nw or in_ne or in_se or in_sw
+	for player_id in PlayerId.ALL:
+		for pos in base_grid_positions_for(player_id):
+			if pos.x == col and pos.y == row:
+				return true
+	return false
 
 
 static func _put(cells: Dictionary, col: int, row: int, cell_type: int) -> void:
