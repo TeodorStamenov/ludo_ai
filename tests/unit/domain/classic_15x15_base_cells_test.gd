@@ -176,13 +176,12 @@ func test_board_base_type_count_matches_catalog() -> void:
 
 
 func test_base_cells_usable_in_player_board_definition() -> void:
-	# Task #39 дава base_cells[]; spawn от #40; home остава за #42 (placeholder).
 	var def := PlayerBoardDefinition.create(
 			PlayerId.YELLOW,
 			Classic15x15Board.spawn_cell_for(PlayerId.YELLOW),
-			0,
-			40,
-			[&"c_7_11", &"c_7_10", &"c_7_9", &"c_7_8"],
+			Classic15x15Board.start_loop_index_for(PlayerId.YELLOW),
+			Classic15x15Board.home_entry_loop_index_for(PlayerId.YELLOW),
+			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW),
 			Classic15x15Board.base_cells_for(PlayerId.YELLOW))
 	assert_true(def.is_valid())
 	assert_eq(def.base_cell_count(), 4)

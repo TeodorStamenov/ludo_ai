@@ -43,12 +43,13 @@ func test_cell_count_matches_prototype_geometry() -> void:
 	assert_eq(board.cell_count(), Classic15x15Board.CELL_COUNT)
 
 
-func test_create_fills_main_loop_leaves_players_for_later_tasks() -> void:
-	# Task #41 попълва main_loop; #42 — player_definitions / home.
+func test_create_fills_main_loop_and_player_definitions() -> void:
+	# Task #41 — main_loop; Task #42 — player_definitions / home stretch.
 	var board := Classic15x15Board.create()
 	assert_eq(board.main_loop_length(), Classic15x15Board.MAIN_LOOP_LENGTH)
 	assert_eq(board.get_main_loop(), Classic15x15Board.main_loop_cell_ids())
-	assert_eq(board.player_definition_count(), 0)
+	assert_eq(board.player_definition_count(), BoardDefinition.SEAT_COUNT)
+	assert_true(board.is_valid())
 
 
 # ── Grid координати във всяка клетка ──────────────────────────────────────────

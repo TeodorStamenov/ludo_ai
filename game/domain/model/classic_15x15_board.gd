@@ -12,18 +12,21 @@ extends RefCounted
 ##
 ## Task #39: base_cells_for(player_id) дефинира 2×2 BASE клетките за всеки seat
 ## (PlayerId → Array[cell_id]). Същите стойности влизат в
-## PlayerBoardDefinition.base_cells при Task #42.
+## PlayerBoardDefinition.base_cells.
 ##
 ## Task #40: spawn_cell_for(player_id) дефинира SPAWN клетката за всеки seat
 ## (PlayerId → cell_id). Същата стойност влиза в
-## PlayerBoardDefinition.spawn_cell при Task #42.
+## PlayerBoardDefinition.spawn_cell.
 ##
 ## Task #41: main_loop_cell_ids() е затвореното общо трасе като наредени
 ## cell_id (PATH + SPAWN). Редът следва ludo_board.gd / CURRENT_YELLOW_BEHAVIOR
 ## жълтия маршрут без home stretch; индекс 0 = yellow spawn (6,12).
 ## create() попълва BoardDefinition.main_loop.
 ##
-## home_stretch / player_definitions — Task #42; маршрутите — Task #43.
+## Task #42: home_stretch_cells_for(player_id) дефинира 4 HOME клетките към
+## центъра за всеки seat; build_player_definitions() събира пълните seats
+## (spawn + loop индекси + home_stretch + base). create() ги попълва.
+## Маршрутите (build_player_route) — Task #43.
 ##
 ## Layout (docs/V1_GAME_DESIGN.md §3.3, ludo_board.gd):
 ##   4× бази 2×2, кръстовидни рамене 3×5, 4 home колони по 4, център (7,7).
@@ -49,10 +52,17 @@ const SPAWN_CELL_COUNT: int = 4
 ## Дължина на общото трасе (36 PATH + 4 SPAWN) — BoardDefinition.main_loop.
 const MAIN_LOOP_LENGTH: int = 40
 
+## Брой HOME клетки на seat — съвпада с PlayerBoardDefinition.HOME_STRETCH_LENGTH.
+const HOME_STRETCH_CELLS_PER_PLAYER: int = 4
 
-## BoardDefinition с board_id classic_15x15, cells и main_loop (без seats).
+## Общ брой HOME клетки (4 seats × 4) — съвпада с CellType.HOME count в cells.
+const HOME_STRETCH_CELL_COUNT: int = 16
+
+
+## BoardDefinition с board_id classic_15x15, cells, main_loop и 4 seats.
 static func create() -> BoardDefinition:
-	return BoardDefinition.create(BOARD_ID, build_cells(), main_loop_cell_ids())
+	return BoardDefinition.create(
+			BOARD_ID, build_cells(), main_loop_cell_ids(), build_player_definitions())
 
 
 ## Dictionary[cell_id: StringName, CellDefinition] за всички заети клетки.
@@ -257,6 +267,126 @@ static func is_main_loop_cell(cell_id: StringName) -> bool:
 	return main_loop_index_of(cell_id) >= 0
 
 
+## Grid позиции на HOME колоната за seat — редът е от входа към центъра.
+## Съвпада с ludo_board.gd home_stretch_positions / HOME клетките в рамената.
+## YELLOW: (7,11)→(7,8); GREEN: (7,3)→(7,6); ORANGE: (11,7)→(8,7); CYAN: (3,7)→(6,7).
+## При невалиден player_id → празен масив.
+static func home_stretch_grid_positions_for(player_id: StringName) -> Array[Vector2i]:
+	var positions: Array[Vector2i] = []
+	match player_id:
+		PlayerId.GREEN:
+			# NW — от (7,2) home_entry на юг към центъра
+			positions = [
+				Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5), Vector2i(7, 6),
+			]
+		PlayerId.ORANGE:
+			# NE — от (12,7) home_entry на запад към центъра
+			positions = [
+				Vector2i(11, 7), Vector2i(10, 7), Vector2i(9, 7), Vector2i(8, 7),
+			]
+		PlayerId.YELLOW:
+			# SE — CURRENT_YELLOW_BEHAVIOR §7 / ludo_board.gd
+			positions = [
+				Vector2i(7, 11), Vector2i(7, 10), Vector2i(7, 9), Vector2i(7, 8),
+			]
+		PlayerId.CYAN:
+			# SW — от (2,7) home_entry на изток към центъра
+			positions = [
+				Vector2i(3, 7), Vector2i(4, 7), Vector2i(5, 7), Vector2i(6, 7),
+			]
+		_:
+			pass
+	return positions
+
+
+## Стабилни cell_id за HOME клетките на seat (Task #42).
+## Редът съвпада с home_stretch_grid_positions_for; размерът е HOME_STRETCH_CELLS_PER_PLAYER.
+## При невалиден player_id → празен масив.
+static func home_stretch_cells_for(player_id: StringName) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for pos in home_stretch_grid_positions_for(player_id):
+		ids.append(CellId.from_grid(pos.x, pos.y))
+	return ids
+
+
+## Всички 16 HOME cell_id в seat ред PlayerId.ALL (GREEN → ORANGE → YELLOW → CYAN).
+static func all_home_stretch_cell_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for player_id in PlayerId.ALL:
+		ids.append_array(home_stretch_cells_for(player_id))
+	return ids
+
+
+## PlayerId на собственика на HOME клетката, или &"" ако cell_id не е home stretch.
+static func home_stretch_owner(cell_id: StringName) -> StringName:
+	for player_id in PlayerId.ALL:
+		for home_id in home_stretch_cells_for(player_id):
+			if home_id == cell_id:
+				return player_id
+	return &""
+
+
+## True ако cell_id е една от HOME клетките на дадения seat.
+static func is_home_stretch_cell_of(player_id: StringName, cell_id: StringName) -> bool:
+	for home_id in home_stretch_cells_for(player_id):
+		if home_id == cell_id:
+			return true
+	return false
+
+
+## Grid позиция на последната main_loop клетка преди home stretch (home entry).
+## GREEN (7,2), ORANGE (12,7), YELLOW (7,12), CYAN (2,7).
+## При невалиден player_id → Vector2i(-1, -1).
+static func home_entry_grid_position_for(player_id: StringName) -> Vector2i:
+	match player_id:
+		PlayerId.GREEN:
+			return Vector2i(7, 2)
+		PlayerId.ORANGE:
+			return Vector2i(12, 7)
+		PlayerId.YELLOW:
+			return Vector2i(7, 12)
+		PlayerId.CYAN:
+			return Vector2i(2, 7)
+		_:
+			return Vector2i(-1, -1)
+
+
+## Стабилен cell_id за home entry клетката на seat (част от main_loop, не HOME).
+## При невалиден player_id → &"".
+static func home_entry_cell_for(player_id: StringName) -> StringName:
+	var pos := home_entry_grid_position_for(player_id)
+	if pos.x < 0:
+		return &""
+	return CellId.from_grid(pos.x, pos.y)
+
+
+## Индекс в main_loop на spawn клетката (= PlayerBoardDefinition.start_loop_index).
+## При невалиден player_id → -1.
+static func start_loop_index_for(player_id: StringName) -> int:
+	return main_loop_index_of(spawn_cell_for(player_id))
+
+
+## Индекс в main_loop на home entry (= PlayerBoardDefinition.home_entry_loop_index).
+## При невалиден player_id → -1.
+static func home_entry_loop_index_for(player_id: StringName) -> int:
+	return main_loop_index_of(home_entry_cell_for(player_id))
+
+
+## Пълни PlayerBoardDefinition за четирите seats в ред PlayerId.ALL (Task #42).
+## Маршрутите от тези дефиниции се валидират в Task #43.
+static func build_player_definitions() -> Array:
+	var defs: Array = []
+	for player_id in PlayerId.ALL:
+		defs.append(PlayerBoardDefinition.create(
+				player_id,
+				spawn_cell_for(player_id),
+				start_loop_index_for(player_id),
+				home_entry_loop_index_for(player_id),
+				home_stretch_cells_for(player_id),
+				base_cells_for(player_id)))
+	return defs
+
+
 ## Логически тип на клетката в (col, row), или -1 ако позицията е празна.
 static func cell_type_at(col: int, row: int) -> int:
 	if col < 0 or col >= CellId.BOARD_SIZE or row < 0 or row >= CellId.BOARD_SIZE:
@@ -299,31 +429,14 @@ static func _arm_cell_type(col: int, row: int) -> int:
 	var is_south := row >= 8 and row <= 12 and col >= 6 and col <= 8
 	var is_west := col >= 2 and col <= 6 and row >= 6 and row <= 8
 
-	if is_north:
-		if col == 7 and row >= 3 and row <= 6:
-			return CellType.HOME
-		if _is_spawn_at(col, row):
-			return CellType.SPAWN
-		return CellType.PATH
-	if is_east:
-		if row == 7 and col >= 8 and col <= 11:
-			return CellType.HOME
-		if _is_spawn_at(col, row):
-			return CellType.SPAWN
-		return CellType.PATH
-	if is_south:
-		if col == 7 and row >= 8 and row <= 11:
-			return CellType.HOME
-		if _is_spawn_at(col, row):
-			return CellType.SPAWN
-		return CellType.PATH
-	if is_west:
-		if row == 7 and col >= 3 and col <= 6:
-			return CellType.HOME
-		if _is_spawn_at(col, row):
-			return CellType.SPAWN
-		return CellType.PATH
-	return -1
+	if not (is_north or is_east or is_south or is_west):
+		return -1
+	# Единствен source of truth за HOME: home_stretch_grid_positions_for (Task #42).
+	if _is_home_at(col, row):
+		return CellType.HOME
+	if _is_spawn_at(col, row):
+		return CellType.SPAWN
+	return CellType.PATH
 
 
 static func _is_base_cell(col: int, row: int) -> bool:
@@ -340,6 +453,15 @@ static func _is_spawn_at(col: int, row: int) -> bool:
 		var pos := spawn_grid_position_for(player_id)
 		if pos.x == col and pos.y == row:
 			return true
+	return false
+
+
+## Единствен source of truth за HOME координати: home_stretch_grid_positions_for (Task #42).
+static func _is_home_at(col: int, row: int) -> bool:
+	for player_id in PlayerId.ALL:
+		for pos in home_stretch_grid_positions_for(player_id):
+			if pos.x == col and pos.y == row:
+				return true
 	return false
 
 

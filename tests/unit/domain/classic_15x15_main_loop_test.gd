@@ -7,7 +7,7 @@ extends TestCase
 ##   - Затворена последователност от PATH + SPAWN cell_id.
 ##   - Редът съвпада с жълтия прототипен маршрут без home stretch.
 ##   - create() попълва BoardDefinition.main_loop.
-## home_stretch / player_definitions — Task #42; маршрути — Task #43.
+## home_stretch / player_definitions — Task #42 (покрити отделно); маршрути — Task #43.
 
 
 # ── Константи ─────────────────────────────────────────────────────────────────
@@ -188,9 +188,10 @@ func test_to_dict_preserves_main_loop() -> void:
 			"cells + main_loop трябва да се възстановяват идентично")
 
 
-func test_create_without_player_definitions_is_not_yet_fully_valid() -> void:
-	# is_valid() иска и 4 seats — Task #42; main_loop вече е попълнен.
+func test_create_includes_main_loop_with_player_definitions() -> void:
+	# Task #42 попълва seats; main_loop остава независим каталог.
 	var board := Classic15x15Board.create()
 	assert_false(board.main_loop.is_empty())
-	assert_eq(board.player_definition_count(), 0)
-	assert_false(board.is_valid())
+	assert_eq(board.get_main_loop(), Classic15x15Board.main_loop_cell_ids())
+	assert_eq(board.player_definition_count(), BoardDefinition.SEAT_COUNT)
+	assert_true(board.is_valid())
