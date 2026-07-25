@@ -80,6 +80,22 @@ func test_player_id_from_seat_to_seat_roundtrip() -> void:
 				"roundtrip seat %d трябва да върне същата стойност" % seat)
 
 
+func test_player_id_opposite_of_is_involutive() -> void:
+	for id in PlayerId.ALL:
+		var opp := PlayerId.opposite_of(id)
+		assert_true(PlayerId.is_valid(opp), "opposite на %s трябва да е валиден" % id)
+		assert_eq(PlayerId.opposite_of(opp), id,
+				"opposite_of трябва да е инволюция за %s" % id)
+		assert_true(PlayerId.are_opposite(id, opp))
+
+
+func test_player_id_opposite_pair_constants() -> void:
+	assert_eq(PlayerId.OPPOSITE_PAIR_GREEN_YELLOW,
+			[PlayerId.GREEN, PlayerId.YELLOW] as Array[StringName])
+	assert_eq(PlayerId.OPPOSITE_PAIR_ORANGE_CYAN,
+			[PlayerId.ORANGE, PlayerId.CYAN] as Array[StringName])
+
+
 # ── PawnId ────────────────────────────────────────────────────────────────────
 
 func test_pawn_id_for_player_returns_expected_format() -> void:

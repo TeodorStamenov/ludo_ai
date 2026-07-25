@@ -50,6 +50,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/classic_15x15_main_loop_test.gd",
 	"res://tests/unit/domain/classic_15x15_home_stretch_test.gd",
 	"res://tests/unit/domain/classic_15x15_player_routes_test.gd",
+	"res://tests/unit/domain/two_player_opposite_seats_test.gd",
 	"res://tests/unit/domain/ids_test.gd",
 	# application — съществуващи тестове за важна оркестрационна логика
 	"res://tests/unit/application/event_queue_test.gd",

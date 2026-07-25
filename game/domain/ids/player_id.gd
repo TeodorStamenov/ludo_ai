@@ -25,6 +25,11 @@ const ALL: Array[StringName] = [GREEN, ORANGE, YELLOW, CYAN]
 ## Брой играчески места на дъската.
 const COUNT: int = 4
 
+## Срещуположни двойки (docs/V1_GAME_DESIGN.md §3.3): NW↔SE и NE↔SW.
+## При 2 играчи активните seats трябва да са една от тези двойки.
+const OPPOSITE_PAIR_GREEN_YELLOW: Array[StringName] = [GREEN, YELLOW]
+const OPPOSITE_PAIR_ORANGE_CYAN: Array[StringName] = [ORANGE, CYAN]
+
 
 ## Връща true ако id е един от четирите валидни player_id.
 static func is_valid(id: StringName) -> bool:
@@ -44,3 +49,33 @@ static func to_seat(id: StringName) -> int:
 		if ALL[i] == id:
 			return i
 	return -1
+
+
+## Срещуположният seat (NW↔SE, NE↔SW). При невалиден id → &"".
+static func opposite_of(id: StringName) -> StringName:
+	match id:
+		GREEN:
+			return YELLOW
+		YELLOW:
+			return GREEN
+		ORANGE:
+			return CYAN
+		CYAN:
+			return ORANGE
+		_:
+			return &""
+
+
+## True ако a и b са различни валидни срещуположни бази.
+static func are_opposite(a: StringName, b: StringName) -> bool:
+	if a == &"" or b == &"" or a == b:
+		return false
+	return opposite_of(a) == b
+
+
+## Независими копия на двете валидни срещуположни двойки (Task #44).
+static func opposite_pairs() -> Array:
+	return [
+		OPPOSITE_PAIR_GREEN_YELLOW.duplicate(),
+		OPPOSITE_PAIR_ORANGE_CYAN.duplicate(),
+	]

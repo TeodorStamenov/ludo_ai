@@ -143,6 +143,26 @@ func get_player_definitions() -> Array[PlayerBoardDefinition]:
 	return result
 
 
+## PlayerBoardDefinition за активните seats в реда на player_ids (Task #44–#46).
+## Липсващ seat се пропуска — ползвай has_definitions_for_players за строга проверка.
+## Дъската винаги държи SEAT_COUNT дефиниции; мачът активира 2/3/4 чрез MatchConfig.
+func get_active_player_definitions(player_ids: Array) -> Array[PlayerBoardDefinition]:
+	var result: Array[PlayerBoardDefinition] = []
+	for pid in player_ids:
+		var def := get_player_definition(StringName(pid))
+		if def != null:
+			result.append(def)
+	return result
+
+
+## True ако дъската има PlayerBoardDefinition за всеки от player_ids.
+func has_definitions_for_players(player_ids: Array) -> bool:
+	for pid in player_ids:
+		if not has_player_definition(StringName(pid)):
+			return false
+	return player_ids.size() > 0
+
+
 ## Маршрут на играча: main_loop от start_loop_index до home_entry_loop_index
 ## (включително, циклично), последван от home_stretch[].
 ## При липсваща дефиниция или индекси извън main_loop → празен масив.

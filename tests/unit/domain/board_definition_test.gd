@@ -139,6 +139,19 @@ func test_get_player_definitions_returns_all_seats() -> void:
 		assert_true(ids.has(seat), "липсва seat %s" % seat)
 
 
+func test_get_active_player_definitions_filters_two_player_opposite() -> void:
+	# Task #44: 2P ползва subset от SEAT_COUNT дефиниции.
+	var def := _mini_board()
+	var active := def.get_active_player_definitions(
+			[PlayerId.GREEN, PlayerId.YELLOW])
+	assert_eq(active.size(), 2)
+	assert_eq(active[0].player_id, PlayerId.GREEN)
+	assert_eq(active[1].player_id, PlayerId.YELLOW)
+	assert_true(def.has_definitions_for_players(
+			[PlayerId.ORANGE, PlayerId.CYAN]))
+	assert_eq(def.player_definition_count(), BoardDefinition.SEAT_COUNT)
+
+
 # ── build_player_route ────────────────────────────────────────────────────────
 
 func test_build_player_route_yellow_no_wrap() -> void:

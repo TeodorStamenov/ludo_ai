@@ -31,6 +31,10 @@ extends RefCounted
 ## = main_loop (циклично от spawn до home_entry) + home_stretch. Същата логика
 ## като BoardDefinition.build_player_route(); не включва CENTER.
 ##
+## Task #44: при 2 играчи активните seats са срещуположни бази (NW↔SE или NE↔SW).
+## Конфигурацията е в MatchConfig (DEFAULT/ALTERNATE_SEATS_2P); дъската филтрира
+## чрез BoardDefinition.get_active_player_definitions() / default_two_player_seats().
+##
 ## Layout (docs/V1_GAME_DESIGN.md §3.3, ludo_board.gd):
 ##   4× бази 2×2, кръстовидни рамене 3×5, 4 home колони по 4, център (7,7).
 
@@ -70,6 +74,44 @@ const PLAYER_ROUTE_LENGTH: int = MAIN_LOOP_LENGTH + HOME_STRETCH_CELLS_PER_PLAYE
 static func create() -> BoardDefinition:
 	return BoardDefinition.create(
 			BOARD_ID, build_cells(), main_loop_cell_ids(), build_player_definitions())
+
+
+## Подразбиращи се активни seats за 2P — GREEN↔YELLOW (съвпада с MatchConfig.DEFAULT_SEATS_2P).
+static func default_two_player_seats() -> Array[StringName]:
+	return MatchConfig.DEFAULT_SEATS_2P.duplicate()
+
+
+## Алтернативната срещуположна двойка за 2P — ORANGE↔CYAN (MatchConfig.ALTERNATE_SEATS_2P).
+static func alternate_two_player_seats() -> Array[StringName]:
+	return MatchConfig.ALTERNATE_SEATS_2P.duplicate()
+
+
+## Двете валидни срещуположни двойки за 2P на тази дъска (Task #44 / §3.3).
+static func two_player_opposite_seat_pairs() -> Array:
+	return MatchConfig.opposite_seat_pairs()
+
+
+## PlayerBoardDefinition само за активните 2P seats (редът следва player_ids).
+## При невалидна двойка → празен масив. Пълната дъска (create()) остава с 4 seats.
+static func build_active_player_definitions_for_two_players(
+		player_ids: Array = []
+) -> Array[PlayerBoardDefinition]:
+	var seats: Array = player_ids
+	if seats.is_empty():
+		seats = default_two_player_seats()
+	if not MatchConfig.is_valid_two_player_seats(seats):
+		return []
+	var result: Array[PlayerBoardDefinition] = []
+	for pid in seats:
+		var player_id := StringName(pid)
+		result.append(PlayerBoardDefinition.create(
+				player_id,
+				spawn_cell_for(player_id),
+				start_loop_index_for(player_id),
+				home_entry_loop_index_for(player_id),
+				home_stretch_cells_for(player_id),
+				base_cells_for(player_id)))
+	return result
 
 
 ## Dictionary[cell_id: StringName, CellDefinition] за всички заети клетки.
