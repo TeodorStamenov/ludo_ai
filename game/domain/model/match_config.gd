@@ -1,10 +1,16 @@
 class_name MatchConfig
 extends RefCounted
-## Единственият договор между Match Setup/Campaign и Game Screen
-## (docs/V1_ARCHITECTURE.md, раздел 5.1).
+## Сериализируем модел на конфигурацията за мач (docs/V1_ARCHITECTURE.md, раздел 5.1).
 ##
 ## И свободната игра, и кампанията произвеждат MatchConfig;
 ## GameScreen зависи само от него и не знае нищо за менютата.
+##
+## Живее в domain/model/, защото е чист value object без странични ефекти
+## и домейнът го нужда директно (GameState.match_config, StartMatchCommand.config).
+##
+## Схема:
+##   schema_version, mode, board_id, theme_id,
+##   seats[], campaign_level_id?, level_modifiers[], pre_match_bonus?, rng_seed
 
 const SCHEMA_VERSION := 1
 
@@ -15,8 +21,8 @@ enum AIDifficulty { EASY = 0, MEDIUM = 1, HARD = 2 }
 
 class SeatConfig extends RefCounted:
 	var player_id: StringName = &""
-	var controller_type: int = 0  # MatchConfig.ControllerType
-	var ai_difficulty: int = 0    # MatchConfig.AIDifficulty; only when controller_type == AI
+	var controller_type: int = ControllerType.HUMAN
+	var ai_difficulty: int = AIDifficulty.EASY
 	var animal_id: StringName = &"pig"
 
 	func to_dict() -> Dictionary:
@@ -30,8 +36,8 @@ class SeatConfig extends RefCounted:
 	static func from_dict(data: Dictionary) -> SeatConfig:
 		var seat := SeatConfig.new()
 		seat.player_id = StringName(data.get("player_id", ""))
-		seat.controller_type = data.get("controller_type", 0)
-		seat.ai_difficulty = data.get("ai_difficulty", 0)
+		seat.controller_type = data.get("controller_type", ControllerType.HUMAN)
+		seat.ai_difficulty = data.get("ai_difficulty", AIDifficulty.EASY)
 		seat.animal_id = StringName(data.get("animal_id", "pig"))
 		return seat
 
@@ -51,7 +57,8 @@ func _init() -> void:
 	rng_seed = randi()
 
 
-func add_seat(p_player_id: StringName, p_controller_type: int, p_animal_id: StringName, p_ai_difficulty: int = AIDifficulty.EASY) -> void:
+func add_seat(p_player_id: StringName, p_controller_type: int, p_animal_id: StringName,
+		p_ai_difficulty: int = AIDifficulty.EASY) -> void:
 	var seat := SeatConfig.new()
 	seat.player_id = p_player_id
 	seat.controller_type = p_controller_type
