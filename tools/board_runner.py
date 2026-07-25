@@ -41,6 +41,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Ако скриптът не се изпълнява от venv Python-а, рестартира себе си с него.
@@ -602,11 +603,11 @@ def _extract_feedback(text: str) -> str:
 
 # ── Предварителни проверки ─────────────────────────────────────────────────────
 
-def check_prerequisites() -> tuple[str, int]:
+def check_prerequisites(dry_run: bool = False) -> tuple[str, int]:
     errors: list[str] = []
 
     api_key = os.environ.get("CURSOR_API_KEY", "").strip()
-    if not api_key:
+    if not api_key and not dry_run:
         errors.append("CURSOR_API_KEY не е зададен (cursor.com/dashboard/integrations)")
 
     project_number = 0
@@ -638,7 +639,11 @@ def main() -> None:
     print("  board_runner.py — Dev + Review pipeline | Cosy Ludo v1")
     print("=" * 66)
 
-    api_key, project_number = check_prerequisites()
+    dry_run = "--dry-run" in sys.argv
+    if dry_run:
+        print("\n  [DRY-RUN] Само четене — без агенти, без git, без GitHub статуси.\n")
+
+    api_key, project_number = check_prerequisites(dry_run=dry_run)
 
     # 1. Метаданни на проекта
     print(f"\n▸ Зареждам project #{project_number}…")
@@ -679,6 +684,17 @@ def main() -> None:
         print(f"  Нови — {len(ready_items)} item(s) в «{STATUS_READY}»:")
         for it in ready_items:
             print(f"    #{it['issue_number']}: {it['title']}")
+
+    if dry_run:
+        issue_numbers = [it["issue_number"] for it in all_items]
+        branch_name = f"feature/issues_{'_'.join(str(n) for n in issue_numbers)}"
+        print(f"\n[DRY-RUN] Бранч, който би се създал: {branch_name}")
+        print(f"[DRY-RUN] Items за обработка: {len(all_items)}")
+        for it in all_items:
+            tag = "[resume]" if it in review_items else "[нов]"
+            print(f"  {tag} #{it['issue_number']}: {it['title']}")
+        print("\n[DRY-RUN] Без реални промени. Края.")
+        return
 
     # 3. Бранч — при resume ползваме текущия; при нови batch: pull main + нов бранч
     all_items = review_items + ready_items
