@@ -35,6 +35,10 @@ extends RefCounted
 ## Конфигурацията е в MatchConfig (DEFAULT/ALTERNATE_SEATS_2P); дъската филтрира
 ## чрез BoardDefinition.get_active_player_definitions() / default_two_player_seats().
 ##
+## Task #45: при 3 играчи активните seats са кои да е три от четирите.
+## Конфигурацията е в MatchConfig (DEFAULT_SEATS_3P / three_player_seat_trios());
+## дъската филтрира чрез get_active_player_definitions() / default_three_player_seats().
+##
 ## Layout (docs/V1_GAME_DESIGN.md §3.3, ludo_board.gd):
 ##   4× бази 2×2, кръстовидни рамене 3×5, 4 home колони по 4, център (7,7).
 
@@ -100,6 +104,39 @@ static func build_active_player_definitions_for_two_players(
 	if seats.is_empty():
 		seats = default_two_player_seats()
 	if not MatchConfig.is_valid_two_player_seats(seats):
+		return []
+	var result: Array[PlayerBoardDefinition] = []
+	for pid in seats:
+		var player_id := StringName(pid)
+		result.append(PlayerBoardDefinition.create(
+				player_id,
+				spawn_cell_for(player_id),
+				start_loop_index_for(player_id),
+				home_entry_loop_index_for(player_id),
+				home_stretch_cells_for(player_id),
+				base_cells_for(player_id)))
+	return result
+
+
+## Подразбиращи се активни seats за 3P — без CYAN (съвпада с MatchConfig.DEFAULT_SEATS_3P).
+static func default_three_player_seats() -> Array[StringName]:
+	return MatchConfig.DEFAULT_SEATS_3P.duplicate()
+
+
+## Четирите валидни 3P тройки на тази дъска (Task #45 / §3.3).
+static func three_player_seat_trios() -> Array:
+	return MatchConfig.three_player_seat_trios()
+
+
+## PlayerBoardDefinition само за активните 3P seats (редът следва player_ids).
+## При невалидна тройка → празен масив. Пълната дъска (create()) остава с 4 seats.
+static func build_active_player_definitions_for_three_players(
+		player_ids: Array = []
+) -> Array[PlayerBoardDefinition]:
+	var seats: Array = player_ids
+	if seats.is_empty():
+		seats = default_three_player_seats()
+	if not MatchConfig.is_valid_three_player_seats(seats):
 		return []
 	var result: Array[PlayerBoardDefinition] = []
 	for pid in seats:

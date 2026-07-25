@@ -96,6 +96,28 @@ func test_player_id_opposite_pair_constants() -> void:
 			[PlayerId.ORANGE, PlayerId.CYAN] as Array[StringName])
 
 
+func test_player_id_three_player_trio_constants() -> void:
+	assert_eq(PlayerId.TRIO_WITHOUT_CYAN,
+			[PlayerId.GREEN, PlayerId.ORANGE, PlayerId.YELLOW] as Array[StringName])
+	assert_eq(PlayerId.TRIO_WITHOUT_YELLOW,
+			[PlayerId.GREEN, PlayerId.ORANGE, PlayerId.CYAN] as Array[StringName])
+	assert_eq(PlayerId.TRIO_WITHOUT_ORANGE,
+			[PlayerId.GREEN, PlayerId.YELLOW, PlayerId.CYAN] as Array[StringName])
+	assert_eq(PlayerId.TRIO_WITHOUT_GREEN,
+			[PlayerId.ORANGE, PlayerId.YELLOW, PlayerId.CYAN] as Array[StringName])
+
+
+func test_player_id_three_player_trios_cover_each_exclusion() -> void:
+	var excluded: Dictionary = {}
+	for trio in PlayerId.three_player_trios():
+		assert_true(PlayerId.is_valid_three_player_trio(trio))
+		var miss := PlayerId.excluded_from_trio(trio)
+		assert_true(PlayerId.is_valid(miss))
+		excluded[miss] = true
+	for id in PlayerId.ALL:
+		assert_true(excluded.has(id), "трябва да има тройка без %s" % id)
+
+
 # ── PawnId ────────────────────────────────────────────────────────────────────
 
 func test_pawn_id_for_player_returns_expected_format() -> void:

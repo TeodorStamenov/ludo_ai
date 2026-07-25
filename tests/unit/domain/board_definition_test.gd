@@ -152,6 +152,20 @@ func test_get_active_player_definitions_filters_two_player_opposite() -> void:
 	assert_eq(def.player_definition_count(), BoardDefinition.SEAT_COUNT)
 
 
+func test_get_active_player_definitions_filters_three_player_trio() -> void:
+	# Task #45: 3P ползва кои да е три от SEAT_COUNT дефиниции.
+	var def := _mini_board()
+	var active := def.get_active_player_definitions(
+			[PlayerId.GREEN, PlayerId.ORANGE, PlayerId.YELLOW])
+	assert_eq(active.size(), 3)
+	assert_eq(active[0].player_id, PlayerId.GREEN)
+	assert_eq(active[1].player_id, PlayerId.ORANGE)
+	assert_eq(active[2].player_id, PlayerId.YELLOW)
+	assert_true(def.has_definitions_for_players(
+			[PlayerId.ORANGE, PlayerId.YELLOW, PlayerId.CYAN]))
+	assert_eq(def.player_definition_count(), BoardDefinition.SEAT_COUNT)
+
+
 # ── build_player_route ────────────────────────────────────────────────────────
 
 func test_build_player_route_yellow_no_wrap() -> void:

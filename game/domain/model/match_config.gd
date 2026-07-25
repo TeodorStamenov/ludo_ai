@@ -43,7 +43,7 @@ const MAX_SEATS := 4
 ## Подразбиращи се активни seats по брой играчи.
 ## 2P: срещуположни бази GREEN ↔ YELLOW (NW–SE) — PlayerId.OPPOSITE_PAIR_GREEN_YELLOW.
 ## Алтернативната 2P двойка: ORANGE ↔ CYAN (NE–SW) — ALTERNATE_SEATS_2P / Task #44.
-## 3P: три от четирите — GREEN, ORANGE, YELLOW (без CYAN).
+## 3P: три от четирите — GREEN, ORANGE, YELLOW (без CYAN) — PlayerId.TRIO_WITHOUT_CYAN / Task #45.
 ## 4P: всички места.
 const DEFAULT_SEATS_2P: Array[StringName] = [PlayerId.GREEN, PlayerId.YELLOW]
 const ALTERNATE_SEATS_2P: Array[StringName] = [PlayerId.ORANGE, PlayerId.CYAN]
@@ -271,6 +271,30 @@ static func create_two_player_opposite(p_seats: Array = []) -> MatchConfig:
 	var cfg := MatchConfig.new()
 	if p_seats.is_empty():
 		cfg.set_active_seats(DEFAULT_SEATS_2P)
+	else:
+		cfg.set_active_seats(p_seats)
+	return cfg
+
+
+## Четирите валидни 3P тройки (копия; Task #45 / §3.3).
+## Първата е DEFAULT_SEATS_3P (без CYAN).
+static func three_player_seat_trios() -> Array:
+	return PlayerId.three_player_trios()
+
+
+## True ако player_ids е точно три различни валидни PlayerId (редът няма значение).
+## Делегира към PlayerId — source of truth за seats (§3.3: кои да е три от четирите).
+static func is_valid_three_player_seats(player_ids: Array) -> bool:
+	return PlayerId.is_valid_three_player_trio(player_ids)
+
+
+## Създава 3P MatchConfig с три от четирите seats (Task #45).
+## Празна/липсваща тройка → DEFAULT_SEATS_3P (GREEN, ORANGE, YELLOW).
+## Невалидна тройка все пак се записва — is_valid() я отхвърля.
+static func create_three_player(p_seats: Array = []) -> MatchConfig:
+	var cfg := MatchConfig.new()
+	if p_seats.is_empty():
+		cfg.set_active_seats(DEFAULT_SEATS_3P)
 	else:
 		cfg.set_active_seats(p_seats)
 	return cfg
