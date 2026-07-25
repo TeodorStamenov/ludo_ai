@@ -44,7 +44,7 @@ const MAX_SEATS := 4
 ## 2P: срещуположни бази GREEN ↔ YELLOW (NW–SE) — PlayerId.OPPOSITE_PAIR_GREEN_YELLOW.
 ## Алтернативната 2P двойка: ORANGE ↔ CYAN (NE–SW) — ALTERNATE_SEATS_2P / Task #44.
 ## 3P: три от четирите — GREEN, ORANGE, YELLOW (без CYAN) — PlayerId.TRIO_WITHOUT_CYAN / Task #45.
-## 4P: всички места.
+## 4P: всички места — PlayerId.ALL / Task #46.
 const DEFAULT_SEATS_2P: Array[StringName] = [PlayerId.GREEN, PlayerId.YELLOW]
 const ALTERNATE_SEATS_2P: Array[StringName] = [PlayerId.ORANGE, PlayerId.CYAN]
 const DEFAULT_SEATS_3P: Array[StringName] = [
@@ -295,6 +295,30 @@ static func create_three_player(p_seats: Array = []) -> MatchConfig:
 	var cfg := MatchConfig.new()
 	if p_seats.is_empty():
 		cfg.set_active_seats(DEFAULT_SEATS_3P)
+	else:
+		cfg.set_active_seats(p_seats)
+	return cfg
+
+
+## Единственият валиден 4P набор — всички seats (копие; Task #46 / §3.3).
+## Съвпада с DEFAULT_SEATS_4P / PlayerId.ALL.
+static func four_player_seat_set() -> Array[StringName]:
+	return PlayerId.all_seats()
+
+
+## True ако player_ids е точно четирите различни валидни PlayerId (редът няма значение).
+## Делегира към PlayerId — source of truth за seats (§3.3: при 4 — всички).
+static func is_valid_four_player_seats(player_ids: Array) -> bool:
+	return PlayerId.is_valid_four_player_set(player_ids)
+
+
+## Създава 4P MatchConfig с всички seats (Task #46).
+## Празна/липсващ набор → DEFAULT_SEATS_4P (GREEN, ORANGE, YELLOW, CYAN).
+## Невалиден набор все пак се записва — is_valid() го отхвърля.
+static func create_four_player(p_seats: Array = []) -> MatchConfig:
+	var cfg := MatchConfig.new()
+	if p_seats.is_empty():
+		cfg.set_active_seats(DEFAULT_SEATS_4P)
 	else:
 		cfg.set_active_seats(p_seats)
 	return cfg

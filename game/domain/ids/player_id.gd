@@ -134,3 +134,23 @@ static func is_valid_three_player_trio(player_ids: Array) -> bool:
 			return false
 		seen[id] = true
 	return true
+
+
+## Независимо копие на всички 4 seats (Task #46 / §3.3).
+## Съвпада с MatchConfig.DEFAULT_SEATS_4P.
+static func all_seats() -> Array[StringName]:
+	return ALL.duplicate()
+
+
+## True ако player_ids е точно четирите различни валидни PlayerId (редът няма значение).
+## При 4 играчи активните seats са всички места на дъската.
+static func is_valid_four_player_set(player_ids: Array) -> bool:
+	if player_ids.size() != COUNT:
+		return false
+	var seen: Dictionary = {}
+	for pid in player_ids:
+		var id := StringName(pid)
+		if not is_valid(id) or seen.has(id):
+			return false
+		seen[id] = true
+	return seen.size() == COUNT
