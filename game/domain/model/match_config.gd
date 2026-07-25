@@ -9,6 +9,13 @@ extends RefCounted
 ## и домейнът го нужда директно (GameState.match_config, StartMatchCommand.config).
 ## Валидацията е в MatchConfigValidator — is_valid() делегира към него.
 ##
+## Сериализация (issue #27 / docs/V1_ARCHITECTURE.md §9 и §16.2):
+##   to_dict() / from_dict() — Dictionary с JSON-примитиви (String, int, Array, Dictionary);
+##   to_json() / from_json() — текстов за persistence / journal / snapshot payload;
+##   equals() / duplicate_config() — беззагубен round-trip и копие без споделени референции.
+##   StringName полета се записват като String; from_dict ги възстановява към StringName.
+##   Миграция на schema_version N → SCHEMA_VERSION е в migrate_dict() / from_dict().
+##
 ## Схема:
 ##   schema_version, mode, board_id, theme_id,
 ##   seats[], campaign_level_id?, level_modifiers[], pre_match_bonus?, rng_seed
@@ -122,21 +129,28 @@ class SeatConfig extends RefCounted:
 			return false
 		return true
 
+	## JSON-safe Dictionary: StringName → String, числови enum-и като int.
 	func to_dict() -> Dictionary:
 		return {
-			"player_id": player_id,
+			"player_id": String(player_id),
 			"controller_type": controller_type,
 			"ai_difficulty": ai_difficulty,
-			"animal_id": animal_id,
+			"animal_id": String(animal_id),
 		}
 
 	static func from_dict(data: Dictionary) -> SeatConfig:
 		var seat := SeatConfig.new()
-		seat.player_id = StringName(data.get("player_id", ""))
+		seat.player_id = StringName(str(data.get("player_id", "")))
 		seat.controller_type = int(data.get("controller_type", ControllerType.HUMAN))
 		seat.ai_difficulty = int(data.get("ai_difficulty", AIDifficulty.EASY))
-		seat.animal_id = StringName(data.get("animal_id", AnimalId.DEFAULT))
+		seat.animal_id = StringName(str(data.get("animal_id", AnimalId.DEFAULT)))
 		return seat
+
+	## True ако всички сериализируеми полета съвпадат (JSON-семантика: 2 == 2.0).
+	func equals(other: SeatConfig) -> bool:
+		if other == null:
+			return false
+		return MatchConfig._json_equal(to_dict(), other.to_dict())
 
 	## Фабрика за пълно конфигурирано място.
 	static func create(p_player_id: StringName, p_controller_type: int,
@@ -344,26 +358,30 @@ func is_valid() -> bool:
 	return MatchConfigValidator.is_valid(self)
 
 
+## JSON-safe Dictionary payload (docs/V1_ARCHITECTURE.md §5.1 / §9).
+## StringName ID-та се записват като String; вложените seats/bonus са независими копия.
 func to_dict() -> Dictionary:
 	var seat_dicts: Array = []
 	for seat: SeatConfig in seats:
 		seat_dicts.append(seat.to_dict())
 	var modifier_ids: Array = []
 	for mod in level_modifiers:
-		modifier_ids.append(StringName(mod))
+		modifier_ids.append(String(mod))
 	return {
 		"schema_version": schema_version,
 		"mode": mode,
-		"board_id": board_id,
-		"theme_id": theme_id,
+		"board_id": String(board_id),
+		"theme_id": String(theme_id),
 		"seats": seat_dicts,
-		"campaign_level_id": campaign_level_id,
+		"campaign_level_id": String(campaign_level_id),
 		"level_modifiers": modifier_ids,
-		"pre_match_bonus": pre_match_bonus.duplicate(),
+		"pre_match_bonus": pre_match_bonus.duplicate(true),
 		"rng_seed": rng_seed,
 	}
 
 
+## Десериализация от Dictionary. Мигрира schema_version < SCHEMA_VERSION;
+## бъдещи версии се запазват (is_valid() ги отхвърля).
 static func from_dict(data: Dictionary) -> MatchConfig:
 	var raw_version: int = int(data.get("schema_version", 0))
 	var working: Dictionary = data
@@ -376,11 +394,15 @@ static func from_dict(data: Dictionary) -> MatchConfig:
 	var cfg := MatchConfig.new()
 	cfg.schema_version = int(working.get("schema_version", SCHEMA_VERSION))
 	cfg.mode = int(working.get("mode", Mode.FREE_PLAY))
-	cfg.board_id = StringName(working.get("board_id", "classic_15x15"))
-	cfg.theme_id = StringName(working.get("theme_id", ThemeId.DEFAULT))
-	cfg.campaign_level_id = StringName(working.get("campaign_level_id", ""))
+	cfg.board_id = StringName(str(working.get("board_id", "classic_15x15")))
+	cfg.theme_id = StringName(str(working.get("theme_id", ThemeId.DEFAULT)))
+	cfg.campaign_level_id = StringName(str(working.get("campaign_level_id", "")))
 	cfg.set_level_modifiers(working.get("level_modifiers", []))
-	cfg.pre_match_bonus = working.get("pre_match_bonus", {}).duplicate()
+	var bonus = working.get("pre_match_bonus", {})
+	if bonus is Dictionary:
+		cfg.pre_match_bonus = (bonus as Dictionary).duplicate(true)
+	else:
+		cfg.pre_match_bonus = {}
 	# Липсващ rng_seed запазва авто-генерирания от _init (не форсира 0).
 	if working.has("rng_seed"):
 		cfg.rng_seed = int(working["rng_seed"])
@@ -389,3 +411,43 @@ static func from_dict(data: Dictionary) -> MatchConfig:
 		if sd is Dictionary:
 			cfg.seats.append(SeatConfig.from_dict(sd))
 	return cfg
+
+
+## Компактен JSON низ за journal / snapshot payload / file persistence (§9).
+func to_json() -> String:
+	return JSON.stringify(to_dict())
+
+
+## Десериализация от JSON текст. Връща null при невалиден JSON или не-Dictionary корен.
+static func from_json(text: String) -> MatchConfig:
+	if text.is_empty():
+		return null
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return null
+	var parsed: Variant = json.data
+	if not (parsed is Dictionary):
+		return null
+	return from_dict(parsed)
+
+
+## Дълбоко копие през сериализация — без споделени референции към seats/bonus.
+func duplicate_config() -> MatchConfig:
+	return from_dict(to_dict())
+
+
+## True ако сериализируемите полета съвпадат (беззагубен round-trip критерий, §16.2).
+## Нормализира през JSON parse/stringify, за да третира 2 и 2.0 еднакво.
+func equals(other: MatchConfig) -> bool:
+	if other == null:
+		return false
+	return _json_equal(to_dict(), other.to_dict())
+
+
+## Сравнява два JSON-съвместими Variant-а след обща нормализация на числовите типове.
+static func _json_equal(a: Variant, b: Variant) -> bool:
+	var na = JSON.parse_string(JSON.stringify(a))
+	var nb = JSON.parse_string(JSON.stringify(b))
+	if na == null or nb == null:
+		return false
+	return JSON.stringify(na) == JSON.stringify(nb)

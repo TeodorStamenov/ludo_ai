@@ -10,7 +10,8 @@ extends TestCase
 ##   - Конфигурация за 2/3/4 активни места (PlayerId seats).
 ##   - Seat полета: controller_type, ai_difficulty?, animal_id (Task #24).
 ##   - Тема / кампания: theme_id, campaign_level_id?, level_modifiers[] (Task #25).
-##   - Сериализация/десериализация (to_dict / from_dict).
+##   - Базова сериализация (to_dict / from_dict); пълният JSON round-trip е в
+##     match_config_serialization_test.gd (Task #27).
 ##   - Валидационни правила.
 ##   - Кампанийна конфигурация (campaign_level_id, level_modifiers, pre_match_bonus).
 ##   - Правилно типиране в StartMatchCommand (без Variant workaround).

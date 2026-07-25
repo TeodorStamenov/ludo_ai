@@ -14,7 +14,7 @@ Presentation ──► Application ──► Domain  ◄── (само Content
 
 | Директория   | Съдържание |
 |---|---|
-| `model/`     | `GameState`, `PlayerState`, `PawnState`, `TurnState`, `GiftState`, `MatchResult`, `MatchConfig`, `MatchConfigValidator` — стабилни data структури и валидация |
+| `model/`     | `GameState`, `PlayerState`, `PawnState`, `TurnState`, `GiftState`, `MatchResult`, `MatchConfig` (вкл. to_dict/to_json сериализация), `MatchConfigValidator` — стабилни data структури и валидация |
 | `commands/`  | `GameCommand` и трите конкретни команди — носят намерение, не резултат |
 | `events/`    | `DomainEvent` и конкретните факти за вече случили се промени |
 | `rules/`     | `GameEngine` и отделните rule модули (движение, купчини, взимане, ход, финал) |
