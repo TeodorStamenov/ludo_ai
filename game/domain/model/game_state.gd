@@ -39,8 +39,12 @@ extends RefCounted
 ##   to_dict() / from_dict() — JSON-safe Dictionary snapshot;
 ##   to_json() / from_json() — текст за active_match.json / resume / replay.
 ##
-## По-нататъшно задълбочаване (отделни roadmap задачи):
-##   - стабилен state hash (#62)
+## State hash (docs/V1_ARCHITECTURE.md §11 / §16.3 / Task #62):
+##   compute_hash() — стабилен int за divergence / replay.
+##   Каноничен JSON на to_dict() (сортирани ключове, нормализирани типове)
+##   → SHA-256 → първите 8 байта като signed int64.
+##   Еднакви equals() състояния → еднакъв hash; JSON round-trip запазва hash.
+##   НЕ влиза в to_view() — само snapshot / telemetry / authoritative check.
 
 ## Текуща версия на сериализираната схема (docs/V1_ARCHITECTURE.md, §4.1 и §9).
 ## При промяна на формата: увеличава се и се добавя миграция N → N+1 в `_migrate_one_step`.
@@ -656,6 +660,23 @@ static func from_json(text: String) -> GameState:
 	return from_dict(parsed)
 
 
+## Стабилен int hash на цялото сериализируемо състояние (§11 / §16.3 / #62).
+## Включва rng_state и command_sequence (за разлика от to_view()).
+func compute_hash() -> int:
+	return compute_hash_from_dict(to_dict())
+
+
+## Hash от Dictionary snapshot (напр. след migrate_dict / от save payload).
+## Независим от реда на ключовете — канонизира преди digest.
+static func compute_hash_from_dict(data: Dictionary) -> int:
+	var canonical := JSON.stringify(_canonicalize_for_hash(data))
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(canonical.to_utf8_buffer())
+	var digest: PackedByteArray = ctx.finish()
+	return digest.decode_s64(0)
+
+
 ## Дълбоко копие през сериализация — без споделени референции.
 func duplicate_state() -> GameState:
 	return from_dict(to_dict())
@@ -793,3 +814,32 @@ static func _rng_state_equal(a: Dictionary, b: Dictionary) -> bool:
 		return false
 	return str(a.get(RNG_STATE_KEY_SEED, "")) == str(b.get(RNG_STATE_KEY_SEED, "")) \
 			and str(a.get(RNG_STATE_KEY_STATE, "")) == str(b.get(RNG_STATE_KEY_STATE, ""))
+
+
+## Канонична форма за стабилен hash: сортирани Dictionary ключове като String,
+## масивите запазват реда, цели float (от JSON.parse) → int, StringName → String.
+static func _canonicalize_for_hash(value: Variant) -> Variant:
+	match typeof(value):
+		TYPE_DICTIONARY:
+			var src := value as Dictionary
+			var keys: Array = src.keys()
+			keys.sort()
+			var ordered: Dictionary = {}
+			for key in keys:
+				ordered[str(key)] = _canonicalize_for_hash(src[key])
+			return ordered
+		TYPE_ARRAY:
+			var out: Array = []
+			for item in value as Array:
+				out.append(_canonicalize_for_hash(item))
+			return out
+		TYPE_FLOAT:
+			var f := value as float
+			var as_int := int(f)
+			if float(as_int) == f:
+				return as_int
+			return f
+		TYPE_STRING_NAME:
+			return String(value)
+		_:
+			return value

@@ -16,6 +16,7 @@ extends TestCase
 ##   - is_valid() инварианти (§12: 2–4 играчи, nested модели).
 ##   - Сериализация to_dict / from_dict / equals / duplicate_state.
 ##   - JSON to_json / from_json: виж game_state_serialization_test.gd (#61).
+##   - Стабилен state hash: виж game_state_hash_test.gd (#62).
 
 
 # ── Архитектурни изисквания ───────────────────────────────────────────────────
