@@ -6,9 +6,9 @@ board_runner.py — Dev + Review автоматизиран pipeline за Cosy L
 
 Поток за всяка задача в «Ready»:
   Ready → In progress
-        → [Dev агент: claude-sonnet-4-6]
+        → [Dev агент: grok-4.5]
         → In review
-        → [Review агент: claude-sonnet-5-thinking-high]
+        → [Review агент: grok-4.5]
              ↓ PASS                  ↓ FAIL (до 3 пъти)
          commit + push           ↩ In progress → Dev агент с feedback
          Done                         ↓ след 3 FAIL
@@ -93,8 +93,8 @@ _load_dotenv()
 
 REPO_OWNER = "TeodorStamenov"
 
-DEV_MODEL    = "claude-sonnet-4-6"
-REVIEW_MODEL = "claude-sonnet-5"
+DEV_MODEL    = "grok-4.5"
+REVIEW_MODEL = "grok-4.5"
 MAX_RETRIES  = 3
 
 STATUS_READY       = "Ready"
