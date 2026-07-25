@@ -24,8 +24,18 @@ extends RefCounted
 ##   задава command_sequence = sequence на командата.
 ##   Част от snapshot / divergence / replay; НЕ влиза в to_view().
 ##
+## rng_state (docs/V1_ARCHITECTURE.md §4.1 / §4.5 / §12):
+##   JSON-safe snapshot {"seed","state"} (String) на авторитетния RandomSource.
+##   Source of truth за save / restore / replay / divergence — НЕ влиза в to_view().
+##   Политика:
+##     - create_from_match_config() записва началния SeededRandomSource.get_state();
+##     - след приета команда: capture_rng(rng) синхронизира GameState ← жив RNG;
+##     - при restore / replay: restore_rng(rng) възстановява жив RNG ← GameState;
+##     - невалидна/отхвърлена команда НЕ вика capture_rng (§12: state и RNG
+##       остават непроменени).
+##   PresentationRandomSource никога не се записва тук.
+##
 ## По-нататъшно задълбочаване (отделни roadmap задачи):
-##   - RNG sync / restore политика (#60)
 ##   - to_json / from_json (#61)
 ##   - стабилен state hash (#62)
 
@@ -42,6 +52,10 @@ const ACTIVE_PLAYER_NONE: int = -1
 
 ## Начална стойност на command_sequence преди първата приета команда.
 const COMMAND_SEQUENCE_START: int = 0
+
+## Ключове в rng_state payload (SeededRandomSource.get_state() / §4.5).
+const RNG_STATE_KEY_SEED := "seed"
+const RNG_STATE_KEY_STATE := "state"
 
 
 ## Поддържана е само текущата SCHEMA_VERSION (след успешна миграция).
@@ -93,7 +107,7 @@ var dice: DiceState = null
 var gifts: Array = []
 ## PlayerId в ред на класиране (0 = 1-во); празен докато никой не е прибрал 4 пионки.
 var ranking: Array = []
-## JSON-safe RNG snapshot {"seed","state"} от SeededRandomSource.get_state().
+## JSON-safe RNG snapshot {"seed","state"} (String). Виж § header / #60.
 var rng_state: Dictionary = {}
 ## Брой приети команди от старта (COMMAND_SEQUENCE_START = 0). Виж § header.
 var command_sequence: int = COMMAND_SEQUENCE_START
@@ -126,7 +140,7 @@ static func create(
 	state.dice = p_dice if p_dice != null else DiceState.create_none()
 	state.gifts = p_gifts.duplicate()
 	state.ranking = _normalize_ranking(p_ranking)
-	state.rng_state = p_rng_state.duplicate(true)
+	state.set_rng_state(p_rng_state)
 	state.command_sequence = p_command_sequence
 	return state
 
@@ -364,8 +378,75 @@ func stamp_command(command: GameCommand) -> GameCommand:
 	return command
 
 
+## True ако има записан непразен rng_state snapshot.
+func has_rng_state() -> bool:
+	return not rng_state.is_empty()
+
+
+## Изчиства rng_state (празен snapshot — валиден преди init / след clear).
+func clear_rng_state() -> void:
+	rng_state = {}
+
+
+## Задава rng_state от payload. При валидни ключове нормализира до JSON-safe
+## String seed/state и прави независимо копие. Празна → {}; непълен payload
+## се копира както е, за да го отхвърли is_valid().
 func set_rng_state(state: Dictionary) -> void:
-	rng_state = state.duplicate(true)
+	rng_state = _normalize_rng_state(state)
+
+
+## Seed от rng_state, или от match_config.rng_seed ако няма snapshot, иначе 0.
+func get_rng_seed() -> int:
+	if has_rng_state() and rng_state.has(RNG_STATE_KEY_SEED):
+		return str(rng_state[RNG_STATE_KEY_SEED]).to_int()
+	if match_config != null:
+		return match_config.rng_seed
+	return 0
+
+
+## Синхронизира GameState.rng_state ← жив RandomSource (след приета команда).
+## Връща false при null rng; празен export (базов RandomSource) → clear.
+## Невалиден export не пипа текущия rng_state (§12).
+func capture_rng(rng: RandomSource) -> bool:
+	if rng == null:
+		return false
+	var exported := rng.get_state()
+	if exported.is_empty():
+		rng_state = {}
+		return true
+	if not _is_rng_state_valid(exported):
+		return false
+	rng_state = _normalize_rng_state(exported)
+	return true
+
+
+## Възстановява жив RandomSource ← GameState.rng_state (restore / replay).
+## Връща false при null rng, празен или невалиден snapshot — тогава rng
+## не се пипа (§12: невалиден restore не променя RNG).
+func restore_rng(rng: RandomSource) -> bool:
+	if rng == null:
+		return false
+	if not has_rng_state() or not _is_rng_state_valid(rng_state):
+		return false
+	rng.set_state(rng_state.duplicate(true))
+	return true
+
+
+## True ако живият RNG export съвпада с GameState.rng_state (divergence check).
+func rng_matches(rng: RandomSource) -> bool:
+	if rng == null:
+		return false
+	return _rng_state_equal(rng_state, _normalize_rng_state(rng.get_state()))
+
+
+## Създава SeededRandomSource от записания rng_state (или match_config seed).
+## За factory / replay — не мутира GameState.
+func create_random_source_from_state() -> SeededRandomSource:
+	if has_rng_state() and _is_rng_state_valid(rng_state):
+		var restored := SeededRandomSource.new(0)
+		restored.set_state(rng_state.duplicate(true))
+		return restored
+	return SeededRandomSource.new(get_rng_seed())
 
 
 ## Read-only view model за Presentation / GamePresenter (§6.1).
@@ -524,9 +605,9 @@ static func from_dict(data: Dictionary) -> GameState:
 	state.command_sequence = int(working.get("command_sequence", COMMAND_SEQUENCE_START))
 	var rng = working.get("rng_state", {})
 	if rng is Dictionary:
-		state.rng_state = (rng as Dictionary).duplicate(true)
+		state.set_rng_state(rng as Dictionary)
 	else:
-		state.rng_state = {}
+		state.clear_rng_state()
 	state.players.clear()
 	for pd in working.get("players", []):
 		if pd is Dictionary:
@@ -653,23 +734,40 @@ static func _is_ranking_valid(ranked: Array, known_players: Dictionary) -> bool:
 	return true
 
 
+## Нормализира валиден payload до JSON-safe {"seed","state"} като String.
+## Празна → {}; без задължителни ключове → duplicate (is_valid ще отхвърли);
+## излишни ключове се отрязват при пълен payload.
+static func _normalize_rng_state(state: Dictionary) -> Dictionary:
+	if state.is_empty():
+		return {}
+	if not state.has(RNG_STATE_KEY_SEED) or not state.has(RNG_STATE_KEY_STATE):
+		return state.duplicate(true)
+	return {
+		RNG_STATE_KEY_SEED: str(state[RNG_STATE_KEY_SEED]),
+		RNG_STATE_KEY_STATE: str(state[RNG_STATE_KEY_STATE]),
+	}
+
+
 static func _is_rng_state_valid(state: Dictionary) -> bool:
 	if state.is_empty():
 		return true
-	if not state.has("seed") or not state.has("state"):
+	if not state.has(RNG_STATE_KEY_SEED) or not state.has(RNG_STATE_KEY_STATE):
 		return false
-	# JSON-safe: seed/state са String (SeededRandomSource) или int.
-	var seed_v: Variant = state["seed"]
-	var state_v: Variant = state["state"]
+	# JSON-safe: seed/state са String (SeededRandomSource) или int (in-memory).
+	# Допълнителни ключове не са позволени — payload е точно {seed, state}.
+	if state.size() != 2:
+		return false
+	var seed_v: Variant = state[RNG_STATE_KEY_SEED]
+	var state_v: Variant = state[RNG_STATE_KEY_STATE]
 	var seed_ok := typeof(seed_v) == TYPE_STRING or typeof(seed_v) == TYPE_INT
 	var state_ok := typeof(state_v) == TYPE_STRING or typeof(state_v) == TYPE_INT
 	return seed_ok and state_ok
 
 
 static func _rng_state_equal(a: Dictionary, b: Dictionary) -> bool:
-	if a.size() != b.size():
-		return false
 	if a.is_empty() and b.is_empty():
 		return true
-	return str(a.get("seed", "")) == str(b.get("seed", "")) \
-			and str(a.get("state", "")) == str(b.get("state", ""))
+	if a.is_empty() or b.is_empty():
+		return false
+	return str(a.get(RNG_STATE_KEY_SEED, "")) == str(b.get(RNG_STATE_KEY_SEED, "")) \
+			and str(a.get(RNG_STATE_KEY_STATE, "")) == str(b.get(RNG_STATE_KEY_STATE, ""))

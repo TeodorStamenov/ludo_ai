@@ -1,6 +1,6 @@
 class_name GameStateTest
 extends TestCase
-## Unit тестове за GameState (Task #57 / #58 / #59 / docs/V1_ARCHITECTURE.md, §4.1).
+## Unit тестове за GameState (Task #57 / #58 / #59 / #60 / docs/V1_ARCHITECTURE.md, §4.1).
 ##
 ## Покрива:
 ##   - Domain: extends RefCounted, път game/domain/model/, без Vector2/NodePath.
@@ -9,6 +9,7 @@ extends TestCase
 ##     rng_state, command_sequence.
 ##   - schema_version: константа, сериализация, миграция N→N+1, валидация (#58).
 ##   - command_sequence: next / record / stamp / restore / legal actions (#59).
+##   - rng_state: capture / restore / normalize / create_random_source (#60).
 ##   - Фабрики create / create_from_match_config (YEL-001 start в база).
 ##   - Accessors: active player, get_player/pawn, gifts, ranking, legal actions.
 ##   - to_view() read-only snapshot за Presentation.
@@ -218,14 +219,6 @@ func test_rank_player_appends_and_sets_player_rank() -> void:
 			[PlayerId.YELLOW, PlayerId.GREEN] as Array[StringName])
 	assert_eq(state.get_player(PlayerId.YELLOW).rank, 1)
 	assert_eq(state.get_player(PlayerId.GREEN).rank, 2)
-
-
-func test_set_rng_state_copies_dictionary() -> void:
-	var state := _valid_two_player_setup()
-	var payload := {"seed": "11", "state": "22"}
-	state.set_rng_state(payload)
-	payload["seed"] = "99"
-	assert_eq(str(state.rng_state["seed"]), "11")
 
 
 # ── to_view / get_legal_actions ───────────────────────────────────────────────
@@ -596,6 +589,263 @@ func test_to_view_excludes_command_sequence() -> void:
 	var view := state.to_view()
 	assert_false(view.has("command_sequence"),
 			"command_sequence е engine/snapshot поле, не presentation view")
+
+
+# ── rng_state sync / restore (docs/V1_ARCHITECTURE.md §4.1 / §4.5 / §12 / #60) ─
+
+func test_rng_state_key_constants() -> void:
+	assert_eq(GameState.RNG_STATE_KEY_SEED, "seed")
+	assert_eq(GameState.RNG_STATE_KEY_STATE, "state")
+
+
+func test_create_from_match_config_has_json_safe_rng_state() -> void:
+	var state := GameState.create_from_match_config(_two_player_config(7))
+	assert_true(state.has_rng_state())
+	assert_eq(typeof(state.rng_state[GameState.RNG_STATE_KEY_SEED]), TYPE_STRING)
+	assert_eq(typeof(state.rng_state[GameState.RNG_STATE_KEY_STATE]), TYPE_STRING)
+	assert_eq(state.rng_state.size(), 2,
+			"нормализираният payload е точно {seed, state}")
+	assert_eq(state.get_rng_seed(), 7)
+	assert_true(state.is_valid())
+
+
+func test_set_rng_state_copies_and_normalizes_to_strings() -> void:
+	var state := _valid_two_player_setup()
+	var payload := {"seed": 11, "state": 22, "extra": true}
+	state.set_rng_state(payload)
+	payload["seed"] = 99
+	assert_eq(state.rng_state[GameState.RNG_STATE_KEY_SEED], "11")
+	assert_eq(state.rng_state[GameState.RNG_STATE_KEY_STATE], "22")
+	assert_false(state.rng_state.has("extra"),
+			"излишни ключове се отрязват при normalize")
+	assert_eq(str(payload["seed"]), "99",
+			"мутация на подадения dict не пипа GameState")
+
+
+func test_set_rng_state_incomplete_kept_invalid() -> void:
+	var state := _valid_two_player_setup()
+	assert_true(state.has_rng_state())
+	state.set_rng_state({"seed": "1"})
+	assert_true(state.has_rng_state(),
+			"непълен payload се запазва за откриване")
+	assert_false(state.is_valid(),
+			"непълен rng_state прави GameState невалиден")
+	assert_false(state.restore_rng(SeededRandomSource.new(0)),
+			"restore от непълен snapshot не пипа живия RNG")
+
+
+func test_clear_rng_state() -> void:
+	var state := _valid_two_player_setup()
+	state.clear_rng_state()
+	assert_false(state.has_rng_state())
+	assert_eq(state.rng_state.size(), 0)
+	assert_true(state.is_valid(), "празен rng_state е валиден")
+
+
+func test_capture_rng_syncs_from_live_source() -> void:
+	var state := _valid_two_player_setup()
+	var rng := SeededRandomSource.new(55)
+	for _i in 5:
+		rng.next_int(1, 6)
+	assert_true(state.capture_rng(rng))
+	assert_true(state.has_rng_state())
+	assert_true(state.rng_matches(rng))
+	assert_eq(state.get_rng_seed(), 55)
+	assert_eq(state.rng_state[GameState.RNG_STATE_KEY_SEED], "55")
+
+
+func test_capture_rng_null_rejected_without_mutation() -> void:
+	var state := _valid_two_player_setup()
+	var before_seed: String = str(state.rng_state[GameState.RNG_STATE_KEY_SEED])
+	var before_inner: String = str(state.rng_state[GameState.RNG_STATE_KEY_STATE])
+	assert_false(state.capture_rng(null))
+	assert_eq(str(state.rng_state[GameState.RNG_STATE_KEY_SEED]), before_seed,
+			"null capture не трябва да пипа rng_state (§12)")
+	assert_eq(str(state.rng_state[GameState.RNG_STATE_KEY_STATE]), before_inner,
+			"null capture не трябва да пипа rng_state (§12)")
+
+
+func test_capture_rng_empty_export_clears() -> void:
+	var state := _valid_two_player_setup()
+	var fixed := RandomSource.new()
+	assert_true(state.capture_rng(fixed),
+			"базов RandomSource (празен export) е позволен")
+	assert_false(state.has_rng_state())
+
+
+func test_restore_rng_continues_stream() -> void:
+	var state := _valid_two_player_setup()
+	var original := SeededRandomSource.new(777)
+	for _i in 8:
+		original.next_int(1, 6)
+	assert_true(state.capture_rng(original))
+
+	var expected: Array = []
+	for _i in 15:
+		expected.append(original.next_int(1, 6))
+
+	var restored := SeededRandomSource.new(0)
+	assert_true(state.restore_rng(restored))
+	var actual: Array = []
+	for _i in 15:
+		actual.append(restored.next_int(1, 6))
+	assert_eq(actual, expected,
+			"restore_rng трябва да продължи next_int потока от GameState")
+
+
+func test_restore_rng_rejects_null_and_empty() -> void:
+	var state := _valid_two_player_setup()
+	assert_false(state.restore_rng(null))
+	var rng := SeededRandomSource.new(1)
+	var before := rng.get_state()
+	state.clear_rng_state()
+	assert_false(state.restore_rng(rng),
+			"празен rng_state не трябва да пипа живия RNG")
+	assert_eq(rng.get_state(), before)
+
+
+func test_rng_matches_detects_divergence() -> void:
+	var state := _valid_two_player_setup()
+	var a := SeededRandomSource.new(42)
+	var b := SeededRandomSource.new(42)
+	assert_true(state.capture_rng(a))
+	assert_true(state.rng_matches(b), "еднакъв seed → match преди draws")
+	a.next_int(1, 6)
+	assert_true(state.capture_rng(a))
+	assert_false(state.rng_matches(b), "след draw без sync → divergence")
+	assert_true(state.restore_rng(b))
+	assert_true(state.rng_matches(b))
+
+
+func test_create_random_source_from_state_replays_stream() -> void:
+	var state := _valid_two_player_setup()
+	var source := SeededRandomSource.new(314)
+	for _i in 6:
+		source.next_int(1, 6)
+	state.capture_rng(source)
+
+	var expected: Array = []
+	for _i in 12:
+		expected.append(source.next_int(1, 6))
+
+	var from_state := state.create_random_source_from_state()
+	var actual: Array = []
+	for _i in 12:
+		actual.append(from_state.next_int(1, 6))
+	assert_eq(actual, expected)
+
+
+func test_create_random_source_from_state_falls_back_to_match_config_seed() -> void:
+	var state := _valid_two_player_setup()
+	state.clear_rng_state()
+	var from_state := state.create_random_source_from_state()
+	var from_config := SeededRandomSource.new(state.match_config.rng_seed)
+	assert_eq(from_state.next_int(1, 6), from_config.next_int(1, 6))
+	assert_eq(from_state.next_int(1, 6), from_config.next_int(1, 6))
+
+
+func test_get_rng_seed_falls_back_to_match_config() -> void:
+	var state := _valid_two_player_setup()
+	assert_eq(state.get_rng_seed(), 42)
+	state.clear_rng_state()
+	assert_eq(state.get_rng_seed(), 42,
+			"без snapshot → match_config.rng_seed")
+
+
+func test_capture_then_restore_keeps_live_rng_unchanged_on_reject_path() -> void:
+	# Инвариант §12: без capture след „отхвърлена“ команда живият RNG и
+	# GameState.rng_state остават както преди командата.
+	var state := _valid_two_player_setup()
+	var rng := SeededRandomSource.new(9)
+	for _i in 4:
+		rng.next_int(1, 6)
+	assert_true(state.capture_rng(rng))
+	var snapshot_before := state.rng_state.duplicate(true)
+	var live_before := rng.get_state()
+	# Симулираме отхвърлена команда: без capture_rng / без next_int.
+	assert_eq(state.rng_state[GameState.RNG_STATE_KEY_STATE],
+			snapshot_before[GameState.RNG_STATE_KEY_STATE])
+	assert_eq(rng.get_state()[GameState.RNG_STATE_KEY_STATE],
+			live_before[GameState.RNG_STATE_KEY_STATE])
+	assert_true(state.rng_matches(rng))
+
+
+func test_rng_state_round_trip_preserves_stream() -> void:
+	var original := _valid_two_player_setup()
+	var rng := SeededRandomSource.new(4242)
+	for _i in 10:
+		rng.next_int(1, 6)
+	original.capture_rng(rng)
+
+	var expected: Array = []
+	for _i in 10:
+		expected.append(rng.next_int(1, 6))
+
+	var restored_state := GameState.from_dict(original.to_dict())
+	assert_true(original.equals(restored_state))
+	assert_eq(typeof(restored_state.rng_state[GameState.RNG_STATE_KEY_STATE]),
+			TYPE_STRING)
+	var replay := restored_state.create_random_source_from_state()
+	var actual: Array = []
+	for _i in 10:
+		actual.append(replay.next_int(1, 6))
+	assert_eq(actual, expected,
+			"to_dict → from_dict трябва да запази RNG потока")
+
+
+func test_rng_state_json_round_trip_preserves_64bit() -> void:
+	var state := _valid_two_player_setup()
+	var rng := SeededRandomSource.new(424242)
+	for _i in 8:
+		rng.next_int(1, 6)
+	state.capture_rng(rng)
+	var state_int: int = str(state.rng_state[GameState.RNG_STATE_KEY_STATE]).to_int()
+	assert_true(absi(state_int) > 9007199254740992,
+			"fixture state трябва да е > 2^53")
+
+	var expected: Array = []
+	for _i in 12:
+		expected.append(rng.next_int(1, 6))
+
+	var json_text := JSON.stringify(state.to_dict())
+	var parsed: Variant = JSON.parse_string(json_text)
+	assert_true(parsed is Dictionary)
+	var restored := GameState.from_dict(parsed as Dictionary)
+	var replay := restored.create_random_source_from_state()
+	var actual: Array = []
+	for _i in 12:
+		actual.append(replay.next_int(1, 6))
+	assert_eq(actual, expected,
+			"JSON stringify на GameState трябва да пази 64-bit rng_state")
+
+
+func test_to_view_excludes_rng_state() -> void:
+	var state := _valid_two_player_setup()
+	var view := state.to_view()
+	assert_false(view.has("rng_state"),
+			"rng_state е engine/snapshot поле, не presentation view")
+
+
+func test_equals_includes_rng_state() -> void:
+	var a := _valid_two_player_setup()
+	var b := a.duplicate_state()
+	assert_true(a.equals(b))
+	var rng := SeededRandomSource.new(1)
+	rng.next_int(1, 6)
+	b.capture_rng(rng)
+	assert_false(a.equals(b), "equals трябва да включва rng_state")
+
+
+func test_duplicate_state_rng_is_independent() -> void:
+	var original := _valid_two_player_setup()
+	var copy := original.duplicate_state()
+	var rng := SeededRandomSource.new(99)
+	for _i in 3:
+		rng.next_int(1, 6)
+	copy.capture_rng(rng)
+	assert_false(original.rng_matches(rng),
+			"capture върху копие не трябва да пипа оригинала")
+	assert_true(original.has_rng_state())
 
 
 # ── Сериализация ──────────────────────────────────────────────────────────────
