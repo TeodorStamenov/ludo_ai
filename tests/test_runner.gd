@@ -53,6 +53,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/classic_15x15_player_routes_test.gd",
 	"res://tests/unit/domain/classic_15x15_route_continuity_test.gd",
 	"res://tests/unit/domain/classic_15x15_spawn_home_cells_test.gd",
+	"res://tests/unit/domain/classic_15x15_equal_route_lengths_test.gd",
 	"res://tests/unit/domain/two_player_opposite_seats_test.gd",
 	"res://tests/unit/domain/three_player_active_seats_test.gd",
 	"res://tests/unit/domain/four_player_active_seats_test.gd",
