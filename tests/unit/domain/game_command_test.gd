@@ -211,9 +211,14 @@ func test_roll_dice_command_is_game_command() -> void:
 	var cmd := RollDiceCommand.new(PlayerId.YELLOW)
 	assert_true(cmd is GameCommand)
 	assert_eq(cmd.player_id, PlayerId.YELLOW)
+	assert_eq(cmd.command_type, GameCommand.TYPE_ROLL_DICE,
+			"RollDiceCommand трябва да зададе command_type в _init")
 	assert_eq(cmd.sequence, GameCommand.SEQUENCE_UNSET)
 	assert_false(cmd.is_stamped())
 	assert_true(cmd.is_valid())
+	var empty := RollDiceCommand.new(&"")
+	assert_false(empty.is_valid(),
+			"RollDice без player_id не е готов за apply (Task #66)")
 
 
 func test_move_pawn_command_is_game_command() -> void:

@@ -40,6 +40,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/game_engine_contract_test.gd",
 	"res://tests/unit/domain/game_command_test.gd",
 	"res://tests/unit/domain/start_match_command_test.gd",
+	"res://tests/unit/domain/roll_dice_command_test.gd",
 	"res://tests/unit/domain/match_config_test.gd",
 	"res://tests/unit/domain/match_config_serialization_test.gd",
 	"res://tests/unit/domain/match_config_validator_test.gd",
