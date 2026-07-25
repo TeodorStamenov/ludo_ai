@@ -225,7 +225,17 @@ func test_move_pawn_command_is_game_command() -> void:
 	var cmd := MovePawnCommand.new(PlayerId.GREEN, &"green_0")
 	assert_true(cmd is GameCommand)
 	assert_eq(cmd.player_id, PlayerId.GREEN)
+	assert_eq(cmd.command_type, GameCommand.TYPE_MOVE_PAWN,
+			"MovePawnCommand трябва да зададе command_type в _init")
+	assert_eq(cmd.sequence, GameCommand.SEQUENCE_UNSET)
+	assert_false(cmd.is_stamped())
 	assert_true(cmd.is_valid())
+	var empty := MovePawnCommand.new(&"", &"")
+	assert_false(empty.is_valid(),
+			"MovePawn без player_id/pawn_id не е готов за apply (Task #67)")
+	var foreign := MovePawnCommand.new(PlayerId.GREEN, &"yellow_0")
+	assert_false(foreign.is_valid(),
+			"MovePawn с чужда пионка не е готов за apply (Task #67)")
 
 
 func test_start_match_command_is_game_command() -> void:
