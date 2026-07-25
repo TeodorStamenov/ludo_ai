@@ -221,13 +221,16 @@ func test_valid_moves_changed_event_is_domain_event() -> void:
 
 
 func test_pawn_moved_event_is_domain_event() -> void:
-	var event := PawnMovedEvent.new()
+	var event := PawnMovedEvent.create_moved(
+			PawnId.for_player(PlayerId.GREEN, 0),
+			CellId.from_grid(8, 2),
+			CellId.from_grid(8, 5),
+			PawnZone.MAIN_PATH)
 	assert_true(event is DomainEvent)
-	event.event_type = DomainEvent.TYPE_PAWN_MOVED
-	event.stamp(1)
-	assert_true(event.is_stamped())
-	assert_true(event.is_valid())
 	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_MOVED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
 
 
 func test_pawn_captured_event_is_domain_event() -> void:

@@ -20,7 +20,8 @@ extends RefCounted
 ##   MatchStartedEvent (events/match_started_event.gd),
 ##   DiceRolledEvent (events/dice_rolled_event.gd),
 ##   ValidMovesChangedEvent (events/valid_moves_changed_event.gd),
-##   PawnMoved, PawnExitedBase, PawnCaptured,
+##   PawnMovedEvent (events/pawn_moved_event.gd),
+##   PawnExitedBase, PawnCaptured,
 ##   PawnSentHome, PawnStackFormed, PawnFinished, GiftSpawned,
 ##   GiftCollected, PowerUpResolved, ShieldApplied, TurnChanged,
 ##   PlayerRanked, MatchFinished
