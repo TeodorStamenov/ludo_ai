@@ -14,14 +14,17 @@ extends RefCounted
 ## ranking[] = PlayerId в ред на прибиране (index 0 = 1-во място); частично
 ## по време на мач, пълно при MatchPhase.FINISHED.
 ##
+## schema_version (docs/V1_ARCHITECTURE.md §4.1 / §9):
+##   SCHEMA_VERSION, is_schema_supported(), migrate_dict() N → N+1, from_dict().
+##
 ## По-нататъшно задълбочаване (отделни roadmap задачи):
-##   - schema_version миграции (#58)
 ##   - command_sequence семантика в MatchSession (#59)
 ##   - RNG sync / restore политика (#60)
-##   - to_json / migrate_dict (#61)
+##   - to_json / from_json (#61)
 ##   - стабилен state hash (#62)
 
-## Текуща версия на сериализираната схема.
+## Текуща версия на сериализираната схема (docs/V1_ARCHITECTURE.md, §4.1 и §9).
+## При промяна на формата: увеличава се и се добавя миграция N → N+1 в `_migrate_one_step`.
 const SCHEMA_VERSION := 1
 
 ## Позволен брой активни играчи (= MatchConfig seats; §3.3).
@@ -32,9 +35,34 @@ const MAX_PLAYERS := MatchConfig.MAX_SEATS
 const ACTIVE_PLAYER_NONE: int = -1
 
 
-## Поддържана е само текущата SCHEMA_VERSION.
+## Поддържана е само текущата SCHEMA_VERSION (след успешна миграция).
 static func is_schema_supported(version: int) -> bool:
 	return version == SCHEMA_VERSION
+
+
+## Мигрира dictionary payload от schema_version N към SCHEMA_VERSION (стъпка по стъпка).
+## Липсващ/нулев schema_version се третира като pre-versioned (0) и се качва до 1.
+## Бъдещи версии (> SCHEMA_VERSION) не се пипат — остават за отхвърляне от is_valid().
+static func migrate_dict(data: Dictionary) -> Dictionary:
+	var migrated: Dictionary = data.duplicate(true)
+	var version: int = int(migrated.get("schema_version", 0))
+	if version > SCHEMA_VERSION:
+		return migrated
+	while version < SCHEMA_VERSION:
+		migrated = _migrate_one_step(migrated, version)
+		version += 1
+		migrated["schema_version"] = version
+	return migrated
+
+
+static func _migrate_one_step(data: Dictionary, from_version: int) -> Dictionary:
+	match from_version:
+		0:
+			# Pre-schema payloads вече ползват v1 имена на полетата.
+			return data
+		_:
+			push_warning("GameState: няма миграция от schema_version %d" % from_version)
+			return data
 
 
 var schema_version: int = SCHEMA_VERSION
@@ -431,44 +459,53 @@ func to_dict() -> Dictionary:
 	}
 
 
-## Десериализация от Dictionary. Липсващи полета → подразбиращи се стойности.
+## Десериализация от Dictionary. Мигрира schema_version < SCHEMA_VERSION;
+## бъдещи версии се запазват (is_valid() ги отхвърля). Липсващи полета → defaults.
 static func from_dict(data: Dictionary) -> GameState:
+	var raw_version: int = int(data.get("schema_version", 0))
+	var working: Dictionary = data
+	if raw_version < SCHEMA_VERSION:
+		working = migrate_dict(data)
+	elif raw_version > SCHEMA_VERSION:
+		push_warning("GameState: неподдържан бъдещ schema_version %d (текущ %d)" % [
+			raw_version, SCHEMA_VERSION])
+
 	var state := GameState.new()
-	state.schema_version = int(data.get("schema_version", SCHEMA_VERSION))
-	state.match_id = StringName(str(data.get("match_id", "")))
-	var cfg_data = data.get("match_config", {})
+	state.schema_version = int(working.get("schema_version", SCHEMA_VERSION))
+	state.match_id = StringName(str(working.get("match_id", "")))
+	var cfg_data = working.get("match_config", {})
 	if cfg_data is Dictionary and not (cfg_data as Dictionary).is_empty():
 		state.match_config = MatchConfig.from_dict(cfg_data)
 	else:
 		state.match_config = null
-	state.board_id = StringName(str(data.get("board_id", "")))
-	state.phase = int(data.get("phase", MatchPhase.SETUP))
-	state.active_player_index = int(data.get("active_player_index", ACTIVE_PLAYER_NONE))
-	state.command_sequence = int(data.get("command_sequence", 0))
-	var rng = data.get("rng_state", {})
+	state.board_id = StringName(str(working.get("board_id", "")))
+	state.phase = int(working.get("phase", MatchPhase.SETUP))
+	state.active_player_index = int(working.get("active_player_index", ACTIVE_PLAYER_NONE))
+	state.command_sequence = int(working.get("command_sequence", 0))
+	var rng = working.get("rng_state", {})
 	if rng is Dictionary:
 		state.rng_state = (rng as Dictionary).duplicate(true)
 	else:
 		state.rng_state = {}
 	state.players.clear()
-	for pd in data.get("players", []):
+	for pd in working.get("players", []):
 		if pd is Dictionary:
 			state.players.append(PlayerState.from_dict(pd))
-	var turn_data = data.get("turn", {})
+	var turn_data = working.get("turn", {})
 	if turn_data is Dictionary and not (turn_data as Dictionary).is_empty():
 		state.turn = TurnState.from_dict(turn_data)
 	else:
 		state.turn = TurnState.create_match_start()
-	var dice_data = data.get("dice", {})
+	var dice_data = working.get("dice", {})
 	if dice_data is Dictionary and not (dice_data as Dictionary).is_empty():
 		state.dice = DiceState.from_dict(dice_data)
 	else:
 		state.dice = DiceState.create_none()
 	state.gifts.clear()
-	for gd in data.get("gifts", []):
+	for gd in working.get("gifts", []):
 		if gd is Dictionary:
 			state.gifts.append(GiftState.from_dict(gd))
-	var ranking_data = data.get("ranking", [])
+	var ranking_data = working.get("ranking", [])
 	if ranking_data is Array:
 		state.ranking = _normalize_ranking(ranking_data)
 	else:

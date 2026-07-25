@@ -1,12 +1,13 @@
 class_name GameStateTest
 extends TestCase
-## Unit тестове за GameState (Task #57 / docs/V1_ARCHITECTURE.md, §4.1).
+## Unit тестове за GameState (Task #57 / #58 / docs/V1_ARCHITECTURE.md, §4.1).
 ##
 ## Покрива:
 ##   - Domain: extends RefCounted, път game/domain/model/, без Vector2/NodePath.
 ##   - Полета: schema_version, match_id, match_config, board_id, phase,
 ##     players[], active_player_index, turn, dice, gifts[], ranking[],
 ##     rng_state, command_sequence.
+##   - schema_version: константа, сериализация, миграция N→N+1, валидация (#58).
 ##   - Фабрики create / create_from_match_config (YEL-001 start в база).
 ##   - Accessors: active player, get_player/pawn, gifts, ranking, legal actions.
 ##   - to_view() read-only snapshot за Presentation.
@@ -47,14 +48,10 @@ func test_to_dict_has_no_presentation_fields() -> void:
 
 # ── Константи и подразбирания ─────────────────────────────────────────────────
 
-func test_schema_and_player_bounds() -> void:
-	assert_eq(GameState.SCHEMA_VERSION, 1)
+func test_player_bounds_and_active_none() -> void:
 	assert_eq(GameState.MIN_PLAYERS, 2)
 	assert_eq(GameState.MAX_PLAYERS, 4)
 	assert_eq(GameState.ACTIVE_PLAYER_NONE, -1)
-	assert_true(GameState.is_schema_supported(GameState.SCHEMA_VERSION))
-	assert_false(GameState.is_schema_supported(0))
-	assert_false(GameState.is_schema_supported(GameState.SCHEMA_VERSION + 1))
 
 
 func test_default_fields_are_invalid() -> void:
@@ -341,12 +338,6 @@ func test_is_valid_rejects_bad_active_index() -> void:
 	assert_false(state.is_valid())
 
 
-func test_is_valid_rejects_future_schema_version() -> void:
-	var state := _valid_two_player_setup()
-	state.schema_version = GameState.SCHEMA_VERSION + 1
-	assert_false(state.is_valid())
-
-
 func test_is_valid_rejects_invalid_rng_state_keys() -> void:
 	var state := _valid_two_player_setup()
 	state.rng_state = {"seed": "1"}
@@ -359,6 +350,124 @@ func test_is_valid_allows_active_player_none() -> void:
 	var state := _valid_two_player_setup()
 	state.active_player_index = GameState.ACTIVE_PLAYER_NONE
 	assert_true(state.is_valid())
+
+
+# ── schema_version (docs/V1_ARCHITECTURE.md, §4.1 и §9 / Task #58) ────────────
+
+func test_schema_version_constant() -> void:
+	assert_eq(GameState.SCHEMA_VERSION, 1, "SCHEMA_VERSION трябва да е 1")
+
+
+func test_default_schema_version_matches_constant() -> void:
+	var state := GameState.new()
+	assert_eq(state.schema_version, GameState.SCHEMA_VERSION,
+			"schema_version трябва да съответства на константата")
+
+
+func test_is_schema_supported_accepts_current_version() -> void:
+	assert_true(GameState.is_schema_supported(GameState.SCHEMA_VERSION),
+			"текущата SCHEMA_VERSION трябва да е поддържана")
+
+
+func test_is_schema_supported_rejects_zero() -> void:
+	assert_false(GameState.is_schema_supported(0),
+			"schema_version 0 (pre-versioned) не е поддържан без миграция")
+
+
+func test_is_schema_supported_rejects_future_version() -> void:
+	assert_false(GameState.is_schema_supported(GameState.SCHEMA_VERSION + 1),
+			"бъдещ schema_version не трябва да е поддържан")
+
+
+func test_is_schema_supported_rejects_negative() -> void:
+	assert_false(GameState.is_schema_supported(-1),
+			"отрицателен schema_version не трябва да е поддържан")
+
+
+func test_to_dict_writes_schema_version() -> void:
+	var state := _valid_two_player_setup()
+	var d := state.to_dict()
+	assert_eq(d.get("schema_version"), GameState.SCHEMA_VERSION,
+			"to_dict трябва да записва текущия SCHEMA_VERSION")
+
+
+func test_schema_version_round_trip() -> void:
+	var state := _valid_two_player_setup()
+	var restored := GameState.from_dict(state.to_dict())
+	assert_eq(restored.schema_version, GameState.SCHEMA_VERSION,
+			"round-trip трябва да запази schema_version")
+	assert_true(state.equals(restored))
+
+
+func test_from_dict_missing_schema_version_migrates_to_current() -> void:
+	var original := _valid_two_player_setup()
+	var data := original.to_dict()
+	data.erase("schema_version")
+	var restored := GameState.from_dict(data)
+	assert_eq(restored.schema_version, GameState.SCHEMA_VERSION,
+			"липсващ schema_version трябва да се мигрира до SCHEMA_VERSION")
+	assert_true(restored.is_valid(), "мигрираният GameState трябва да е валиден")
+	assert_eq(restored.match_id, original.match_id)
+	assert_eq(restored.player_count(), original.player_count())
+
+
+func test_from_dict_schema_version_zero_migrates_to_current() -> void:
+	var original := _valid_two_player_setup()
+	var data := original.to_dict()
+	data["schema_version"] = 0
+	var restored := GameState.from_dict(data)
+	assert_eq(restored.schema_version, GameState.SCHEMA_VERSION,
+			"schema_version 0 трябва да се мигрира до SCHEMA_VERSION")
+	assert_true(restored.is_valid())
+	assert_true(original.equals(restored),
+			"v0→v1 миграцията е identity за текущите имена на полетата")
+
+
+func test_migrate_dict_sets_schema_version_to_current() -> void:
+	var raw := {"match_id": "m_migrate_0", "phase": MatchPhase.SETUP}
+	var migrated := GameState.migrate_dict(raw)
+	assert_eq(migrated.get("schema_version"), GameState.SCHEMA_VERSION,
+			"migrate_dict трябва да запише SCHEMA_VERSION")
+	assert_false(raw.has("schema_version"),
+			"migrate_dict не трябва да мутира оригиналния dictionary")
+	assert_eq(migrated.get("match_id"), "m_migrate_0")
+
+
+func test_migrate_dict_leaves_future_version_unchanged() -> void:
+	var future := GameState.SCHEMA_VERSION + 5
+	var raw := {"schema_version": future, "match_id": "m_future_0"}
+	var migrated := GameState.migrate_dict(raw)
+	assert_eq(migrated.get("schema_version"), future,
+			"бъдещ schema_version не трябва да се даунгрейдва")
+
+
+func test_from_dict_future_schema_version_is_preserved_but_invalid() -> void:
+	var future := GameState.SCHEMA_VERSION + 1
+	var original := _valid_two_player_setup()
+	var data := original.to_dict()
+	data["schema_version"] = future
+	var restored := GameState.from_dict(data)
+	assert_eq(restored.schema_version, future,
+			"бъдещ schema_version трябва да се запази за откриване")
+	assert_false(restored.is_valid(),
+			"GameState с бъдещ schema_version трябва да е невалиден")
+
+
+func test_invalid_when_schema_version_tampered() -> void:
+	var state := _valid_two_player_setup()
+	assert_true(state.is_valid(), "precondition: валиден GameState")
+	state.schema_version = 0
+	assert_false(state.is_valid(),
+			"schema_version извън поддържаните трябва да прави state невалиден")
+	state.schema_version = GameState.SCHEMA_VERSION + 1
+	assert_false(state.is_valid(),
+			"бъдещ schema_version трябва да прави state невалиден")
+
+
+func test_create_from_match_config_uses_current_schema_version() -> void:
+	var state := GameState.create_from_match_config(_two_player_config())
+	assert_eq(state.schema_version, GameState.SCHEMA_VERSION)
+	assert_eq(state.to_dict().get("schema_version"), GameState.SCHEMA_VERSION)
 
 
 # ── Сериализация ──────────────────────────────────────────────────────────────
