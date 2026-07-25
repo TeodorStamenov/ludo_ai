@@ -7,6 +7,7 @@ extends RefCounted
 ##
 ## Живее в domain/model/, защото е чист value object без странични ефекти
 ## и домейнът го нужда директно (GameState.match_config, StartMatchCommand.config).
+## Валидацията е в MatchConfigValidator — is_valid() делегира към него.
 ##
 ## Схема:
 ##   schema_version, mode, board_id, theme_id,
@@ -331,44 +332,16 @@ func get_level_modifier_ids() -> Array[StringName]:
 
 
 ## True ако theme_id, campaign_level_id? и level_modifiers[] са в договорните граници.
+## Делегира към MatchConfigValidator (issue #26).
 func are_theme_and_campaign_fields_valid() -> bool:
-	if not ThemeId.is_valid(theme_id):
-		return false
-	if mode == Mode.CAMPAIGN:
-		if campaign_level_id.is_empty():
-			return false
-	elif mode == Mode.FREE_PLAY:
-		if not campaign_level_id.is_empty():
-			return false
-	else:
-		return false
-	for mod in level_modifiers:
-		if not LevelModifierId.is_valid(StringName(mod)):
-			return false
-	return true
+	return MatchConfigValidator.are_theme_and_campaign_fields_valid(self)
 
 
+## True ако целият MatchConfig е в договорните граници (§5.1 / §3.3 / §8.2).
+## Делегира към MatchConfigValidator — за подробности ползвай
+## MatchConfigValidator.validate(self).
 func is_valid() -> bool:
-	if not is_schema_supported(schema_version):
-		return false
-	if mode != Mode.FREE_PLAY and mode != Mode.CAMPAIGN:
-		return false
-	if not are_theme_and_campaign_fields_valid():
-		return false
-	if not is_supported_seat_count(seats.size()):
-		return false
-	var ids_seen: Dictionary = {}
-	for seat: SeatConfig in seats:
-		if not seat.is_seat_valid():
-			return false
-		if seat.player_id in ids_seen:
-			return false
-		ids_seen[seat.player_id] = true
-	# При 2 играчи се изискват срещуположни бази (docs/V1_GAME_DESIGN.md §3.3).
-	if seats.size() == 2:
-		if not are_opposite_seats(seats[0].player_id, seats[1].player_id):
-			return false
-	return true
+	return MatchConfigValidator.is_valid(self)
 
 
 func to_dict() -> Dictionary:
