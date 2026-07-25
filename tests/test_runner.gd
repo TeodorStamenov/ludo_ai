@@ -22,6 +22,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/random_source_test.gd",
 	"res://tests/unit/domain/seeded_random_source_test.gd",
 	"res://tests/unit/domain/rng_state_export_restore_test.gd",
+	"res://tests/unit/domain/same_seed_identical_results_test.gd",
 	"res://tests/unit/domain/movement_rules_test.gd",
 	"res://tests/unit/domain/stack_rules_test.gd",
 	"res://tests/unit/domain/capture_rules_test.gd",
