@@ -82,11 +82,27 @@ var seats: Array = []
 var campaign_level_id: StringName = &""
 var level_modifiers: Array = []
 var pre_match_bonus: Dictionary = {}
+## Един seed за целия мач (зар, подаръци, power-up параметри) — §4.5 / §5.1.
+## 0 е валидна изрична стойност (напр. тестове); липсващ seed при from_dict не го форсира.
 var rng_seed: int = 0
 
 
 func _init() -> void:
-	rng_seed = randi()
+	rng_seed = generate_rng_seed()
+
+
+## Автоматичен seed за нов мач. Избягва 0, за да се различава от „изрично нула“ в логове.
+static func generate_rng_seed() -> int:
+	var generated: int = randi()
+	if generated == 0:
+		return 1
+	return generated
+
+
+## Създава детерминиран RNG от rng_seed (docs/V1_ARCHITECTURE.md, §4.5).
+## Еднакъв seed → еднакви next_int/pick последователности.
+func create_random_source() -> SeededRandomSource:
+	return SeededRandomSource.new(rng_seed)
 
 
 func add_seat(p_player_id: StringName, p_controller_type: int, p_animal_id: StringName,

@@ -76,9 +76,11 @@ func test_default_pre_match_bonus_is_empty_dict() -> void:
 	assert_eq(cfg.pre_match_bonus.size(), 0, "pre_match_bonus трябва да е празен речник по подразбиране")
 
 
+# ── RNG seed (docs/V1_ARCHITECTURE.md, §4.5 и §5.1) ───────────────────────────
+
 func test_rng_seed_not_zero_by_default() -> void:
 	var cfg := MatchConfig.new()
-	assert_ne(cfg.rng_seed, 0, "rng_seed не трябва да е нула по подразбиране")
+	assert_ne(cfg.rng_seed, 0, "авто-генерираният rng_seed не трябва да е нула")
 
 
 func test_rng_seed_is_randomized_per_instance() -> void:
@@ -86,6 +88,97 @@ func test_rng_seed_is_randomized_per_instance() -> void:
 	var b := MatchConfig.new()
 	# Изключително малко вероятно двата seed-а да съвпаднат случайно.
 	assert_ne(a.rng_seed, b.rng_seed, "различни инстанции трябва да имат различни rng_seed")
+
+
+func test_generate_rng_seed_never_returns_zero() -> void:
+	for _i in 32:
+		assert_ne(MatchConfig.generate_rng_seed(), 0,
+				"generate_rng_seed() трябва да избягва 0")
+
+
+func test_explicit_rng_seed_zero_is_allowed() -> void:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 0
+	assert_eq(cfg.rng_seed, 0, "изричен rng_seed=0 е валидна тестова стойност")
+
+
+func test_rng_seed_zero_round_trip_preserves_zero() -> void:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 0
+	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"dog")
+	var restored := MatchConfig.from_dict(cfg.to_dict())
+	assert_eq(restored.rng_seed, 0, "изричен seed 0 трябва да се запази при round-trip")
+
+
+func test_from_dict_explicit_zero_seed_is_not_replaced_by_auto() -> void:
+	var data := {
+		"schema_version": MatchConfig.SCHEMA_VERSION,
+		"rng_seed": 0,
+		"seats": [
+			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+		],
+	}
+	var cfg := MatchConfig.from_dict(data)
+	assert_eq(cfg.rng_seed, 0, "from_dict с rng_seed=0 не трябва да го заменя с авто-seed")
+
+
+func test_rng_seed_round_trip_preserves_arbitrary_value() -> void:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 42
+	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	var restored := MatchConfig.from_dict(cfg.to_dict())
+	assert_eq(restored.rng_seed, 42, "rng_seed трябва да се запази при to_dict/from_dict")
+
+
+func test_create_random_source_uses_config_seed() -> void:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 777
+	var rng := cfg.create_random_source()
+	assert_true(rng is SeededRandomSource,
+			"create_random_source() трябва да връща SeededRandomSource")
+	assert_eq(rng.get_state().get("seed"), 777,
+			"RNG seed трябва да съвпада с MatchConfig.rng_seed")
+
+
+func test_create_random_source_same_seed_is_deterministic() -> void:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 12345
+	var rng_a := cfg.create_random_source()
+	var rng_b := cfg.create_random_source()
+	for _i in 20:
+		assert_eq(rng_a.next_int(1, 6), rng_b.next_int(1, 6),
+				"еднакъв MatchConfig.rng_seed → еднаква RNG последователност")
+
+
+func test_create_random_source_different_seeds_diverge() -> void:
+	var cfg_a := MatchConfig.new()
+	cfg_a.rng_seed = 1
+	var cfg_b := MatchConfig.new()
+	cfg_b.rng_seed = 2
+	var rng_a := cfg_a.create_random_source()
+	var rng_b := cfg_b.create_random_source()
+	var same := true
+	for _i in 20:
+		if rng_a.next_int(0, 1000) != rng_b.next_int(0, 1000):
+			same = false
+			break
+	assert_false(same, "различни MatchConfig.rng_seed трябва да дават различни последователности")
+
+
+func test_restored_config_create_random_source_matches_original() -> void:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 99991
+	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"cow")
+	var restored := MatchConfig.from_dict(cfg.to_dict())
+	var rng_a := cfg.create_random_source()
+	var rng_b := restored.create_random_source()
+	for _i in 15:
+		assert_eq(rng_a.next_int(1, 6), rng_b.next_int(1, 6),
+				"десериализиран config трябва да възпроизвежда същия RNG")
 
 
 # ── Enum стойности ────────────────────────────────────────────────────────────
