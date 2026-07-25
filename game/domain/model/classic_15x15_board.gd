@@ -1,6 +1,6 @@
 class_name Classic15x15Board
 extends RefCounted
-## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#41).
+## Класическа 15×15 изометрична дъска като domain данни (Tasks #37–#43).
 ##
 ## Премества геометрията от scripts/ludo_board.gd в BoardDefinition.cells:
 ## всяка заета клетка носи стабилен cell_id (CellId формат "c_{col}_{row}"),
@@ -26,7 +26,10 @@ extends RefCounted
 ## Task #42: home_stretch_cells_for(player_id) дефинира 4 HOME клетките към
 ## центъра за всеки seat; build_player_definitions() събира пълните seats
 ## (spawn + loop индекси + home_stretch + base). create() ги попълва.
-## Маршрутите (build_player_route) — Task #43.
+##
+## Task #43: player_route_cell_ids_for(player_id) генерира пълния маршрут на seat
+## = main_loop (циклично от spawn до home_entry) + home_stretch. Същата логика
+## като BoardDefinition.build_player_route(); не включва CENTER.
 ##
 ## Layout (docs/V1_GAME_DESIGN.md §3.3, ludo_board.gd):
 ##   4× бази 2×2, кръстовидни рамене 3×5, 4 home колони по 4, център (7,7).
@@ -57,6 +60,10 @@ const HOME_STRETCH_CELLS_PER_PLAYER: int = 4
 
 ## Общ брой HOME клетки (4 seats × 4) — съвпада с CellType.HOME count в cells.
 const HOME_STRETCH_CELL_COUNT: int = 16
+
+## Дължина на пълния маршрут на seat: цялото main_loop + home stretch (без CENTER).
+## path_index 0 = spawn; последният индекс = последната HOME клетка преди финал.
+const PLAYER_ROUTE_LENGTH: int = MAIN_LOOP_LENGTH + HOME_STRETCH_CELLS_PER_PLAYER
 
 
 ## BoardDefinition с board_id classic_15x15, cells, main_loop и 4 seats.
@@ -373,7 +380,6 @@ static func home_entry_loop_index_for(player_id: StringName) -> int:
 
 
 ## Пълни PlayerBoardDefinition за четирите seats в ред PlayerId.ALL (Task #42).
-## Маршрутите от тези дефиниции се валидират в Task #43.
 static func build_player_definitions() -> Array:
 	var defs: Array = []
 	for player_id in PlayerId.ALL:
@@ -385,6 +391,56 @@ static func build_player_definitions() -> Array:
 				home_stretch_cells_for(player_id),
 				base_cells_for(player_id)))
 	return defs
+
+
+## Grid позиции на пълния маршрут на seat (Task #43):
+## main_loop от spawn до home_entry (циклично, включително) + home_stretch.
+## Редът съвпада с BoardDefinition.build_player_route / path_index семантиката.
+## При невалиден player_id → празен масив.
+static func player_route_grid_positions_for(player_id: StringName) -> Array[Vector2i]:
+	var positions: Array[Vector2i] = []
+	var start := start_loop_index_for(player_id)
+	var home_entry := home_entry_loop_index_for(player_id)
+	if start < 0 or home_entry < 0:
+		return positions
+	var loop := main_loop_grid_positions()
+	var loop_len := loop.size()
+	if loop_len == 0:
+		return positions
+	var i: int = start
+	while true:
+		positions.append(loop[i])
+		if i == home_entry:
+			break
+		i = (i + 1) % loop_len
+		if i == start:
+			break
+	positions.append_array(home_stretch_grid_positions_for(player_id))
+	return positions
+
+
+## Стабилни cell_id на пълния маршрут на seat (Task #43).
+## Размерът е PLAYER_ROUTE_LENGTH за валиден PlayerId.
+## При невалиден player_id → празен масив.
+static func player_route_cell_ids_for(player_id: StringName) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for pos in player_route_grid_positions_for(player_id):
+		ids.append(CellId.from_grid(pos.x, pos.y))
+	return ids
+
+
+## Индекс в маршрута на играча за cell_id, или -1 ако клетката не е на маршрута.
+static func player_route_index_of(player_id: StringName, cell_id: StringName) -> int:
+	var ids := player_route_cell_ids_for(player_id)
+	for i in ids.size():
+		if ids[i] == cell_id:
+			return i
+	return -1
+
+
+## True ако cell_id е част от пълния маршрут на дадения seat (main_loop отрязък или HOME).
+static func is_player_route_cell_of(player_id: StringName, cell_id: StringName) -> bool:
+	return player_route_index_of(player_id, cell_id) >= 0
 
 
 ## Логически тип на клетката в (col, row), или -1 ако позицията е празна.

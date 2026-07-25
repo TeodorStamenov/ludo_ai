@@ -8,7 +8,7 @@ extends TestCase
 ##   - Стабилни cell_id от Classic15x15Board.home_stretch_cells_for().
 ##   - Съвпадение с ludo_board.gd / CURRENT_YELLOW_BEHAVIOR §7 за жълтия.
 ##   - create() попълва валидни player_definitions за всички seats.
-## Маршрути — Task #43.
+## Маршрути (build_player_route / player_route_*_for) — Task #43 (отделни тестове).
 
 
 # ── Константи ─────────────────────────────────────────────────────────────────

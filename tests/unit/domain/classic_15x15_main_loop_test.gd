@@ -7,7 +7,7 @@ extends TestCase
 ##   - Затворена последователност от PATH + SPAWN cell_id.
 ##   - Редът съвпада с жълтия прототипен маршрут без home stretch.
 ##   - create() попълва BoardDefinition.main_loop.
-## home_stretch / player_definitions — Task #42 (покрити отделно); маршрути — Task #43.
+## home_stretch / player_definitions — Task #42; маршрути — Task #43 (покрити отделно).
 
 
 # ── Константи ─────────────────────────────────────────────────────────────────
