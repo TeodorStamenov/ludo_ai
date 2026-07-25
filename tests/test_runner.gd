@@ -16,6 +16,8 @@ extends SceneTree
 const TEST_FILES: Array[String] = [
 	# domain — нови тестове се добавят САМО тук
 	"res://tests/unit/domain/pawn_zone_test.gd",
+	"res://tests/unit/domain/match_phase_test.gd",
+	"res://tests/unit/domain/turn_phase_test.gd",
 	"res://tests/unit/domain/framework_sanity_test.gd",
 	"res://tests/unit/domain/seeded_rng_test.gd",
 	"res://tests/unit/domain/movement_rules_test.gd",
