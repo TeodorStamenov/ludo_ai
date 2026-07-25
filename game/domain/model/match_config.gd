@@ -41,10 +41,12 @@ const MIN_SEATS := 2
 const MAX_SEATS := 4
 
 ## Подразбиращи се активни seats по брой играчи.
-## 2P: срещуположни бази GREEN ↔ YELLOW (NW–SE).
-## 3P: три от четирите — GREEN, ORANGE, YELLOW (без CYAN).
-## 4P: всички места.
+## 2P: срещуположни бази GREEN ↔ YELLOW (NW–SE) — PlayerId.OPPOSITE_PAIR_GREEN_YELLOW.
+## Алтернативната 2P двойка: ORANGE ↔ CYAN (NE–SW) — ALTERNATE_SEATS_2P / Task #44.
+## 3P: три от четирите — GREEN, ORANGE, YELLOW (без CYAN) — PlayerId.TRIO_WITHOUT_CYAN / Task #45.
+## 4P: всички места — PlayerId.ALL / Task #46.
 const DEFAULT_SEATS_2P: Array[StringName] = [PlayerId.GREEN, PlayerId.YELLOW]
+const ALTERNATE_SEATS_2P: Array[StringName] = [PlayerId.ORANGE, PlayerId.CYAN]
 const DEFAULT_SEATS_3P: Array[StringName] = [
 	PlayerId.GREEN, PlayerId.ORANGE, PlayerId.YELLOW,
 ]
@@ -238,11 +240,88 @@ static func default_seats_for_count(count: int) -> Array[StringName]:
 
 
 ## True ако a и b са срещуположни бази (GREEN↔YELLOW или ORANGE↔CYAN).
+## Делегира към PlayerId — геометричният source of truth за seats.
 static func are_opposite_seats(a: StringName, b: StringName) -> bool:
-	return (a == PlayerId.GREEN and b == PlayerId.YELLOW) \
-			or (a == PlayerId.YELLOW and b == PlayerId.GREEN) \
-			or (a == PlayerId.ORANGE and b == PlayerId.CYAN) \
-			or (a == PlayerId.CYAN and b == PlayerId.ORANGE)
+	return PlayerId.are_opposite(a, b)
+
+
+## Двете валидни срещуположни двойки за 2P (копия; Task #44 / §3.3).
+static func opposite_seat_pairs() -> Array:
+	return [
+		DEFAULT_SEATS_2P.duplicate(),
+		ALTERNATE_SEATS_2P.duplicate(),
+	]
+
+
+## True ако player_ids е точно една валидна срещуположна двойка (редът няма значение).
+static func is_valid_two_player_seats(player_ids: Array) -> bool:
+	if player_ids.size() != 2:
+		return false
+	var a := StringName(player_ids[0])
+	var b := StringName(player_ids[1])
+	if not PlayerId.is_valid(a) or not PlayerId.is_valid(b):
+		return false
+	return are_opposite_seats(a, b)
+
+
+## Създава 2P MatchConfig със срещуположни бази (Task #44).
+## Празна/липсваща двойка → DEFAULT_SEATS_2P (GREEN↔YELLOW).
+## Невалидна двойка все пак се записва — is_valid() я отхвърля.
+static func create_two_player_opposite(p_seats: Array = []) -> MatchConfig:
+	var cfg := MatchConfig.new()
+	if p_seats.is_empty():
+		cfg.set_active_seats(DEFAULT_SEATS_2P)
+	else:
+		cfg.set_active_seats(p_seats)
+	return cfg
+
+
+## Четирите валидни 3P тройки (копия; Task #45 / §3.3).
+## Първата е DEFAULT_SEATS_3P (без CYAN).
+static func three_player_seat_trios() -> Array:
+	return PlayerId.three_player_trios()
+
+
+## True ако player_ids е точно три различни валидни PlayerId (редът няма значение).
+## Делегира към PlayerId — source of truth за seats (§3.3: кои да е три от четирите).
+static func is_valid_three_player_seats(player_ids: Array) -> bool:
+	return PlayerId.is_valid_three_player_trio(player_ids)
+
+
+## Създава 3P MatchConfig с три от четирите seats (Task #45).
+## Празна/липсваща тройка → DEFAULT_SEATS_3P (GREEN, ORANGE, YELLOW).
+## Невалидна тройка все пак се записва — is_valid() я отхвърля.
+static func create_three_player(p_seats: Array = []) -> MatchConfig:
+	var cfg := MatchConfig.new()
+	if p_seats.is_empty():
+		cfg.set_active_seats(DEFAULT_SEATS_3P)
+	else:
+		cfg.set_active_seats(p_seats)
+	return cfg
+
+
+## Единственият валиден 4P набор — всички seats (копие; Task #46 / §3.3).
+## Съвпада с DEFAULT_SEATS_4P / PlayerId.ALL.
+static func four_player_seat_set() -> Array[StringName]:
+	return PlayerId.all_seats()
+
+
+## True ако player_ids е точно четирите различни валидни PlayerId (редът няма значение).
+## Делегира към PlayerId — source of truth за seats (§3.3: при 4 — всички).
+static func is_valid_four_player_seats(player_ids: Array) -> bool:
+	return PlayerId.is_valid_four_player_set(player_ids)
+
+
+## Създава 4P MatchConfig с всички seats (Task #46).
+## Празна/липсващ набор → DEFAULT_SEATS_4P (GREEN, ORANGE, YELLOW, CYAN).
+## Невалиден набор все пак се записва — is_valid() го отхвърля.
+static func create_four_player(p_seats: Array = []) -> MatchConfig:
+	var cfg := MatchConfig.new()
+	if p_seats.is_empty():
+		cfg.set_active_seats(DEFAULT_SEATS_4P)
+	else:
+		cfg.set_active_seats(p_seats)
+	return cfg
 
 
 ## Създава MatchConfig с подразбиращите се активни места за 2/3/4 играчи.
