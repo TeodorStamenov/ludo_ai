@@ -12,6 +12,11 @@ on:
       - main
       - develop
 
+# Cancel any in-progress run on the same ref when a new one is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit-tests:
     name: Godot 4 headless unit tests
@@ -56,13 +61,40 @@ jobs:
           restore-keys: |
             godot-import-${{ env.GODOT_VERSION }}-
 
-      - name: Import project
+      # First pass discovers and imports all resources including GUT addon files.
+      - name: Import project (first pass)
         run: godot --headless --import 2>&1 || true
 
+      # Second pass ensures all class_name declarations (especially from GUT) are
+      # registered in .godot/global_script_class_cache.cfg. Without this,
+      # gut_cmdln.gd silently calls quit(0) before running any tests.
+      - name: Import project (second pass — register class_names)
+        run: godot --headless --import 2>&1 || true
+
+      # Fail early with a clear message if GUT classes are still missing after
+      # both import passes, rather than letting GUT exit 0 with zero tests run.
+      - name: Verify GUT classes are registered
+        shell: bash
+        run: |
+          CACHE_FILE=".godot/global_script_class_cache.cfg"
+          if [[ ! -f "$CACHE_FILE" ]]; then
+            echo "ERROR: $CACHE_FILE not found — import may have failed."
+            exit 1
+          fi
+          if ! grep -q "GutTest" "$CACHE_FILE"; then
+            echo "ERROR: GutTest class not found in $CACHE_FILE"
+            echo "Import did not register GUT's class_names. Re-run or check Godot output above."
+            exit 1
+          fi
+          echo "GUT classes verified in class cache."
+
+      # GUT CLI runs only tests/unit/domain/ as configured in .gutconfig.json.
+      # -glog=2 overrides the config log level to show each test result in CI.
       - name: Run domain tests (GUT CLI)
-        run: godot --headless -s addons/gut/gut_cmdln.gd 2>&1
+        run: godot --headless -s addons/gut/gut_cmdln.gd -glog=2
         timeout-minutes: 5
 
+      # Legacy runner covers the full suite: domain + application + platform + simulation.
       - name: Run full suite (legacy runner)
         run: godot --headless --script tests/test_runner.gd
         timeout-minutes: 10
