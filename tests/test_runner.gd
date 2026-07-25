@@ -27,8 +27,8 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/power_up_test.gd",
 	"res://tests/unit/domain/turn_rules_test.gd",
 	"res://tests/unit/domain/game_engine_contract_test.gd",
+	"res://tests/unit/domain/match_config_test.gd",
 	# application — съществуващи тестове за важна оркестрационна логика
-	"res://tests/unit/application/match_config_test.gd",
 	"res://tests/unit/application/event_queue_test.gd",
 	"res://tests/unit/application/ai_policy_test.gd",
 	"res://tests/unit/application/match_session_test.gd",

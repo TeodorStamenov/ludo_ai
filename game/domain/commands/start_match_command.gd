@@ -4,8 +4,8 @@ extends GameCommand
 ##
 ## Носи MatchConfig; GameEngine инициализира GameState от нея.
 
-var config = null  # MatchConfig — typed as Variant to avoid circular preload
+var config: MatchConfig = null
 
 
-func _init(p_config = null) -> void:
+func _init(p_config: MatchConfig = null) -> void:
 	config = p_config

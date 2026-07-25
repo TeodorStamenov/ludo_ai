@@ -24,7 +24,7 @@ func create(config: MatchConfig, state: GameState = null) -> MatchSession:
 	assert(config != null, "MatchFactory.create: config не може да е null")
 	assert(config.is_valid(), "MatchFactory.create: невалиден MatchConfig")
 
-	var rng := SeededRandomSource.new(config.rng_seed)
+	var rng := config.create_random_source()
 	var controllers := _build_controllers(config)
 	var event_queue := EventQueue.new()
 	var session := MatchSession.new()

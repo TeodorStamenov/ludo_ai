@@ -6,9 +6,9 @@ board_runner.py — Dev + Review автоматизиран pipeline за Cosy L
 
 Поток за всяка задача в «Ready»:
   Ready → In progress
-        → [Dev агент: claude-sonnet-4-6]
+        → [Dev агент: grok-4.5]
         → In review
-        → [Review агент: claude-sonnet-5-thinking-high]
+        → [Review агент: grok-4.5]
              ↓ PASS                  ↓ FAIL (до 3 пъти)
          commit + push           ↩ In progress → Dev агент с feedback
          Done                         ↓ след 3 FAIL
@@ -93,8 +93,8 @@ _load_dotenv()
 
 REPO_OWNER = "TeodorStamenov"
 
-DEV_MODEL    = "claude-sonnet-4-6"
-REVIEW_MODEL = "claude-sonnet-5"
+DEV_MODEL    = "grok-4.5"
+REVIEW_MODEL = "grok-4.5"
 MAX_RETRIES  = 3
 
 STATUS_READY       = "Ready"
@@ -475,41 +475,68 @@ _QUALITY_RULES = """\
 
 # ── Cursor SDK агенти ──────────────────────────────────────────────────────────
 
+_AGENT_BRIDGE_RETRIES = 3
+
+
 def _run_agent(prompt: str, model: str, api_key: str, label: str) -> str:
     """
     Общ wrapper за Agent.prompt(). Връща result.result (финален текст).
     Хвърля RuntimeError при провал.
+    При мъртъв bridge (WinError 10061 и др. повторими грешки) рестартира
+    default client-а и опитва отново.
     """
     try:
-        from cursor_sdk import Agent, AgentOptions, LocalAgentOptions, CursorAgentError
+        from cursor_sdk import (
+            Agent, AgentOptions, LocalAgentOptions, CursorAgentError,
+            close_default_client,
+        )
     except ImportError:
         raise RuntimeError(
             "cursor-sdk не е инсталиран.\n"
             "Изпълни: source tools/.venv/bin/activate && pip install -r tools/requirements.txt"
         )
 
-    from cursor_sdk import Agent, AgentOptions, LocalAgentOptions, CursorAgentError
-
     print(f"  → {label} ({model})…")
-    try:
-        result = Agent.prompt(
-            prompt,
-            AgentOptions(
-                api_key=api_key,
-                model=model,
-                local=LocalAgentOptions(cwd=str(PROJECT_ROOT)),
-            ),
-        )
-    except CursorAgentError as err:
-        raise RuntimeError(
-            f"{label} не стартира: {err.message} [повторим={err.is_retryable}]"
-        )
+    last_err: Exception | None = None
 
-    if result.status == "error":
-        raise RuntimeError(f"{label} върна грешка (run_id={result.id}).")
+    for attempt in range(1, _AGENT_BRIDGE_RETRIES + 1):
+        try:
+            result = Agent.prompt(
+                prompt,
+                AgentOptions(
+                    api_key=api_key,
+                    model=model,
+                    local=LocalAgentOptions(cwd=str(PROJECT_ROOT)),
+                ),
+            )
+        except CursorAgentError as err:
+            last_err = err
+            if err.is_retryable and attempt < _AGENT_BRIDGE_RETRIES:
+                print(
+                    f"  ⚠ Bridge грешка (опит {attempt}/{_AGENT_BRIDGE_RETRIES}): "
+                    f"{err.message}"
+                )
+                print("  → Рестартирам bridge и опитвам отново…")
+                try:
+                    close_default_client()
+                except Exception:
+                    pass
+                time.sleep(2)
+                continue
+            raise RuntimeError(
+                f"{label} не стартира: {err.message} [повторим={err.is_retryable}]"
+            )
 
-    print(f"  ✓ {label} завърши — статус: {result.status}")
-    return (result.result or "").strip()
+        if result.status == "error":
+            raise RuntimeError(
+                f"{label} върна грешка (run_id={result.id}).\n"
+                f"  Детайл: {(result.result or '').strip() or '(празен result)'}"
+            )
+
+        print(f"  ✓ {label} завърши — статус: {result.status}")
+        return (result.result or "").strip()
+
+    raise RuntimeError(f"{label} не стартира след {_AGENT_BRIDGE_RETRIES} опита: {last_err}")
 
 
 def run_dev_agent(item: dict, api_key: str, review_feedback: str | None = None) -> None:
