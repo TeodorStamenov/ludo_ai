@@ -43,7 +43,7 @@ source tools/.venv/bin/activate
 pip install -r tools/requirements.txt
 
 # 3. GitHub CLI с project scopes
-gh auth refresh -s read:project,write:project
+gh auth refresh -s read:project -s project
 ```
 
 ---

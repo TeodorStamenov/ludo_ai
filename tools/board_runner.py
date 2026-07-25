@@ -27,7 +27,7 @@ board_runner.py — Dev + Review автоматизиран pipeline за Cosy L
   python3.12 -m venv tools/.venv
   source tools/.venv/bin/activate
   pip install -r tools/requirements.txt
-  gh auth refresh -s read:project,write:project
+  gh auth refresh -s read:project -s project
 
 СЛЕД ПРИКЛЮЧВАНЕ:
   Провери бранча и отвори PR / мърджни към main.
@@ -45,18 +45,24 @@ from pathlib import Path
 
 # Ако скриптът не се изпълнява от venv Python-а, рестартира себе си с него.
 def _ensure_venv():
+    venv_root = Path(__file__).resolve().parent / ".venv"
+    # Windows: Scripts\python.exe  /  Unix: bin/python
+    venv_python = (
+        venv_root / "Scripts" / "python.exe"
+        if sys.platform == "win32"
+        else venv_root / "bin" / "python"
+    )
     if sys.version_info < (3, 10):
-        venv_python = Path(__file__).resolve().parent / ".venv" / "bin" / "python"
         if venv_python.exists():
-            os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+            sys.exit(subprocess.run([str(venv_python)] + sys.argv).returncode)
         sys.exit(
             "ГРЕШКА: Нужен е Python 3.10+. Текуща версия: %s\n"
             "Създай venv: python3.12 -m venv tools/.venv && "
             "pip install -r tools/requirements.txt" % sys.version
         )
-    venv_python = Path(__file__).resolve().parent / ".venv" / "bin" / "python"
     if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
-        os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+        # os.execv не е надеждно на Windows — ползваме subprocess + exit
+        sys.exit(subprocess.run([str(venv_python)] + sys.argv).returncode)
 
 _ensure_venv()
 
@@ -70,7 +76,7 @@ def _load_dotenv() -> None:
         load_dotenv(env_file, override=False)
     except ImportError:
         # Ръчен fallback ако python-dotenv не е инсталиран
-        with open(env_file) as f:
+        with open(env_file, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
@@ -109,12 +115,12 @@ def gh_graphql(query: str, variables: dict | None = None) -> dict:
     body = json.dumps({"query": query, "variables": variables or {}})
     result = subprocess.run(
         ["gh", "api", "graphql", "--input", "-"],
-        input=body, capture_output=True, text=True,
+        input=body, capture_output=True, text=True, encoding="utf-8",
     )
     if result.returncode != 0:
         raise RuntimeError(
             f"gh api graphql грешка (exit {result.returncode}):\n{result.stderr.strip()}\n"
-            "Провери: gh auth refresh -s read:project,write:project"
+            "Провери: gh auth refresh -s read:project -s project"
         )
     data = json.loads(result.stdout)
     if "errors" in data:
@@ -254,7 +260,7 @@ MAIN_BRANCH = "main"
 def current_branch() -> str:
     r = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=PROJECT_ROOT, capture_output=True, text=True, check=True,
+        cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", check=True,
     )
     return r.stdout.strip()
 
@@ -269,7 +275,7 @@ def checkout_main_and_pull() -> None:
     # Uncommitted промени блокират checkout — проверяваме първо
     status = subprocess.run(
         ["git", "status", "--porcelain"],
-        cwd=PROJECT_ROOT, capture_output=True, text=True, check=True,
+        cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", check=True,
     )
     if status.stdout.strip():
         raise RuntimeError(
@@ -289,7 +295,7 @@ def checkout_main_and_pull() -> None:
     print(f"  git pull origin {MAIN_BRANCH}…")
     result = subprocess.run(
         ["git", "pull", "origin", MAIN_BRANCH],
-        cwd=PROJECT_ROOT, capture_output=True, text=True,
+        cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8",
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -306,7 +312,7 @@ def create_branch(issue_numbers: list[int]) -> str:
 
     r = subprocess.run(
         ["git", "checkout", "-b", branch],
-        cwd=PROJECT_ROOT, capture_output=True, text=True,
+        cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8",
     )
     if r.returncode != 0:
         # Бранчът вероятно вече съществува — превключи
@@ -338,7 +344,7 @@ def git_has_staged_changes() -> bool:
 def get_staged_files() -> list[str]:
     r = subprocess.run(
         ["git", "diff", "--staged", "--name-status"],
-        cwd=PROJECT_ROOT, capture_output=True, text=True, check=True,
+        cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", check=True,
     )
     lines = []
     for line in r.stdout.splitlines():
@@ -376,7 +382,7 @@ def run_test_suite() -> tuple[bool, str]:
     try:
         result = subprocess.run(
             [str(GODOT_BIN), "--headless", "--script", TEST_SCRIPT],
-            cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=120,
+            cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120,
         )
     except subprocess.TimeoutExpired:
         return False, "ГРЕШКА: тест suite надхвърли timeout от 120 секунди."
