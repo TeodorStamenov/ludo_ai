@@ -47,6 +47,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/dice_rolled_event_test.gd",
 	"res://tests/unit/domain/valid_moves_changed_event_test.gd",
 	"res://tests/unit/domain/pawn_moved_event_test.gd",
+	"res://tests/unit/domain/pawn_exited_base_event_test.gd",
 	"res://tests/unit/domain/match_config_test.gd",
 	"res://tests/unit/domain/match_config_serialization_test.gd",
 	"res://tests/unit/domain/match_config_validator_test.gd",

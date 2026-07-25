@@ -233,6 +233,18 @@ func test_pawn_moved_event_is_domain_event() -> void:
 	assert_true(event.is_valid())
 
 
+func test_pawn_exited_base_event_is_domain_event() -> void:
+	var event := PawnExitedBaseEvent.create_exited(
+			PawnId.for_player(PlayerId.YELLOW, 0),
+			CellId.from_grid(13, 13),
+			Classic15x15Board.spawn_cell_for(PlayerId.YELLOW))
+	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_EXITED_BASE)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
+
+
 func test_pawn_captured_event_is_domain_event() -> void:
 	var event := PawnCapturedEvent.new()
 	assert_true(event is DomainEvent)
