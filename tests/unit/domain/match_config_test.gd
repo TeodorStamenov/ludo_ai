@@ -2,10 +2,12 @@ class_name MatchConfigTest
 extends TestCase
 ## Unit тестове за MatchConfig като domain value object.
 ##
-## Покрива (docs/V1_ARCHITECTURE.md, раздел 5.1, 9 и 12):
+## Покрива (docs/V1_ARCHITECTURE.md, раздел 5.1, 9 и 12;
+##          docs/V1_GAME_DESIGN.md §3.3 / §8.2):
 ##   - Правилни стойности по подразбиране.
 ##   - schema_version: константа, сериализация, миграция N→N+1, валидация.
 ##   - Всички enum стойности (Mode, ControllerType, AIDifficulty).
+##   - Конфигурация за 2/3/4 активни места (PlayerId seats).
 ##   - Сериализация/десериализация (to_dict / from_dict).
 ##   - Валидационни правила.
 ##   - Кампанийна конфигурация (campaign_level_id, level_modifiers, pre_match_bonus).
@@ -105,8 +107,8 @@ func test_explicit_rng_seed_zero_is_allowed() -> void:
 func test_rng_seed_zero_round_trip_preserves_zero() -> void:
 	var cfg := MatchConfig.new()
 	cfg.rng_seed = 0
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"dog")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog")
 	var restored := MatchConfig.from_dict(cfg.to_dict())
 	assert_eq(restored.rng_seed, 0, "изричен seed 0 трябва да се запази при round-trip")
 
@@ -116,8 +118,8 @@ func test_from_dict_explicit_zero_seed_is_not_replaced_by_auto() -> void:
 		"schema_version": MatchConfig.SCHEMA_VERSION,
 		"rng_seed": 0,
 		"seats": [
-			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
-			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+			{"player_id": "green", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "yellow", "controller_type": 1, "animal_id": "dog"},
 		],
 	}
 	var cfg := MatchConfig.from_dict(data)
@@ -127,8 +129,8 @@ func test_from_dict_explicit_zero_seed_is_not_replaced_by_auto() -> void:
 func test_rng_seed_round_trip_preserves_arbitrary_value() -> void:
 	var cfg := MatchConfig.new()
 	cfg.rng_seed = 42
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"rabbit")
 	var restored := MatchConfig.from_dict(cfg.to_dict())
 	assert_eq(restored.rng_seed, 42, "rng_seed трябва да се запази при to_dict/from_dict")
 
@@ -171,8 +173,8 @@ func test_create_random_source_different_seeds_diverge() -> void:
 func test_restored_config_create_random_source_matches_original() -> void:
 	var cfg := MatchConfig.new()
 	cfg.rng_seed = 99991
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"cow")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"cow")
 	var restored := MatchConfig.from_dict(cfg.to_dict())
 	var rng_a := cfg.create_random_source()
 	var rng_b := restored.create_random_source()
@@ -234,17 +236,17 @@ func test_seat_config_default_ai_difficulty_is_easy() -> void:
 
 func test_add_seat_human() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
 	assert_eq(cfg.seats.size(), 1)
 	var seat: MatchConfig.SeatConfig = cfg.seats[0]
-	assert_eq(seat.player_id, &"p1")
+	assert_eq(seat.player_id, PlayerId.GREEN)
 	assert_eq(seat.controller_type, MatchConfig.ControllerType.HUMAN)
 	assert_eq(seat.animal_id, &"pig")
 
 
 func test_add_seat_ai_with_difficulty() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"ai1", MatchConfig.ControllerType.AI, &"rabbit", MatchConfig.AIDifficulty.HARD)
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit", MatchConfig.AIDifficulty.HARD)
 	var seat: MatchConfig.SeatConfig = cfg.seats[0]
 	assert_eq(seat.controller_type, MatchConfig.ControllerType.AI)
 	assert_eq(seat.ai_difficulty, MatchConfig.AIDifficulty.HARD)
@@ -252,40 +254,157 @@ func test_add_seat_ai_with_difficulty() -> void:
 
 func test_add_seat_remote() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"remote1", MatchConfig.ControllerType.REMOTE, &"dog")
+	cfg.add_seat(PlayerId.CYAN, MatchConfig.ControllerType.REMOTE, &"dog")
 	var seat: MatchConfig.SeatConfig = cfg.seats[0]
 	assert_eq(seat.controller_type, MatchConfig.ControllerType.REMOTE)
+
+
+# ── Активни места 2/3/4 (docs/V1_GAME_DESIGN.md §3.3) ─────────────────────────
+
+func test_min_max_seats_constants() -> void:
+	assert_eq(MatchConfig.MIN_SEATS, 2, "MIN_SEATS трябва да е 2")
+	assert_eq(MatchConfig.MAX_SEATS, 4, "MAX_SEATS трябва да е 4")
+
+
+func test_is_supported_seat_count() -> void:
+	assert_false(MatchConfig.is_supported_seat_count(1), "1 не е поддържан")
+	assert_true(MatchConfig.is_supported_seat_count(2), "2 е поддържан")
+	assert_true(MatchConfig.is_supported_seat_count(3), "3 е поддържан")
+	assert_true(MatchConfig.is_supported_seat_count(4), "4 е поддържан")
+	assert_false(MatchConfig.is_supported_seat_count(5), "5 не е поддържан")
+
+
+func test_default_seats_2p_are_opposite() -> void:
+	var seats := MatchConfig.default_seats_for_count(2)
+	assert_eq(seats.size(), 2, "2P трябва да има 2 seats")
+	assert_eq(seats[0], PlayerId.GREEN)
+	assert_eq(seats[1], PlayerId.YELLOW)
+	assert_true(MatchConfig.are_opposite_seats(seats[0], seats[1]),
+			"2P default трябва да са срещуположни")
+
+
+func test_default_seats_3p_are_three_of_four() -> void:
+	var seats := MatchConfig.default_seats_for_count(3)
+	assert_eq(seats.size(), 3, "3P трябва да има 3 seats")
+	assert_eq(seats[0], PlayerId.GREEN)
+	assert_eq(seats[1], PlayerId.ORANGE)
+	assert_eq(seats[2], PlayerId.YELLOW)
+	assert_false(seats.has(PlayerId.CYAN), "3P default пропуска CYAN")
+
+
+func test_default_seats_4p_are_all() -> void:
+	var seats := MatchConfig.default_seats_for_count(4)
+	assert_eq(seats.size(), 4, "4P трябва да има 4 seats")
+	for id in PlayerId.ALL:
+		assert_true(seats.has(id), "4P default трябва да включва %s" % id)
+
+
+func test_default_seats_for_unsupported_count_is_empty() -> void:
+	assert_eq(MatchConfig.default_seats_for_count(1).size(), 0)
+	assert_eq(MatchConfig.default_seats_for_count(5).size(), 0)
+
+
+func test_are_opposite_seats_both_pairs() -> void:
+	assert_true(MatchConfig.are_opposite_seats(PlayerId.GREEN, PlayerId.YELLOW))
+	assert_true(MatchConfig.are_opposite_seats(PlayerId.YELLOW, PlayerId.GREEN))
+	assert_true(MatchConfig.are_opposite_seats(PlayerId.ORANGE, PlayerId.CYAN))
+	assert_true(MatchConfig.are_opposite_seats(PlayerId.CYAN, PlayerId.ORANGE))
+	assert_false(MatchConfig.are_opposite_seats(PlayerId.GREEN, PlayerId.ORANGE),
+			"съседни бази не са срещуположни")
+	assert_false(MatchConfig.are_opposite_seats(PlayerId.GREEN, PlayerId.CYAN),
+			"съседни бази не са срещуположни")
+
+
+func test_create_with_seat_count_2() -> void:
+	var cfg := MatchConfig.create_with_seat_count(2)
+	assert_eq(cfg.get_active_seat_count(), 2)
+	assert_eq(cfg.get_active_player_ids(), MatchConfig.DEFAULT_SEATS_2P)
+	assert_true(cfg.is_valid(), "create_with_seat_count(2) трябва да е валиден")
+
+
+func test_create_with_seat_count_3() -> void:
+	var cfg := MatchConfig.create_with_seat_count(3)
+	assert_eq(cfg.get_active_seat_count(), 3)
+	assert_eq(cfg.get_active_player_ids(), MatchConfig.DEFAULT_SEATS_3P)
+	assert_true(cfg.is_valid(), "create_with_seat_count(3) трябва да е валиден")
+
+
+func test_create_with_seat_count_4() -> void:
+	var cfg := MatchConfig.create_with_seat_count(4)
+	assert_eq(cfg.get_active_seat_count(), 4)
+	assert_eq(cfg.get_active_player_ids(), MatchConfig.DEFAULT_SEATS_4P)
+	assert_true(cfg.is_valid(), "create_with_seat_count(4) трябва да е валиден")
+
+
+func test_create_with_seat_count_unsupported_is_invalid() -> void:
+	var cfg := MatchConfig.create_with_seat_count(1)
+	assert_eq(cfg.get_active_seat_count(), 0)
+	assert_false(cfg.is_valid())
+
+
+func test_set_active_seats_replaces_existing() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.AI, &"dog")
+	cfg.set_active_seats([PlayerId.ORANGE, PlayerId.CYAN])
+	assert_eq(cfg.get_active_seat_count(), 2)
+	assert_eq(cfg.get_active_player_ids()[0], PlayerId.ORANGE)
+	assert_eq(cfg.get_active_player_ids()[1], PlayerId.CYAN)
+	assert_eq(cfg.seats[0].controller_type, MatchConfig.ControllerType.HUMAN,
+			"set_active_seats ползва HUMAN по подразбиране")
+	assert_true(cfg.is_valid(), "ORANGE↔CYAN е валиден 2P config")
+
+
+func test_has_active_seat() -> void:
+	var cfg := MatchConfig.create_with_seat_count(3)
+	assert_true(cfg.has_active_seat(PlayerId.GREEN))
+	assert_true(cfg.has_active_seat(PlayerId.ORANGE))
+	assert_true(cfg.has_active_seat(PlayerId.YELLOW))
+	assert_false(cfg.has_active_seat(PlayerId.CYAN))
+
+
+func test_clear_seats() -> void:
+	var cfg := MatchConfig.create_with_seat_count(4)
+	cfg.clear_seats()
+	assert_eq(cfg.get_active_seat_count(), 0)
+	assert_false(cfg.is_valid())
+
+
+func test_active_seats_round_trip_preserves_player_ids() -> void:
+	var cfg := MatchConfig.create_with_seat_count(3)
+	var restored := MatchConfig.from_dict(cfg.to_dict())
+	assert_eq(restored.get_active_player_ids(), cfg.get_active_player_ids())
+	assert_true(restored.is_valid())
 
 
 # ── Валидация ─────────────────────────────────────────────────────────────────
 
 func test_valid_two_player_config() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"rabbit")
 	assert_true(cfg.is_valid(), "2-player config трябва да е валиден")
 
 
 func test_valid_three_player_config() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit", MatchConfig.AIDifficulty.MEDIUM)
-	cfg.add_seat(&"p3", MatchConfig.ControllerType.AI, &"dog", MatchConfig.AIDifficulty.EASY)
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit", MatchConfig.AIDifficulty.MEDIUM)
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog", MatchConfig.AIDifficulty.EASY)
 	assert_true(cfg.is_valid(), "3-player config трябва да е валиден")
 
 
 func test_valid_four_player_config() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
-	cfg.add_seat(&"p3", MatchConfig.ControllerType.AI, &"dog")
-	cfg.add_seat(&"p4", MatchConfig.ControllerType.REMOTE, &"cow")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog")
+	cfg.add_seat(PlayerId.CYAN, MatchConfig.ControllerType.REMOTE, &"cow")
 	assert_true(cfg.is_valid(), "4-player config трябва да е валиден")
 
 
 func test_invalid_fewer_than_two_seats() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
 	assert_false(cfg.is_valid(), "1 seat трябва да е невалиден")
 
 
@@ -296,9 +415,30 @@ func test_invalid_more_than_four_seats() -> void:
 	assert_false(cfg.is_valid(), "5 seats трябва да е невалиден")
 
 
-func test_invalid_empty_player_id() -> void:
+func test_invalid_unknown_player_id() -> void:
 	var cfg := MatchConfig.new()
 	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	assert_false(cfg.is_valid(), "player_id извън PlayerId.ALL трябва да е невалиден")
+
+
+func test_invalid_adjacent_two_player_seats() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.AI, &"rabbit")
+	assert_false(cfg.is_valid(), "2P със съседни бази трябва да е невалиден")
+
+
+func test_valid_alternate_opposite_two_player_seats() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(PlayerId.ORANGE, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.CYAN, MatchConfig.ControllerType.AI, &"dog")
+	assert_true(cfg.is_valid(), "ORANGE↔CYAN е валиден 2P config")
+
+
+func test_invalid_empty_player_id() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
 	var bad_seat := MatchConfig.SeatConfig.new()
 	bad_seat.player_id = &""
 	bad_seat.controller_type = MatchConfig.ControllerType.HUMAN
@@ -309,23 +449,23 @@ func test_invalid_empty_player_id() -> void:
 
 func test_invalid_duplicate_player_id() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"same", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"same", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.AI, &"rabbit")
 	assert_false(cfg.is_valid(), "дублиран player_id трябва да е невалиден")
 
 
 func test_invalid_empty_animal_id() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.HUMAN, &"")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.HUMAN, &"")
 	assert_false(cfg.is_valid(), "празен animal_id трябва да е невалиден")
 
 
 func test_invalid_controller_type_out_of_range() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
 	var bad_seat := MatchConfig.SeatConfig.new()
-	bad_seat.player_id = &"p2"
+	bad_seat.player_id = PlayerId.YELLOW
 	bad_seat.controller_type = 99
 	bad_seat.animal_id = &"rabbit"
 	cfg.seats.append(bad_seat)
@@ -334,9 +474,9 @@ func test_invalid_controller_type_out_of_range() -> void:
 
 func test_invalid_ai_difficulty_out_of_range_high() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
 	var bad_seat := MatchConfig.SeatConfig.new()
-	bad_seat.player_id = &"p2"
+	bad_seat.player_id = PlayerId.YELLOW
 	bad_seat.controller_type = MatchConfig.ControllerType.AI
 	bad_seat.animal_id = &"rabbit"
 	bad_seat.ai_difficulty = 99
@@ -347,8 +487,8 @@ func test_invalid_ai_difficulty_out_of_range_high() -> void:
 func test_invalid_mode_out_of_range() -> void:
 	var cfg := MatchConfig.new()
 	cfg.mode = 99
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"rabbit")
 	assert_false(cfg.is_valid(), "mode извън [0,1] трябва да е невалиден")
 
 
@@ -393,8 +533,8 @@ func test_to_dict_writes_schema_version() -> void:
 
 func test_schema_version_round_trip() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"rabbit")
 	var restored := MatchConfig.from_dict(cfg.to_dict())
 	assert_eq(restored.schema_version, MatchConfig.SCHEMA_VERSION,
 			"round-trip трябва да запази schema_version")
@@ -404,8 +544,8 @@ func test_from_dict_missing_schema_version_migrates_to_current() -> void:
 	var minimal := {
 		"mode": MatchConfig.Mode.FREE_PLAY,
 		"seats": [
-			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
-			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+			{"player_id": "green", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "yellow", "controller_type": 1, "animal_id": "dog"},
 		],
 	}
 	var cfg := MatchConfig.from_dict(minimal)
@@ -418,8 +558,8 @@ func test_from_dict_schema_version_zero_migrates_to_current() -> void:
 	var data := {
 		"schema_version": 0,
 		"seats": [
-			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
-			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+			{"player_id": "green", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "yellow", "controller_type": 1, "animal_id": "dog"},
 		],
 	}
 	var cfg := MatchConfig.from_dict(data)
@@ -449,8 +589,8 @@ func test_from_dict_future_schema_version_is_preserved_but_invalid() -> void:
 	var data := {
 		"schema_version": future,
 		"seats": [
-			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
-			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+			{"player_id": "green", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "yellow", "controller_type": 1, "animal_id": "dog"},
 		],
 	}
 	var cfg := MatchConfig.from_dict(data)
@@ -462,8 +602,8 @@ func test_from_dict_future_schema_version_is_preserved_but_invalid() -> void:
 
 func test_invalid_when_schema_version_tampered() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"rabbit")
 	assert_true(cfg.is_valid(), "precondition: валиден config")
 	cfg.schema_version = 0
 	assert_false(cfg.is_valid(),
@@ -474,8 +614,8 @@ func test_invalid_when_schema_version_tampered() -> void:
 
 func test_to_dict_contains_all_schema_keys() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"rabbit")
 	var d := cfg.to_dict()
 	assert_true(d.has("schema_version"), "to_dict трябва да съдържа schema_version")
 	assert_true(d.has("mode"), "to_dict трябва да съдържа mode")
@@ -490,7 +630,7 @@ func test_to_dict_contains_all_schema_keys() -> void:
 
 func test_seat_to_dict_contains_all_keys() -> void:
 	var seat := MatchConfig.SeatConfig.new()
-	seat.player_id = &"p1"
+	seat.player_id = PlayerId.GREEN
 	seat.controller_type = MatchConfig.ControllerType.AI
 	seat.ai_difficulty = MatchConfig.AIDifficulty.MEDIUM
 	seat.animal_id = &"cow"
@@ -503,12 +643,12 @@ func test_seat_to_dict_contains_all_keys() -> void:
 
 func test_seat_from_dict_round_trip() -> void:
 	var seat := MatchConfig.SeatConfig.new()
-	seat.player_id = &"p_green"
+	seat.player_id = PlayerId.GREEN
 	seat.controller_type = MatchConfig.ControllerType.AI
 	seat.ai_difficulty = MatchConfig.AIDifficulty.MEDIUM
 	seat.animal_id = &"cow"
 	var restored := MatchConfig.SeatConfig.from_dict(seat.to_dict())
-	assert_eq(restored.player_id, &"p_green")
+	assert_eq(restored.player_id, PlayerId.GREEN)
 	assert_eq(restored.controller_type, MatchConfig.ControllerType.AI)
 	assert_eq(restored.ai_difficulty, MatchConfig.AIDifficulty.MEDIUM)
 	assert_eq(restored.animal_id, &"cow")
@@ -523,8 +663,8 @@ func test_campaign_config_round_trip() -> void:
 	cfg.level_modifiers = ["double_gifts"]
 	cfg.pre_match_bonus = {"type": "shield", "pawn_index": 0}
 	cfg.rng_seed = 99999
-	cfg.add_seat(&"human", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"ai_easy", MatchConfig.ControllerType.AI, &"dog", MatchConfig.AIDifficulty.EASY)
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog", MatchConfig.AIDifficulty.EASY)
 
 	var restored := MatchConfig.from_dict(cfg.to_dict())
 
@@ -541,8 +681,8 @@ func test_campaign_config_round_trip() -> void:
 
 func test_from_dict_missing_optional_fields_use_defaults() -> void:
 	var minimal := {"seats": [
-		{"player_id": "p1", "controller_type": 0, "ai_difficulty": 0, "animal_id": "pig"},
-		{"player_id": "p2", "controller_type": 0, "ai_difficulty": 0, "animal_id": "dog"},
+		{"player_id": "green", "controller_type": 0, "ai_difficulty": 0, "animal_id": "pig"},
+		{"player_id": "yellow", "controller_type": 0, "ai_difficulty": 0, "animal_id": "dog"},
 	]}
 	var cfg := MatchConfig.from_dict(minimal)
 	assert_eq(cfg.schema_version, MatchConfig.SCHEMA_VERSION, "default schema_version след миграция")
@@ -558,9 +698,9 @@ func test_from_dict_missing_optional_fields_use_defaults() -> void:
 func test_from_dict_ignores_non_dictionary_seat_entries() -> void:
 	var data := {
 		"seats": [
-			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "green", "controller_type": 0, "animal_id": "pig"},
 			"not_a_dict",
-			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+			{"player_id": "yellow", "controller_type": 1, "animal_id": "dog"},
 		],
 	}
 	var cfg := MatchConfig.from_dict(data)
@@ -570,8 +710,8 @@ func test_from_dict_ignores_non_dictionary_seat_entries() -> void:
 func test_to_dict_produces_independent_copy_of_level_modifiers() -> void:
 	var cfg := MatchConfig.new()
 	cfg.level_modifiers = ["mod_a"]
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.HUMAN, &"dog")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.HUMAN, &"dog")
 	var d := cfg.to_dict()
 	d["level_modifiers"].append("injected")
 	assert_eq(cfg.level_modifiers.size(), 1, "to_dict не трябва да споделя референция към level_modifiers")
@@ -580,8 +720,8 @@ func test_to_dict_produces_independent_copy_of_level_modifiers() -> void:
 func test_to_dict_produces_independent_copy_of_pre_match_bonus() -> void:
 	var cfg := MatchConfig.new()
 	cfg.pre_match_bonus = {"type": "extra_turn"}
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.HUMAN, &"dog")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.HUMAN, &"dog")
 	var d := cfg.to_dict()
 	d["pre_match_bonus"]["injected"] = true
 	assert_false(cfg.pre_match_bonus.has("injected"),
@@ -592,8 +732,8 @@ func test_to_dict_produces_independent_copy_of_pre_match_bonus() -> void:
 
 func test_start_match_command_accepts_match_config() -> void:
 	var cfg := MatchConfig.new()
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"rabbit")
 	var cmd := StartMatchCommand.new(cfg)
 	assert_not_null(cmd.config, "StartMatchCommand трябва да пази config референция")
 	assert_true(cmd.config is MatchConfig,
@@ -603,7 +743,7 @@ func test_start_match_command_accepts_match_config() -> void:
 func test_start_match_command_config_rng_seed_is_accessible() -> void:
 	var cfg := MatchConfig.new()
 	cfg.rng_seed = 42
-	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
-	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"dog")
+	cfg.add_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(PlayerId.YELLOW, MatchConfig.ControllerType.AI, &"dog")
 	var cmd := StartMatchCommand.new(cfg)
 	assert_eq(cmd.config.rng_seed, 42, "rng_seed трябва да е достъпен от командата")

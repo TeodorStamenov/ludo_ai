@@ -11,10 +11,31 @@ extends RefCounted
 ## Схема:
 ##   schema_version, mode, board_id, theme_id,
 ##   seats[], campaign_level_id?, level_modifiers[], pre_match_bonus?, rng_seed
+##
+## Активни места (docs/V1_GAME_DESIGN.md §3.3 / §8.2):
+##   дъската има винаги 4 seats (PlayerId); мачът активира 2, 3 или 4 от тях.
+##   При 2 играчи — само срещуположни бази; при 3 — кои да е три от четирите;
+##   при 4 — всички.
 
 ## Текуща версия на сериализираната схема (docs/V1_ARCHITECTURE.md, §5.1 и §9).
 ## При промяна на формата: увеличава се и се добавя миграция N → N+1 в `_migrate_one_step`.
 const SCHEMA_VERSION := 1
+
+## Позволен брой активни места в мач (docs/V1_GAME_DESIGN.md §3.3).
+const MIN_SEATS := 2
+const MAX_SEATS := 4
+
+## Подразбиращи се активни seats по брой играчи.
+## 2P: срещуположни бази GREEN ↔ YELLOW (NW–SE).
+## 3P: три от четирите — GREEN, ORANGE, YELLOW (без CYAN).
+## 4P: всички места.
+const DEFAULT_SEATS_2P: Array[StringName] = [PlayerId.GREEN, PlayerId.YELLOW]
+const DEFAULT_SEATS_3P: Array[StringName] = [
+	PlayerId.GREEN, PlayerId.ORANGE, PlayerId.YELLOW,
+]
+const DEFAULT_SEATS_4P: Array[StringName] = [
+	PlayerId.GREEN, PlayerId.ORANGE, PlayerId.YELLOW, PlayerId.CYAN,
+]
 
 enum Mode { FREE_PLAY = 0, CAMPAIGN = 1 }
 enum ControllerType { HUMAN = 0, AI = 1, REMOTE = 2 }
@@ -115,16 +136,82 @@ func add_seat(p_player_id: StringName, p_controller_type: int, p_animal_id: Stri
 	seats.append(seat)
 
 
+## True ако count е 2, 3 или 4.
+static func is_supported_seat_count(count: int) -> bool:
+	return count >= MIN_SEATS and count <= MAX_SEATS
+
+
+## Подразбиращи се PlayerId за даден брой активни места.
+## При неподдържан count връща празен масив.
+static func default_seats_for_count(count: int) -> Array[StringName]:
+	match count:
+		2:
+			return DEFAULT_SEATS_2P.duplicate()
+		3:
+			return DEFAULT_SEATS_3P.duplicate()
+		4:
+			return DEFAULT_SEATS_4P.duplicate()
+		_:
+			return []
+
+
+## True ако a и b са срещуположни бази (GREEN↔YELLOW или ORANGE↔CYAN).
+static func are_opposite_seats(a: StringName, b: StringName) -> bool:
+	return (a == PlayerId.GREEN and b == PlayerId.YELLOW) \
+			or (a == PlayerId.YELLOW and b == PlayerId.GREEN) \
+			or (a == PlayerId.ORANGE and b == PlayerId.CYAN) \
+			or (a == PlayerId.CYAN and b == PlayerId.ORANGE)
+
+
+## Създава MatchConfig с подразбиращите се активни места за 2/3/4 играчи.
+## При неподдържан count връща config без seats (is_valid() == false).
+static func create_with_seat_count(count: int) -> MatchConfig:
+	var cfg := MatchConfig.new()
+	cfg.set_active_seats(default_seats_for_count(count))
+	return cfg
+
+
+func get_active_seat_count() -> int:
+	return seats.size()
+
+
+## PlayerId на активните места в реда, в който са конфигурирани.
+func get_active_player_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for seat: SeatConfig in seats:
+		ids.append(seat.player_id)
+	return ids
+
+
+func has_active_seat(player_id: StringName) -> bool:
+	for seat: SeatConfig in seats:
+		if seat.player_id == player_id:
+			return true
+	return false
+
+
+func clear_seats() -> void:
+	seats.clear()
+
+
+## Замества seats[] с нови активни места (controller HUMAN, animal pig по подразбиране).
+## Match Setup / Campaign попълват controller/difficulty/animal след това.
+func set_active_seats(player_ids: Array) -> void:
+	seats.clear()
+	for pid in player_ids:
+		add_seat(StringName(pid), ControllerType.HUMAN, &"pig")
+
+
 func is_valid() -> bool:
 	if not is_schema_supported(schema_version):
 		return false
 	if mode != Mode.FREE_PLAY and mode != Mode.CAMPAIGN:
 		return false
-	if seats.size() < 2 or seats.size() > 4:
+	if not is_supported_seat_count(seats.size()):
 		return false
 	var ids_seen: Dictionary = {}
 	for seat: SeatConfig in seats:
-		if seat.player_id.is_empty():
+		if not PlayerId.is_valid(seat.player_id):
 			return false
 		if seat.animal_id.is_empty():
 			return false
@@ -136,6 +223,10 @@ func is_valid() -> bool:
 		if seat.controller_type == ControllerType.AI:
 			if seat.ai_difficulty < AIDifficulty.EASY or seat.ai_difficulty > AIDifficulty.HARD:
 				return false
+	# При 2 играчи се изискват срещуположни бази (docs/V1_GAME_DESIGN.md §3.3).
+	if seats.size() == 2:
+		if not are_opposite_seats(seats[0].player_id, seats[1].player_id):
+			return false
 	return true
 
 
