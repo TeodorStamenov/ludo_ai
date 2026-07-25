@@ -35,8 +35,11 @@ extends RefCounted
 ##       остават непроменени).
 ##   PresentationRandomSource никога не се записва тук.
 ##
+## Persistence API (docs/V1_ARCHITECTURE.md §9 / §16.2 / Task #61):
+##   to_dict() / from_dict() — JSON-safe Dictionary snapshot;
+##   to_json() / from_json() — текст за active_match.json / resume / replay.
+##
 ## По-нататъшно задълбочаване (отделни roadmap задачи):
-##   - to_json / from_json (#61)
 ##   - стабилен state hash (#62)
 
 ## Текуща версия на сериализираната схема (docs/V1_ARCHITECTURE.md, §4.1 и §9).
@@ -632,6 +635,25 @@ static func from_dict(data: Dictionary) -> GameState:
 	else:
 		state.ranking = []
 	return state
+
+
+## Компактен JSON низ за active_match snapshot / resume / replay (§9, §16.2).
+func to_json() -> String:
+	return JSON.stringify(to_dict())
+
+
+## Десериализация от JSON текст. Връща null при невалиден JSON или не-Dictionary корен.
+## Мигрира schema_version < SCHEMA_VERSION чрез from_dict(); бъдещи версии се запазват.
+static func from_json(text: String) -> GameState:
+	if text.is_empty():
+		return null
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return null
+	var parsed: Variant = json.data
+	if not (parsed is Dictionary):
+		return null
+	return from_dict(parsed)
 
 
 ## Дълбоко копие през сериализация — без споделени референции.

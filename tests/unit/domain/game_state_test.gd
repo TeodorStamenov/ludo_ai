@@ -15,6 +15,7 @@ extends TestCase
 ##   - to_view() read-only snapshot за Presentation.
 ##   - is_valid() инварианти (§12: 2–4 играчи, nested модели).
 ##   - Сериализация to_dict / from_dict / equals / duplicate_state.
+##   - JSON to_json / from_json: виж game_state_serialization_test.gd (#61).
 
 
 # ── Архитектурни изисквания ───────────────────────────────────────────────────
