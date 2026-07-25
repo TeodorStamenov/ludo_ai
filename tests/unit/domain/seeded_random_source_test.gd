@@ -107,8 +107,8 @@ func test_get_state_contains_seed_and_state() -> void:
 	assert_true(state is Dictionary, "get_state трябва да връща Dictionary")
 	assert_true(state.has("seed"), "get_state трябва да съдържа ключ 'seed'")
 	assert_true(state.has("state"), "get_state трябва да съдържа ключ 'state'")
-	assert_eq(state["seed"], 555,
-			"get_state().seed трябва да съвпада с конструкторния seed")
+	assert_eq(state["seed"], "555",
+			"get_state().seed трябва да е String с конструкторния seed")
 
 
 func test_state_save_restore_continues_same_sequence() -> void:

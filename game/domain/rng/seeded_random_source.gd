@@ -11,8 +11,12 @@ extends RandomSource
 ## Вътрешно ползва Godot RandomNumberGenerator, изолиран в Domain —
 ## GameEngine никога не създава собствен RNG.
 ##
-## get_state() / set_state() сериализират seed + вътрешен state, за да
-## може MatchSession snapshot да възстанови точно същата последователност.
+## Export / restore (issue #31):
+##   get_state() → JSON-safe Dictionary {"seed", "state"} като String —
+##   независимо копие за GameState.rng_state / MatchSession.to_snapshot().
+##   String encoding е задължителен: JSON number е IEEE-754 double и губи
+##   точност за 64-bit RandomNumberGenerator.state (над 2^53).
+##   set_state(dict) ← приема String / int (и float за малки стойности).
 
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -36,17 +40,35 @@ func pick(array: Array) -> Variant:
 	return array[next_int(0, array.size() - 1)]
 
 
-## Връща сериализируемо представяне на текущото вътрешно RNG състояние.
-## Ключове: "seed" (начален seed) и "state" (текуща позиция в потока).
+## Експортира текущото RNG състояние като JSON-safe Dictionary.
+## Ключове: "seed" и "state" — String, за да оцелеят 64-bit стойности през JSON.
+## Връщаното копие е независимо — мутацията му не влияе на RNG.
 func get_state() -> Dictionary:
 	return {
-		"seed": _rng.seed,
-		"state": _rng.state,
+		"seed": str(_rng.seed),
+		"state": str(_rng.state),
 	}
 
 
-## Възстановява RNG от предишно записано get_state().
-## Важно: seed се задава преди state — задаването на seed нулира state.
+## Възстановява RNG от payload, върнат от get_state() (или JSON round-trip).
+## Важно: seed се задава преди state — задаването на seed нулира state в Godot.
 func set_state(state: Dictionary) -> void:
-	_rng.seed = int(state.get("seed", 0))
-	_rng.state = int(state.get("state", 0))
+	assert(state.has("seed"),
+			"SeededRandomSource.set_state: липсва задължителен ключ 'seed'")
+	assert(state.has("state"),
+			"SeededRandomSource.set_state: липсва задължителен ключ 'state'")
+	_rng.seed = _coerce_int(state["seed"])
+	_rng.state = _coerce_int(state["state"])
+
+
+## Нормализира seed/state от String (JSON-safe export), int или float.
+static func _coerce_int(value: Variant) -> int:
+	match typeof(value):
+		TYPE_STRING:
+			return (value as String).to_int()
+		TYPE_INT:
+			return value as int
+		TYPE_FLOAT:
+			return int(value)
+		_:
+			return int(value)

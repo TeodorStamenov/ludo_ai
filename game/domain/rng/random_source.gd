@@ -9,8 +9,9 @@ extends RefCounted
 ## Договор:
 ##   next_int(min, max) — цяло число в затворения интервал [min, max]
 ##   pick(array)        — елемент от непразен масив
-##   get_state()        — сериализируемо вътрешно състояние
-##   set_state(state)   — възстановяване от get_state()
+##   get_state()        — export на сериализируемо вътрешно състояние
+##                        (JSON-safe; за GameState.rng_state / snapshot)
+##   set_state(state)   — restore от get_state() (вкл. след JSON round-trip)
 ##
 ## Един seed от MatchConfig управлява:
 ##   - зар;
@@ -43,13 +44,13 @@ func pick(array: Array) -> Variant:
 	return array[0]
 
 
-## Връща сериализируемо представяне на текущото вътрешно RNG състояние.
+## Експортира сериализируемо JSON-safe представяне на RNG състоянието.
 ## Базовата имплементация няма състояние.
 func get_state() -> Dictionary:
 	return {}
 
 
-## Възстановява RNG от предишно записано get_state().
+## Възстановява RNG от предишно експортирано get_state() (вкл. JSON round-trip).
 ## Базовата имплементация е no-op.
 func set_state(_state: Dictionary) -> void:
 	pass

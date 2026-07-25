@@ -145,7 +145,7 @@ func test_create_random_source_uses_config_seed() -> void:
 	var rng := cfg.create_random_source()
 	assert_true(rng is SeededRandomSource,
 			"create_random_source() трябва да връща SeededRandomSource")
-	assert_eq(rng.get_state().get("seed"), 777,
+	assert_eq(str(rng.get_state().get("seed")), "777",
 			"RNG seed трябва да съвпада с MatchConfig.rng_seed")
 
 
