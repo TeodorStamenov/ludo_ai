@@ -8,9 +8,8 @@ extends RefCounted
 ## + неговият home_stretch (виж build_player_route).
 ##
 ## Не носи тема/текстура — визуалът идва от BoardThemeDefinition.
-## Пълната съгласуваност (spawn ∈ main_loop, типове клетки, индекси ↔ клетки)
-## живее в BoardDefinitionValidator (отделна задача); is_valid() проверява
-## само self-contained инварианти на полетата и вложените дефиниции.
+## Валидацията (self-contained + съгласуваност cells/main_loop/players)
+## е в BoardDefinitionValidator — is_valid() делегира към него.
 
 ## Подразбиращ се board_id — съвпада с MatchConfig.board_id по подразбиране.
 const DEFAULT_BOARD_ID: StringName = &"classic_15x15"
@@ -195,67 +194,11 @@ func build_player_route(player_id: StringName) -> Array[StringName]:
 	return route
 
 
-## True ако board_id, cells, main_loop и player_definitions са в договорните граници.
-## Не проверява съгласуваност между полетата (spawn ∈ loop, типове, …) — валидатор.
+## True ако дъската е в договорните граници (§4.6 / §3.3).
+## Делегира към BoardDefinitionValidator — за подробности ползвай
+## BoardDefinitionValidator.validate(self).
 func is_valid() -> bool:
-	if board_id == &"" or String(board_id).is_empty():
-		return false
-	if cells.is_empty():
-		return false
-	if main_loop.is_empty():
-		return false
-	if player_definitions.size() != SEAT_COUNT:
-		return false
-	if not _cells_valid():
-		return false
-	if not _main_loop_valid():
-		return false
-	if not _player_definitions_valid():
-		return false
-	return true
-
-
-func _cells_valid() -> bool:
-	for key in cells.keys():
-		var cell_id := StringName(key)
-		var cell := cells[key] as CellDefinition
-		if cell == null:
-			return false
-		if cell.cell_id != cell_id:
-			return false
-		if not cell.is_valid():
-			return false
-	return true
-
-
-func _main_loop_valid() -> bool:
-	var seen: Dictionary = {}
-	for cell in main_loop:
-		var cell_id := StringName(cell)
-		if not CellId.is_valid(cell_id):
-			return false
-		if seen.has(cell_id):
-			return false
-		seen[cell_id] = true
-	return true
-
-
-func _player_definitions_valid() -> bool:
-	var seen_players: Dictionary = {}
-	for item in player_definitions:
-		var def := item as PlayerBoardDefinition
-		if def == null:
-			return false
-		if not def.is_valid():
-			return false
-		if seen_players.has(def.player_id):
-			return false
-		seen_players[def.player_id] = true
-	# Точно четирите seat-а от PlayerId.ALL.
-	for player_id in PlayerId.ALL:
-		if not seen_players.has(player_id):
-			return false
-	return true
+	return BoardDefinitionValidator.is_valid(self)
 
 
 ## JSON-safe Dictionary: StringName → String; вложените defs чрез to_dict().

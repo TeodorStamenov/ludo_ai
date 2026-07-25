@@ -6,7 +6,7 @@ extends TestCase
 ##   - Domain: extends RefCounted, път game/domain/model/, без тема.
 ##   - Полета: board_id, cells, main_loop, player_definitions.
 ##   - Helpers: get_cell, get_player_definition, build_player_route.
-##   - is_valid() self-contained проверки (не пълния валидатор — Task #47).
+##   - is_valid() делегира към BoardDefinitionValidator (Task #47).
 ##   - Сериализация to_dict / from_dict / equals / duplicate_definition.
 ##   - Миниатюрна 4-seat дъска (не classic_15x15 данни — Tasks #37–#43).
 
@@ -362,10 +362,11 @@ func _expected_cell_count() -> int:
 func _mini_board() -> BoardDefinition:
 	var loop: Array = [&"c_6_12", &"c_6_11", &"c_6_10", &"c_7_12"]
 	var cells: Dictionary = {}
+	# Всеки seat има собствена SPAWN клетка върху main_loop (валидатор §4.6).
 	cells[&"c_6_12"] = CellDefinition.create_from_grid(6, 12, CellType.SPAWN)
-	cells[&"c_6_11"] = CellDefinition.create_from_grid(6, 11, CellType.PATH)
-	cells[&"c_6_10"] = CellDefinition.create_from_grid(6, 10, CellType.PATH)
-	cells[&"c_7_12"] = CellDefinition.create_from_grid(7, 12, CellType.PATH)
+	cells[&"c_6_11"] = CellDefinition.create_from_grid(6, 11, CellType.SPAWN)
+	cells[&"c_6_10"] = CellDefinition.create_from_grid(6, 10, CellType.SPAWN)
+	cells[&"c_7_12"] = CellDefinition.create_from_grid(7, 12, CellType.SPAWN)
 	cells[CellId.CENTER] = CellDefinition.create_from_grid(7, 7, CellType.CENTER)
 
 	var players: Array = [

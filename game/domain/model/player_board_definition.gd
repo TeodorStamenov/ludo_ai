@@ -7,7 +7,7 @@ extends RefCounted
 ## за един PlayerId. Маршрутът на играча = main_loop[start..] + home_stretch.
 ##
 ## Не носи тема/текстура — визуалът идва от BoardThemeDefinition.
-## Валидация спрямо main_loop/cells живее в BoardDefinition валидатора;
+## Валидация спрямо main_loop/cells живее в BoardDefinitionValidator;
 ## is_valid() проверява само self-contained инварианти.
 
 ## Документирана дължина на финалната зона (docs/V1_GAME_DESIGN.md §3.2 / §3.3).

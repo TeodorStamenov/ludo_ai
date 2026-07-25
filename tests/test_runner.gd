@@ -43,6 +43,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/cell_definition_test.gd",
 	"res://tests/unit/domain/player_board_definition_test.gd",
 	"res://tests/unit/domain/board_definition_test.gd",
+	"res://tests/unit/domain/board_definition_validator_test.gd",
 	"res://tests/unit/domain/classic_15x15_board_test.gd",
 	"res://tests/unit/domain/classic_15x15_cell_ids_test.gd",
 	"res://tests/unit/domain/classic_15x15_base_cells_test.gd",
