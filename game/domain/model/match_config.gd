@@ -12,11 +12,43 @@ extends RefCounted
 ##   schema_version, mode, board_id, theme_id,
 ##   seats[], campaign_level_id?, level_modifiers[], pre_match_bonus?, rng_seed
 
+## Текуща версия на сериализираната схема (docs/V1_ARCHITECTURE.md, §5.1 и §9).
+## При промяна на формата: увеличава се и се добавя миграция N → N+1 в `_migrate_one_step`.
 const SCHEMA_VERSION := 1
 
 enum Mode { FREE_PLAY = 0, CAMPAIGN = 1 }
 enum ControllerType { HUMAN = 0, AI = 1, REMOTE = 2 }
 enum AIDifficulty { EASY = 0, MEDIUM = 1, HARD = 2 }
+
+
+## Поддържана е само текущата SCHEMA_VERSION (след успешна миграция).
+static func is_schema_supported(version: int) -> bool:
+	return version == SCHEMA_VERSION
+
+
+## Мигрира dictionary payload от schema_version N към SCHEMA_VERSION (стъпка по стъпка).
+## Липсващ/нулев schema_version се третира като pre-versioned (0) и се качва до 1.
+## Бъдещи версии (> SCHEMA_VERSION) не се пипат — остават за отхвърляне от is_valid().
+static func migrate_dict(data: Dictionary) -> Dictionary:
+	var migrated: Dictionary = data.duplicate(true)
+	var version: int = int(migrated.get("schema_version", 0))
+	if version > SCHEMA_VERSION:
+		return migrated
+	while version < SCHEMA_VERSION:
+		migrated = _migrate_one_step(migrated, version)
+		version += 1
+		migrated["schema_version"] = version
+	return migrated
+
+
+static func _migrate_one_step(data: Dictionary, from_version: int) -> Dictionary:
+	match from_version:
+		0:
+			# Pre-schema payloads вече ползват v1 имена на полетата.
+			return data
+		_:
+			push_warning("MatchConfig: няма миграция от schema_version %d" % from_version)
+			return data
 
 
 class SeatConfig extends RefCounted:
@@ -68,6 +100,8 @@ func add_seat(p_player_id: StringName, p_controller_type: int, p_animal_id: Stri
 
 
 func is_valid() -> bool:
+	if not is_schema_supported(schema_version):
+		return false
 	if mode != Mode.FREE_PLAY and mode != Mode.CAMPAIGN:
 		return false
 	if seats.size() < 2 or seats.size() > 4:
@@ -107,19 +141,27 @@ func to_dict() -> Dictionary:
 
 
 static func from_dict(data: Dictionary) -> MatchConfig:
+	var raw_version: int = int(data.get("schema_version", 0))
+	var working: Dictionary = data
+	if raw_version < SCHEMA_VERSION:
+		working = migrate_dict(data)
+	elif raw_version > SCHEMA_VERSION:
+		push_warning("MatchConfig: неподдържан бъдещ schema_version %d (текущ %d)" % [
+			raw_version, SCHEMA_VERSION])
+
 	var cfg := MatchConfig.new()
-	cfg.schema_version = int(data.get("schema_version", SCHEMA_VERSION))
-	cfg.mode = int(data.get("mode", Mode.FREE_PLAY))
-	cfg.board_id = StringName(data.get("board_id", "classic_15x15"))
-	cfg.theme_id = StringName(data.get("theme_id", "jungle"))
-	cfg.campaign_level_id = StringName(data.get("campaign_level_id", ""))
-	cfg.level_modifiers = data.get("level_modifiers", []).duplicate()
-	cfg.pre_match_bonus = data.get("pre_match_bonus", {}).duplicate()
+	cfg.schema_version = int(working.get("schema_version", SCHEMA_VERSION))
+	cfg.mode = int(working.get("mode", Mode.FREE_PLAY))
+	cfg.board_id = StringName(working.get("board_id", "classic_15x15"))
+	cfg.theme_id = StringName(working.get("theme_id", "jungle"))
+	cfg.campaign_level_id = StringName(working.get("campaign_level_id", ""))
+	cfg.level_modifiers = working.get("level_modifiers", []).duplicate()
+	cfg.pre_match_bonus = working.get("pre_match_bonus", {}).duplicate()
 	# Липсващ rng_seed запазва авто-генерирания от _init (не форсира 0).
-	if data.has("rng_seed"):
-		cfg.rng_seed = int(data["rng_seed"])
+	if working.has("rng_seed"):
+		cfg.rng_seed = int(working["rng_seed"])
 	cfg.seats.clear()
-	for sd in data.get("seats", []):
+	for sd in working.get("seats", []):
 		if sd is Dictionary:
 			cfg.seats.append(SeatConfig.from_dict(sd))
 	return cfg

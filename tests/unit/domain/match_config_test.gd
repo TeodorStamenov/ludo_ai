@@ -2,8 +2,9 @@ class_name MatchConfigTest
 extends TestCase
 ## Unit тестове за MatchConfig като domain value object.
 ##
-## Покрива (docs/V1_ARCHITECTURE.md, раздел 5.1 и 12):
+## Покрива (docs/V1_ARCHITECTURE.md, раздел 5.1, 9 и 12):
 ##   - Правилни стойности по подразбиране.
+##   - schema_version: константа, сериализация, миграция N→N+1, валидация.
 ##   - Всички enum стойности (Mode, ControllerType, AIDifficulty).
 ##   - Сериализация/десериализация (to_dict / from_dict).
 ##   - Валидационни правила.
@@ -73,15 +74,6 @@ func test_default_level_modifiers_is_empty() -> void:
 func test_default_pre_match_bonus_is_empty_dict() -> void:
 	var cfg := MatchConfig.new()
 	assert_eq(cfg.pre_match_bonus.size(), 0, "pre_match_bonus трябва да е празен речник по подразбиране")
-
-
-func test_schema_version_constant() -> void:
-	assert_eq(MatchConfig.SCHEMA_VERSION, 1, "SCHEMA_VERSION трябва да е 1")
-
-
-func test_default_schema_version_matches_constant() -> void:
-	var cfg := MatchConfig.new()
-	assert_eq(cfg.schema_version, MatchConfig.SCHEMA_VERSION, "schema_version трябва да съответства на константата")
 
 
 func test_rng_seed_not_zero_by_default() -> void:
@@ -267,6 +259,124 @@ func test_invalid_mode_out_of_range() -> void:
 	assert_false(cfg.is_valid(), "mode извън [0,1] трябва да е невалиден")
 
 
+# ── schema_version (docs/V1_ARCHITECTURE.md, §5.1 и §9) ───────────────────────
+
+func test_schema_version_constant() -> void:
+	assert_eq(MatchConfig.SCHEMA_VERSION, 1, "SCHEMA_VERSION трябва да е 1")
+
+
+func test_default_schema_version_matches_constant() -> void:
+	var cfg := MatchConfig.new()
+	assert_eq(cfg.schema_version, MatchConfig.SCHEMA_VERSION,
+			"schema_version трябва да съответства на константата")
+
+
+func test_is_schema_supported_accepts_current_version() -> void:
+	assert_true(MatchConfig.is_schema_supported(MatchConfig.SCHEMA_VERSION),
+			"текущата SCHEMA_VERSION трябва да е поддържана")
+
+
+func test_is_schema_supported_rejects_zero() -> void:
+	assert_false(MatchConfig.is_schema_supported(0),
+			"schema_version 0 (pre-versioned) не е поддържан без миграция")
+
+
+func test_is_schema_supported_rejects_future_version() -> void:
+	assert_false(MatchConfig.is_schema_supported(MatchConfig.SCHEMA_VERSION + 1),
+			"бъдещ schema_version не трябва да е поддържан")
+
+
+func test_is_schema_supported_rejects_negative() -> void:
+	assert_false(MatchConfig.is_schema_supported(-1),
+			"отрицателен schema_version не трябва да е поддържан")
+
+
+func test_to_dict_writes_schema_version() -> void:
+	var cfg := MatchConfig.new()
+	var d := cfg.to_dict()
+	assert_eq(d.get("schema_version"), MatchConfig.SCHEMA_VERSION,
+			"to_dict трябва да записва текущия SCHEMA_VERSION")
+
+
+func test_schema_version_round_trip() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	var restored := MatchConfig.from_dict(cfg.to_dict())
+	assert_eq(restored.schema_version, MatchConfig.SCHEMA_VERSION,
+			"round-trip трябва да запази schema_version")
+
+
+func test_from_dict_missing_schema_version_migrates_to_current() -> void:
+	var minimal := {
+		"mode": MatchConfig.Mode.FREE_PLAY,
+		"seats": [
+			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+		],
+	}
+	var cfg := MatchConfig.from_dict(minimal)
+	assert_eq(cfg.schema_version, MatchConfig.SCHEMA_VERSION,
+			"липсващ schema_version трябва да се мигрира до SCHEMA_VERSION")
+	assert_true(cfg.is_valid(), "мигрираният config трябва да е валиден")
+
+
+func test_from_dict_schema_version_zero_migrates_to_current() -> void:
+	var data := {
+		"schema_version": 0,
+		"seats": [
+			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+		],
+	}
+	var cfg := MatchConfig.from_dict(data)
+	assert_eq(cfg.schema_version, MatchConfig.SCHEMA_VERSION,
+			"schema_version 0 трябва да се мигрира до SCHEMA_VERSION")
+
+
+func test_migrate_dict_sets_schema_version_to_current() -> void:
+	var raw := {"mode": 0, "board_id": "classic_15x15"}
+	var migrated := MatchConfig.migrate_dict(raw)
+	assert_eq(migrated.get("schema_version"), MatchConfig.SCHEMA_VERSION,
+			"migrate_dict трябва да запише SCHEMA_VERSION")
+	assert_false(raw.has("schema_version"),
+			"migrate_dict не трябва да мутира оригиналния dictionary")
+
+
+func test_migrate_dict_leaves_future_version_unchanged() -> void:
+	var future := MatchConfig.SCHEMA_VERSION + 5
+	var raw := {"schema_version": future, "mode": 0}
+	var migrated := MatchConfig.migrate_dict(raw)
+	assert_eq(migrated.get("schema_version"), future,
+			"бъдещ schema_version не трябва да се даунгрейдва")
+
+
+func test_from_dict_future_schema_version_is_preserved_but_invalid() -> void:
+	var future := MatchConfig.SCHEMA_VERSION + 1
+	var data := {
+		"schema_version": future,
+		"seats": [
+			{"player_id": "p1", "controller_type": 0, "animal_id": "pig"},
+			{"player_id": "p2", "controller_type": 1, "animal_id": "dog"},
+		],
+	}
+	var cfg := MatchConfig.from_dict(data)
+	assert_eq(cfg.schema_version, future,
+			"бъдещ schema_version трябва да се запази за откриване")
+	assert_false(cfg.is_valid(),
+			"config с бъдещ schema_version трябва да е невалиден")
+
+
+func test_invalid_when_schema_version_tampered() -> void:
+	var cfg := MatchConfig.new()
+	cfg.add_seat(&"p1", MatchConfig.ControllerType.HUMAN, &"pig")
+	cfg.add_seat(&"p2", MatchConfig.ControllerType.AI, &"rabbit")
+	assert_true(cfg.is_valid(), "precondition: валиден config")
+	cfg.schema_version = 0
+	assert_false(cfg.is_valid(),
+			"schema_version извън поддържаните трябва да прави config невалиден")
+
+
 # ── Сериализация / десериализация ─────────────────────────────────────────────
 
 func test_to_dict_contains_all_schema_keys() -> void:
@@ -325,6 +435,7 @@ func test_campaign_config_round_trip() -> void:
 
 	var restored := MatchConfig.from_dict(cfg.to_dict())
 
+	assert_eq(restored.schema_version, MatchConfig.SCHEMA_VERSION, "schema_version")
 	assert_eq(restored.mode, MatchConfig.Mode.CAMPAIGN, "mode")
 	assert_eq(restored.theme_id, &"desert", "theme_id")
 	assert_eq(restored.campaign_level_id, &"jungle_level_3", "campaign_level_id")
@@ -341,6 +452,7 @@ func test_from_dict_missing_optional_fields_use_defaults() -> void:
 		{"player_id": "p2", "controller_type": 0, "ai_difficulty": 0, "animal_id": "dog"},
 	]}
 	var cfg := MatchConfig.from_dict(minimal)
+	assert_eq(cfg.schema_version, MatchConfig.SCHEMA_VERSION, "default schema_version след миграция")
 	assert_eq(cfg.mode, MatchConfig.Mode.FREE_PLAY, "default mode")
 	assert_eq(cfg.board_id, &"classic_15x15", "default board_id")
 	assert_eq(cfg.theme_id, &"jungle", "default theme_id")
