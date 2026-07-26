@@ -25,8 +25,8 @@ extends RefCounted
 ##   PawnCapturedEvent (events/pawn_captured_event.gd),
 ##   PawnSentHomeEvent (events/pawn_sent_home_event.gd),
 ##   PawnStackFormedEvent (events/pawn_stack_formed_event.gd),
-##   PawnFinished, GiftSpawned,
-##   GiftCollected, PowerUpResolved, ShieldApplied, TurnChanged,
+##   PawnFinishedEvent (events/pawn_finished_event.gd),
+##   GiftSpawned, GiftCollected, PowerUpResolved, ShieldApplied, TurnChanged,
 ##   PlayerRanked, MatchFinished
 
 

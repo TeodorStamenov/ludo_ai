@@ -256,6 +256,18 @@ func test_pawn_captured_event_is_domain_event() -> void:
 	assert_true(event.is_valid())
 
 
+func test_pawn_finished_event_is_domain_event() -> void:
+	var event := PawnFinishedEvent.create_finished(
+			PawnId.for_player(PlayerId.YELLOW, 0),
+			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
+			CellId.CENTER)
+	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_FINISHED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
+
+
 func test_gift_spawned_event_is_domain_event() -> void:
 	var event := GiftSpawnedEvent.new()
 	assert_true(event is DomainEvent)
