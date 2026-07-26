@@ -1,6 +1,6 @@
 class_name IdsTest
 extends TestCase
-## Unit тестове за стабилните идентификатори: PlayerId, PawnId, CellId, MatchId.
+## Unit тестове за стабилните идентификатори: PlayerId, PawnId, CellId, MatchId, GiftId.
 ##
 ## Покрити инварианти (docs/V1_ARCHITECTURE.md, раздел 12):
 ##   - Domain не използва Vector2, NodePath или editor-generated имена.
@@ -313,3 +313,37 @@ func test_match_id_is_valid_rejects_other_prefixes() -> void:
 	assert_false(MatchId.is_valid(&"yellow"),   "player_id не е match_id")
 	assert_false(MatchId.is_valid(&"yellow_0"), "pawn_id не е match_id")
 	assert_false(MatchId.is_valid(&"match_1"),  "match_ не е m_ префикс")
+
+
+# ── GiftId ────────────────────────────────────────────────────────────────────
+
+func test_gift_id_generate_returns_string_name() -> void:
+	var id := GiftId.generate()
+	assert_true(id is StringName, "generate() трябва да върне StringName")
+
+
+func test_gift_id_generate_starts_with_g_prefix() -> void:
+	var id := GiftId.generate()
+	assert_true(GiftId.is_valid(id),
+			"generate() трябва да върне ID с 'g_' префикс")
+
+
+func test_gift_id_generate_is_unique_per_call() -> void:
+	var ids: Array[StringName] = []
+	for _i in 10:
+		var id := GiftId.generate()
+		assert_false(id in ids, "generate() върна дублиран ID: %s" % id)
+		ids.append(id)
+
+
+func test_gift_id_is_valid_accepts_g_prefix() -> void:
+	assert_true(GiftId.is_valid(&"g_0_0"),           "минимален валиден ID")
+	assert_true(GiftId.is_valid(&"g_1721915400000_3"), "типичен генериран ID")
+
+
+func test_gift_id_is_valid_rejects_other_prefixes() -> void:
+	assert_false(GiftId.is_valid(&""),         "празен")
+	assert_false(GiftId.is_valid(&"yellow"),   "player_id не е gift_id")
+	assert_false(GiftId.is_valid(&"yellow_0"), "pawn_id не е gift_id")
+	assert_false(GiftId.is_valid(&"m_1_0"),    "match_id не е gift_id")
+	assert_false(GiftId.is_valid(&"gift_1"),   "gift_ не е g_ префикс")

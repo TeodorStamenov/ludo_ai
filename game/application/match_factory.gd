@@ -24,7 +24,13 @@ func create(config: MatchConfig, state: GameState = null) -> MatchSession:
 	assert(config != null, "MatchFactory.create: config не може да е null")
 	assert(config.is_valid(), "MatchFactory.create: невалиден MatchConfig")
 
-	var rng := config.create_random_source()
+	# Предпочита GameState.rng_state при mid-match restore (#60);
+	# иначе детерминиран RNG от MatchConfig.rng_seed.
+	var rng: RandomSource
+	if state != null and state.has_rng_state():
+		rng = state.create_random_source_from_state()
+	else:
+		rng = config.create_random_source()
 	var controllers := _build_controllers(config)
 	var event_queue := EventQueue.new()
 	var session := MatchSession.new()

@@ -28,7 +28,6 @@ var _rng: RandomSource = null
 var _controllers: Dictionary = {}
 var _event_queue: EventQueue = null
 var _pending_sequence: int = -1
-var _command_sequence: int = 0
 var _active: bool = false
 
 
@@ -41,6 +40,9 @@ func start(config: MatchConfig, state: GameState, engine: GameEngine, rng: Rando
 	_controllers = controllers
 	_event_queue = event_queue
 	_active = true
+	# GameState.rng_state е source of truth (§4.1 / §4.5 / #60).
+	# При mid-match restore: живият RNG ← snapshot; иначе snapshot ← жив RNG.
+	_sync_rng_on_start()
 	receive_command(StartMatchCommand.new(config))
 
 
@@ -53,24 +55,37 @@ func receive_command(command: GameCommand) -> void:
 	if not _engine:
 		push_error("MatchSession: no GameEngine bound")
 		return
+	if _state == null:
+		push_error("MatchSession: no GameState bound")
+		return
 
-	command.sequence = _command_sequence + 1
+	# GameState.command_sequence е source of truth (§4.1 / §11).
+	_state.stamp_command(command)
 	var result: Dictionary = _engine.apply_command(_state, command, _rng)
 
 	if not result.get("accepted", false):
+		# §12: отхвърлена команда не променя state или RNG — без capture_rng.
 		return
 
 	_state = result.get("state", _state)
-	_command_sequence += 1
+	# GameEngine може вече да е записал sequence; иначе го записваме тук.
+	if _state.command_sequence != command.sequence:
+		if not _state.record_accepted_command(command.sequence):
+			push_error("MatchSession: command_sequence divergence (state=%d, command=%d)" % [
+				_state.command_sequence, command.sequence])
+			return
+	# Синхронизира GameState.rng_state след приета команда (дори ако RNG не е
+	# ползван — snapshot трябва да съвпада с живия RandomSource).
+	_state.capture_rng(_rng)
+	_stamp_events(result.get("events", []), command.sequence)
 	var events: Array = result.get("events", [])
 	_event_queue.enqueue(events)
-	_pending_sequence = _command_sequence
+	_pending_sequence = _state.command_sequence
 	events_published.emit(_pending_sequence, events)
 
 	if _is_match_over(events):
 		_active = false
 		match_finished.emit(_build_summary())
-
 
 func events_presented(sequence: int) -> void:
 	if sequence != _pending_sequence:
@@ -112,11 +127,17 @@ func is_active() -> bool:
 
 
 func to_snapshot() -> Dictionary:
+	# rng_state / command_sequence идват от GameState (source of truth).
+	var snap_rng: Dictionary = {}
+	if _state != null:
+		snap_rng = _state.rng_state.duplicate(true)
+	elif _rng != null:
+		snap_rng = _rng.get_state()
 	return {
 		"schema_version": 1,
 		"state": _state.to_dict() if _state and _state.has_method("to_dict") else {},
-		"rng_state": _rng.get_state() if _rng else {},
-		"command_sequence": _command_sequence,
+		"rng_state": snap_rng,
+		"command_sequence": _state.command_sequence if _state else GameState.COMMAND_SEQUENCE_START,
 	}
 
 
@@ -147,7 +168,8 @@ func _is_match_over(events: Array) -> bool:
 
 func _build_summary() -> Dictionary:
 	var summary: Dictionary = {
-		"command_sequence": _command_sequence,
+		"command_sequence": (
+				_state.command_sequence if _state else GameState.COMMAND_SEQUENCE_START),
 	}
 	if _state:
 		if _state.has_method("get_match_id"):
@@ -155,3 +177,23 @@ func _build_summary() -> Dictionary:
 		if "ranking" in _state:
 			summary["ranking"] = _state.ranking
 	return summary
+
+
+## Попълва DomainEvent.command_sequence за replay / presentation gate.
+func _stamp_events(events: Array, sequence: int) -> void:
+	for entry in events:
+		if entry is DomainEvent:
+			(entry as DomainEvent).command_sequence = sequence
+
+
+## При старт: restore от GameState.rng_state ако snapshot е по-напреднал от
+## свежия seed; иначе capture началния жив RNG в GameState (#60).
+func _sync_rng_on_start() -> void:
+	if _state == null or _rng == null:
+		return
+	if _state.has_rng_state() and not _state.rng_matches(_rng):
+		if not _state.restore_rng(_rng):
+			push_warning("MatchSession: rng_state restore failed — capturing live RNG")
+			_state.capture_rng(_rng)
+	else:
+		_state.capture_rng(_rng)
