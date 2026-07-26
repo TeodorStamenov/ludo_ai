@@ -56,6 +56,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/player_ranked_event_test.gd",
 	"res://tests/unit/domain/match_finished_event_test.gd",
 	"res://tests/unit/domain/command_error_test.gd",
+	"res://tests/unit/domain/command_result_test.gd",
 	"res://tests/unit/domain/match_config_test.gd",
 	"res://tests/unit/domain/match_config_serialization_test.gd",
 	"res://tests/unit/domain/match_config_validator_test.gd",

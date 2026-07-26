@@ -14,7 +14,7 @@ Presentation ──► Application ──► Domain  ◄── (само Content
 
 | Директория   | Съдържание |
 |---|---|
-| `model/`     | `GameState`, `PlayerState`, `PawnState`, `TurnState`, `GiftState`, `MatchResult`, `MatchConfig`, `MatchConfigValidator`, `BoardDefinition`, `BoardDefinitionValidator` — стабилни data структури и валидация |
+| `model/`     | `GameState`, `PlayerState`, `PawnState`, `TurnState`, `GiftState`, `MatchResult`, `CommandResult`, `CommandError`, `MatchConfig`, `MatchConfigValidator`, `BoardDefinition`, `BoardDefinitionValidator` — стабилни data структури и валидация |
 | `commands/`  | `GameCommand` и трите конкретни команди — носят намерение, не резултат |
 | `events/`    | `DomainEvent` и конкретните факти за вече случили се промени |
 | `rules/`     | `GameEngine` и отделните rule модули (движение, купчини, взимане, ход, финал) |
@@ -30,9 +30,11 @@ GameCommand
     ▼
 GameEngine.validate_and_apply(state, command, rng)
     │
-    ├──► нов GameState
-    ├──► DomainEvent[]
-    └──► CommandError (при невалиден ход)
+    └──► CommandResult
+         ├── accepted: bool
+         ├── state: GameState
+         ├── events: DomainEvent[]
+         └── error: CommandError? (при невалиден ход)
 ```
 
 ## Файловете са scaffold
