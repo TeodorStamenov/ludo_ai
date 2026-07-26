@@ -246,8 +246,26 @@ func test_pawn_exited_base_event_is_domain_event() -> void:
 
 
 func test_pawn_captured_event_is_domain_event() -> void:
-	var event := PawnCapturedEvent.new()
+	var event := PawnCapturedEvent.create_captured(
+			PawnId.for_player(PlayerId.YELLOW, 0),
+			PawnId.for_player(PlayerId.GREEN, 1))
 	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_CAPTURED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
+
+
+func test_pawn_finished_event_is_domain_event() -> void:
+	var event := PawnFinishedEvent.create_finished(
+			PawnId.for_player(PlayerId.YELLOW, 0),
+			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
+			CellId.CENTER)
+	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_FINISHED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
 
 
 func test_gift_spawned_event_is_domain_event() -> void:
@@ -263,6 +281,15 @@ func test_power_up_resolved_event_is_domain_event() -> void:
 func test_turn_changed_event_is_domain_event() -> void:
 	var event := TurnChangedEvent.new()
 	assert_true(event is DomainEvent)
+
+
+func test_player_ranked_event_is_domain_event() -> void:
+	var event := PlayerRankedEvent.create_ranked(PlayerId.GREEN, 1)
+	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_PLAYER_RANKED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
 
 
 func test_subclass_stamp_uses_base_envelope() -> void:

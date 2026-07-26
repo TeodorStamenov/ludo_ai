@@ -22,10 +22,14 @@ extends RefCounted
 ##   ValidMovesChangedEvent (events/valid_moves_changed_event.gd),
 ##   PawnMovedEvent (events/pawn_moved_event.gd),
 ##   PawnExitedBaseEvent (events/pawn_exited_base_event.gd),
-##   PawnCaptured,
-##   PawnSentHome, PawnStackFormed, PawnFinished, GiftSpawned,
-##   GiftCollected, PowerUpResolved, ShieldApplied, TurnChanged,
-##   PlayerRanked, MatchFinished
+##   PawnCapturedEvent (events/pawn_captured_event.gd),
+##   PawnSentHomeEvent (events/pawn_sent_home_event.gd),
+##   PawnStackFormedEvent (events/pawn_stack_formed_event.gd),
+##   PawnFinishedEvent (events/pawn_finished_event.gd),
+##   GiftSpawned, GiftCollected, PowerUpResolved, ShieldApplied,
+##   TurnChangedEvent (events/turn_changed_event.gd),
+##   PlayerRankedEvent (events/player_ranked_event.gd),
+##   MatchFinishedEvent (events/match_finished_event.gd)
 
 
 ## Sequence преди stamp / преди първа приета команда (виж GameState.COMMAND_SEQUENCE_START).
