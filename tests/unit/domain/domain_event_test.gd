@@ -246,8 +246,14 @@ func test_pawn_exited_base_event_is_domain_event() -> void:
 
 
 func test_pawn_captured_event_is_domain_event() -> void:
-	var event := PawnCapturedEvent.new()
+	var event := PawnCapturedEvent.create_captured(
+			PawnId.for_player(PlayerId.YELLOW, 0),
+			PawnId.for_player(PlayerId.GREEN, 1))
 	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_CAPTURED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
 
 
 func test_gift_spawned_event_is_domain_event() -> void:
