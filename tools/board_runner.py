@@ -7,10 +7,13 @@ board_runner.py — Dev-only автоматизиран pipeline за Cosy Ludo 
 Поток за всяка задача в «Ready» (или остатъци в «In review»):
   Ready → In progress
         → [Dev агент: grok-4.5]
-        → Import check + Scene load + existing test suite
+        → Import check + Scene load
              ↓ OK                     ↓ FAIL (до 3 пъти)
          commit + push           ↩ In progress → Dev с feedback
          Done                         ↓ след 3 FAIL → STOP
+
+След последния таск в batch-а:
+  → Existing test suite (веднъж) — FAIL → STOP (ръчна поправка)
 
 Няма per-task Review агент. Batch code review се прави ръчно на всеки 20–30 таска.
 
@@ -779,19 +782,7 @@ def main() -> None:
                 continue
             print("  ✓ Scene load OK")
 
-            # ── Existing test suite (regression gate) ──
-            print("  → Стартирам тест suite…")
-            test_passed, test_output = run_test_suite()
-            print(f"  {'✓' if test_passed else '✗'} Тестове: {'PASS' if test_passed else 'FAIL'}")
-            if not test_passed:
-                retry_feedback = (
-                    "Съществуващият test suite провали след промените.\n"
-                    f"Изход:\n{test_output[-800:]}"
-                )
-                git_unstage_all()
-                continue
-
-            # ── Commit + push → Done (без Review агент) ──
+            # ── Commit + push → Done (test suite е само в края на batch-а) ──
             try:
                 git_commit_and_push(item["issue_number"], item["title"], branch)
             except subprocess.CalledProcessError as e:
@@ -818,7 +809,23 @@ def main() -> None:
             )
             sys.exit(3)
 
-    # 5. Финален summary
+    # 5. Test suite — веднъж след целия batch
+    print(f"\n▸ Batch test suite (след {len(all_items)} задачи)…")
+    test_passed, test_output = run_test_suite()
+    if not test_passed:
+        print("  ✗ Тестове: FAIL", file=sys.stderr)
+        for ln in test_output.splitlines()[-30:]:
+            print(f"    {ln}", file=sys.stderr)
+        print(
+            f"\nГРЕШКА: Test suite провали след batch-а.\n"
+            f"  Бранч: {branch}\n"
+            "  Задачите са в Done, но не мърджвай преди да поправиш тестовете.",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+    print("  ✓ Тестове: PASS")
+
+    # 6. Финален summary
     print(f"\n{'=' * 66}")
     print(f"  ✓ Всички {len(all_items)} задачи завършени успешно!")
     print(f"  Бранч: {branch}")

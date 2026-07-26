@@ -15,7 +15,6 @@
               ▼
          Import check
          Scene load check
-         Existing test suite
               │
          ┌───┴───────────────────────────────────┐
          │ OK                                     │ FAIL (до 3 пъти)
@@ -23,6 +22,9 @@
     commit + push                         ↩ In Progress
     Done (API)                             Dev агент + feedback
     следваща задача
+
+След последния таск:
+  Existing test suite (веднъж) — FAIL → exit 4
 ```
 
 Няма per-task Review агент. Batch code review се прави ръчно на всеки 20–30 таска.
@@ -78,11 +80,14 @@ Credentials могат да са и в `tools/.env` (`CURSOR_API_KEY`, `PROJECT_
 
 ---
 
-## Проверки след Dev
+## Проверки
 
+**След всеки таск:**
 1. **Import** — `godot --headless --import`
 2. **Scene load** — `tests/scene_load_test.gd` (главната сцена)
-3. **Existing suite** — regression gate; Dev не трябва да генерира тривиални нови тестове
+
+**Веднъж в края на batch-а:**
+3. **Existing suite** — regression gate
 
 Test policy в Dev prompt: само business-critical game logic; без UI/DTO/getters/тривиални helpers.
 
@@ -95,4 +100,5 @@ Test policy в Dev prompt: само business-critical game logic; без UI/DTO/
 | 0   | Всички задачи завършени успешно                           |
 | 1   | Конфигурационна/мрежова грешка (прекратяване)             |
 | 2   | Агентска грешка (Dev) — провери ръчно                     |
-| 3   | Задача не мина проверките след MAX_RETRIES — провери ръчно |
+| 3   | Задача не мина Import/Scene след MAX_RETRIES              |
+| 4   | Batch test suite FAIL в края — не мърджвай преди fix      |
