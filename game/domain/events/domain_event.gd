@@ -29,7 +29,7 @@ extends RefCounted
 ##   GiftSpawned, GiftCollected, PowerUpResolved, ShieldApplied,
 ##   TurnChangedEvent (events/turn_changed_event.gd),
 ##   PlayerRankedEvent (events/player_ranked_event.gd),
-##   MatchFinished
+##   MatchFinishedEvent (events/match_finished_event.gd)
 
 
 ## Sequence преди stamp / преди първа приета команда (виж GameState.COMMAND_SEQUENCE_START).
