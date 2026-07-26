@@ -28,7 +28,8 @@ extends RefCounted
 ##   PawnFinishedEvent (events/pawn_finished_event.gd),
 ##   GiftSpawned, GiftCollected, PowerUpResolved, ShieldApplied,
 ##   TurnChangedEvent (events/turn_changed_event.gd),
-##   PlayerRanked, MatchFinished
+##   PlayerRankedEvent (events/player_ranked_event.gd),
+##   MatchFinished
 
 
 ## Sequence преди stamp / преди първа приета команда (виж GameState.COMMAND_SEQUENCE_START).

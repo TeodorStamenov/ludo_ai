@@ -91,7 +91,8 @@ game/domain/
 │   ├── pawn_captured_event.gd
 │   ├── gift_spawned_event.gd
 │   ├── power_up_resolved_event.gd
-│   └── turn_changed_event.gd
+│   ├── turn_changed_event.gd
+│   └── player_ranked_event.gd
 ├── rules/
 │   ├── game_engine.gd
 │   ├── move_rules.gd

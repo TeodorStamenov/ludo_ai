@@ -283,6 +283,15 @@ func test_turn_changed_event_is_domain_event() -> void:
 	assert_true(event is DomainEvent)
 
 
+func test_player_ranked_event_is_domain_event() -> void:
+	var event := PlayerRankedEvent.create_ranked(PlayerId.GREEN, 1)
+	assert_true(event is DomainEvent)
+	assert_eq(event.event_type, DomainEvent.TYPE_PLAYER_RANKED)
+	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
+	assert_false(event.is_stamped())
+	assert_true(event.is_valid())
+
+
 func test_subclass_stamp_uses_base_envelope() -> void:
 	var event := DiceRolledEvent.create_rolled(PlayerId.YELLOW, 6)
 	event.stamp(5)
