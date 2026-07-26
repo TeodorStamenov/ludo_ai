@@ -1,30 +1,31 @@
 # tools/board_runner.py
 
-Автоматизиран **Dev + Review pipeline** за GitHub Projects v2.
+Автоматизиран **Dev-only pipeline** за GitHub Projects v2.
 
 ## Поток
 
 ```
-За всяка задача в «Ready»:
+За всяка задача в «Ready» (или остатъци в «In review»):
 
   Ready ──► In Progress
               │
               ▼
-         [Dev агент]          (claude-sonnet-4-6)
+         [Dev агент]          (grok-4.5)
               │
               ▼
-           In Review
-              │
-              ▼
-         [Review агент]        (claude-sonnet-5-thinking-high)
+         Import check
+         Scene load check
+         Existing test suite
               │
          ┌───┴───────────────────────────────────┐
-         │ PASS                                   │ FAIL (до 3 пъти)
+         │ OK                                     │ FAIL (до 3 пъти)
          ▼                                        ▼
     commit + push                         ↩ In Progress
     Done (API)                             Dev агент + feedback
     следваща задача
 ```
+
+Няма per-task Review агент. Batch code review се прави ръчно на всеки 20–30 таска.
 
 Бранч: `feature/issues_N1_N2_N3` (един за целия batch).  
 Commit: `feat: <title>\n\ncloses #N` — затваря issue при merge в `main`.
@@ -60,38 +61,38 @@ export PROJECT_NUMBER=N                     # числото от GitHub Project
 export GODOT_BIN=/path/to/godot
 
 python tools/board_runner.py
+# или: python tools/board_runner.py --dry-run
 ```
+
+Credentials могат да са и в `tools/.env` (`CURSOR_API_KEY`, `PROJECT_NUMBER`, `GODOT_BIN`).
 
 ---
 
 ## Конфигурация
 
-| Константа      | Стойност по подразбиране           | Env var         |
-|----------------|------------------------------------|-----------------|
-| Dev модел      | `claude-sonnet-4-6`                | —               |
-| Review модел   | `claude-sonnet-5-thinking-high`    | —               |
-| Max retries    | 3                                  | —               |
-| Godot binary   | `../../godot/godot` (от repo root) | `GODOT_BIN`     |
+| Константа    | Стойност по подразбиране           | Env var     |
+|--------------|------------------------------------|-------------|
+| Dev модел    | `grok-4.5`                         | —           |
+| Max retries  | 3                                  | —           |
+| Godot binary | `../../godot/godot` (от repo root) | `GODOT_BIN` |
 
 ---
 
-## Review критерии
+## Проверки след Dev
 
-Review агентът проверява три точки:
+1. **Import** — `godot --headless --import`
+2. **Scene load** — `tests/scene_load_test.gd` (главната сцена)
+3. **Existing suite** — regression gate; Dev не трябва да генерира тривиални нови тестове
 
-- **(A) Архитектурни правила** — layer isolation, dependency direction, `class_name` конвенция.
-- **(B) Качество на кода** — типизация, коментари, минимален public API.
-- **(C) Тест suite** — `godot --headless --script tests/test_runner.gd` трябва да минат всички тестове.
-
-При FAIL: Dev агентът получава структуриран feedback и прави нов опит (до 3 общо).
+Test policy в Dev prompt: само business-critical game logic; без UI/DTO/getters/тривиални helpers.
 
 ---
 
 ## Exit кодове
 
-| Код | Смисъл                                               |
-|-----|------------------------------------------------------|
-| 0   | Всички задачи завършени успешно                      |
-| 1   | Конфигурационна/мрежова грешка (прекратяване)        |
-| 2   | Агентска грешка (Dev или Review) — провери ръчно     |
-| 3   | Задача не мина ревю след MAX_RETRIES — провери ръчно |
+| Код | Смисъл                                                    |
+|-----|-----------------------------------------------------------|
+| 0   | Всички задачи завършени успешно                           |
+| 1   | Конфигурационна/мрежова грешка (прекратяване)             |
+| 2   | Агентска грешка (Dev) — провери ръчно                     |
+| 3   | Задача не мина проверките след MAX_RETRIES — провери ръчно |

@@ -2,17 +2,17 @@
 # -*- coding: utf-8 -*-
 # Изисква Python 3.10+. Виж tools/README.md.
 """
-board_runner.py — Dev + Review автоматизиран pipeline за Cosy Ludo v1.
+board_runner.py — Dev-only автоматизиран pipeline за Cosy Ludo v1.
 
-Поток за всяка задача в «Ready»:
+Поток за всяка задача в «Ready» (или остатъци в «In review»):
   Ready → In progress
         → [Dev агент: grok-4.5]
-        → In review
-        → [Review агент: grok-4.5]
-             ↓ PASS                  ↓ FAIL (до 3 пъти)
-         commit + push           ↩ In progress → Dev агент с feedback
-         Done                         ↓ след 3 FAIL
-         следваща задача             STOP
+        → Import check + Scene load + existing test suite
+             ↓ OK                     ↓ FAIL (до 3 пъти)
+         commit + push           ↩ In progress → Dev с feedback
+         Done                         ↓ след 3 FAIL → STOP
+
+Няма per-task Review агент. Batch code review се прави ръчно на всеки 20–30 таска.
 
 Бранч: feature/issues_N1_N2_N3  (един за целия batch run)
 
@@ -93,9 +93,8 @@ _load_dotenv()
 
 REPO_OWNER = "TeodorStamenov"
 
-DEV_MODEL    = "grok-4.5"
-REVIEW_MODEL = "grok-4.5"
-MAX_RETRIES  = 3
+DEV_MODEL   = "grok-4.5"
+MAX_RETRIES = 3
 
 STATUS_READY       = "Ready"
 STATUS_IN_PROGRESS = "In progress"
@@ -449,10 +448,7 @@ _PROJECT_CONTEXT = """\
 """
 
 _ARCH_RULES = """\
-АРХИТЕКТУРНИ ПРАВИЛА (задължителни — всяко нарушение = FAIL):
-- Нови unit тестове се добавят САМО в tests/unit/domain/.
-  Тестовете за application/, platform/ и presentation/ са замразени.
-  Stub, Null и Adapter класове не се тестват.
+АРХИТЕКТУРНИ ПРАВИЛА (задължителни):
 - game/domain/     → само `extends RefCounted`. Никога Node/сцени.
                      Не импортира от application/, presentation/, platform/, app/.
 - game/application/→ може да импортира от game/domain/ и content/ САМО.
@@ -461,6 +457,18 @@ _ARCH_RULES = """\
                      Не прилага gameplay правила, не извиква GameEngine директно.
 - Dependency посока: Presentation → Application → Domain (стрелките навътре).
 - Всеки нов .gd файл: `class_name` в PascalCase, съответстващ на filename.
+"""
+
+_TEST_POLICY = """\
+ПОЛИТИКА ЗА ТЕСТОВЕ (MVP — speed over coverage):
+- Пиши тестове САМО за business-critical game logic
+  (правила за ход, capture, win, валидация с реални инварианти).
+- НЕ пиши unit тестове за: UI, прости модели/DTO, getters/setters,
+  wrappers, тривиални helpers, serialization round-trips без бизнес правило.
+- Ако задачата е само модел/DTO/конфиг без критична логика → без нови тестове.
+- Нови тестове (ако изобщо) САМО в tests/unit/domain/.
+- Stub / Null / Adapter не се тестват.
+- Приоритизирай имплементацията и playable MVP пред exhaustive coverage.
 """
 
 _QUALITY_RULES = """\
@@ -539,19 +547,21 @@ def _run_agent(prompt: str, model: str, api_key: str, label: str) -> str:
     raise RuntimeError(f"{label} не стартира след {_AGENT_BRIDGE_RETRIES} опита: {last_err}")
 
 
-def run_dev_agent(item: dict, api_key: str, review_feedback: str | None = None) -> None:
+def run_dev_agent(item: dict, api_key: str, retry_feedback: str | None = None) -> None:
     feedback_block = ""
-    if review_feedback:
+    if retry_feedback:
         feedback_block = f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ПРЕДИШНОТО РЕВЮ ОТКРИ ПРОБЛЕМИ — ТРЯБВА ДА ГИ ПОПРАВИШ:
+ПРЕДИШНИЯТ ОПИТ ПРОВАЛИ ПРОВЕРКИТЕ — ТРЯБВА ДА ПОПРАВИШ:
 
-{review_feedback}
+{retry_feedback}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
     prompt = f"""{_PROJECT_CONTEXT}
 {_ARCH_RULES}
+{_TEST_POLICY}
+{_QUALITY_RULES}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ЗАДАЧА #{item['issue_number']}: {item['title']}
@@ -562,115 +572,16 @@ def run_dev_agent(item: dict, api_key: str, review_feedback: str | None = None) 
 {feedback_block}
 ИНСТРУКЦИИ:
 1. Прочети релевантния раздел от docs/V1_ARCHITECTURE.md.
-2. Имплементирай задачата изцяло.
-3. Не създавай .tscn файлове освен ако задачата изрично го изисква.
-4. Не питай за потвърждение — имплементирай всичко в един pass.
-5. Накрая напиши кратко резюме (1–3 изречения) на направеното.
+2. Имплементирай задачата изцяло — приоритет: playable MVP, не exhaustive tests.
+3. Следвай ПОЛИТИКА ЗА ТЕСТОВЕ — не генерирай тривиални тестове.
+4. Не създавай .tscn файлове освен ако задачата изрично го изисква.
+5. Не питай за потвърждение — имплементирай всичко в един pass.
+6. Накрая напиши кратко резюме (1–3 изречения) на направеното.
 """
-    label = "Dev агент" + (" (retry)" if review_feedback else "")
+    label = "Dev агент" + (" (retry)" if retry_feedback else "")
     output = _run_agent(prompt, DEV_MODEL, api_key, label)
     if output:
         print(f"  Резюме: {output[:400]}")
-
-
-def run_review_agent(
-    item: dict,
-    staged_files: list[str],
-    test_passed: bool,
-    test_output: str,
-    api_key: str,
-) -> tuple[bool, str]:
-    """
-    Стартира review агента. Връща (passed, feedback).
-    feedback е непразен само при passed=False.
-    """
-    test_label  = "✓ ВСИЧКИ ТЕСТОВЕ МИНАХА" if test_passed else "✗ ТЕСТОВЕТЕ НЕ МИНАХА"
-    files_block = (
-        "\n".join(f"  {f}" for f in staged_files)
-        if staged_files else "  (няма засегнати файлове)"
-    )
-    # Последните 3000 символа от теста (за да не препълним контекста)
-    test_excerpt = test_output[-3000:] if len(test_output) > 3000 else test_output
-
-    prompt = f"""{_PROJECT_CONTEXT}
-{_ARCH_RULES}
-{_QUALITY_RULES}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ЗАДАЧА ЗА РЕВЮ #{item['issue_number']}: {item['title']}
-{item['url']}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Описание на задачата:
-{item['body'].strip() if item['body'] else '(Виж заглавието.)'}
-
-ЗАСЕГНАТИ ФАЙЛОВЕ (git staged):
-{files_block}
-
-РЕЗУЛТАТ ОТ TEST SUITE:
-{test_label}
-{test_excerpt}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ИНСТРУКЦИИ ЗА РЕВЮТО:
-1. Прочети всеки засегнат файл от списъка по-горе.
-2. Провери АРХИТЕКТУРНИ ПРАВИЛА — всяко нарушение = задължителен FAIL.
-3. Провери ПРАВИЛА ЗА КАЧЕСТВО.
-4. Провери дали задачата е изпълнена пълно спрямо описанието и архитектурата.
-5. Ако тестовете не минаха → задължителен FAIL.
-
-Завърши отговора си ТОЧНО с един от следните блокове:
-
-При успех:
-VERDICT: PASS
-
-При неуспех:
-VERDICT: FAIL
-ISSUES:
-- [architecture|quality|tests|incomplete] Конкретен проблем (файл, ред, причина)
-- ...
-
-Не пропускай реда VERDICT — скриптът го парси автоматично.
-"""
-    output = _run_agent(prompt, REVIEW_MODEL, api_key, "Review агент")
-
-    passed  = _parse_verdict(output)
-    feedback = "" if passed else _extract_feedback(output)
-
-    status = "PASS ✓" if passed else "FAIL ✗"
-    print(f"  Ревю: {status}")
-    if not passed and feedback:
-        # Показва само първите 600 символа от feedback в конзолата
-        excerpt = feedback[:600] + ("…" if len(feedback) > 600 else "")
-        print(f"  Проблеми:\n{excerpt}")
-
-    return passed, feedback
-
-
-def _parse_verdict(text: str) -> bool:
-    """Търси последния VERDICT ред. Без намерен → False (по-безопасно)."""
-    for line in reversed(text.splitlines()):
-        stripped = line.strip()
-        if stripped.upper().startswith("VERDICT:"):
-            return "PASS" in stripped.upper()
-    print("  ⚠ Не намерих VERDICT ред — третирам като FAIL")
-    return False
-
-
-def _extract_feedback(text: str) -> str:
-    """Връща съдържанието след 'VERDICT: FAIL'."""
-    lines     = text.splitlines()
-    capturing = False
-    result    = []
-    for line in lines:
-        if line.strip().upper().startswith("VERDICT:"):
-            capturing = True
-            continue
-        if capturing:
-            result.append(line)
-    feedback = "\n".join(result).strip()
-    # Fallback: ако feedback е празен, върни последните 1500 символа от целия output
-    return feedback if feedback else text[-1500:]
 
 
 # ── Предварителни проверки ─────────────────────────────────────────────────────
@@ -796,28 +707,27 @@ def main() -> None:
               + (" [resume]" if is_resume else ""))
         print(f"{'─' * 66}")
 
-        if not is_resume:
-            # → In Progress (само за нови items)
-            try:
-                move_item_status(
-                    meta["project_id"], item["item_id"],
-                    meta["status_field_id"], options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
-                )
-            except RuntimeError as e:
-                sys.exit(f"\nГРЕШКА: {e}")
+        # → In Progress
+        try:
+            move_item_status(
+                meta["project_id"], item["item_id"],
+                meta["status_field_id"], options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
+            )
+        except RuntimeError as e:
+            sys.exit(f"\nГРЕШКА: {e}")
 
-        review_feedback: str | None = None
+        retry_feedback: str | None = None
         task_done = False
 
         for attempt in range(1, MAX_RETRIES + 1):
             print(f"\n  ── Опит {attempt}/{MAX_RETRIES} ──")
 
-            # ── Dev агент (пропускаме при resume на първи опит) ──
-            if is_resume and attempt == 1:
-                print(f"  ↩ Resume — пропускам Dev агент, директно към ревю")
+            # Resume (остатък от стар In review): първият опит пропуска Dev
+            if is_resume and attempt == 1 and retry_feedback is None:
+                print("  ↩ Resume — пропускам Dev агент, директно към проверки")
             else:
                 try:
-                    run_dev_agent(item, api_key, review_feedback)
+                    run_dev_agent(item, api_key, retry_feedback)
                 except RuntimeError as e:
                     print(f"\nГРЕШКА (Dev агент): {e}", file=sys.stderr)
                     print(
@@ -827,139 +737,82 @@ def main() -> None:
                     )
                     sys.exit(2)
 
-            if not (is_resume and attempt == 1):
-                # → In Review
-                try:
-                    move_item_status(
-                        meta["project_id"], item["item_id"],
-                        meta["status_field_id"], options[STATUS_IN_REVIEW], STATUS_IN_REVIEW,
-                    )
-                except RuntimeError as e:
-                    sys.exit(f"\nГРЕШКА: {e}")
-
-            # Stage всички промени преди ревюто
             git_stage_all()
             staged = get_staged_files()
 
             if not staged:
                 print("  ⚠ Dev агентът не е направил промени — третирам като FAIL")
-                review_feedback = (
+                retry_feedback = (
                     "Dev агентът не е направил никакви промени по файловете. "
                     "Задачата не е имплементирана."
                 )
                 git_unstage_all()
-                if attempt < MAX_RETRIES:
-                    try:
-                        move_item_status(
-                            meta["project_id"], item["item_id"],
-                            meta["status_field_id"],
-                            options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
-                        )
-                    except RuntimeError as e:
-                        sys.exit(f"\nГРЕШКА: {e}")
                 continue
 
-            # ── Ниво 2: Import check ──
-            print(f"  → Import check…")
+            # ── Import check ──
+            print("  → Import check…")
             import_ok, import_out = run_import_check()
             if not import_ok:
-                print(f"  ✗ Import FAIL — счупени ресурси:")
+                print("  ✗ Import FAIL — счупени ресурси:")
                 for ln in import_out.splitlines()[-15:]:
                     print(f"    {ln}")
-                review_feedback = (
+                retry_feedback = (
                     "Godot import check провали след промените — счупени или липсващи ресурси.\n"
                     f"Изход:\n{import_out[-800:]}"
                 )
                 git_unstage_all()
-                if attempt < MAX_RETRIES:
-                    try:
-                        move_item_status(
-                            meta["project_id"], item["item_id"],
-                            meta["status_field_id"],
-                            options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
-                        )
-                    except RuntimeError as e:
-                        sys.exit(f"\nГРЕШКА: {e}")
                 continue
-            print(f"  ✓ Import OK")
+            print("  ✓ Import OK")
 
-            # ── Ниво 3: Scene load check ──
-            print(f"  → Scene load check…")
+            # ── Scene load check ──
+            print("  → Scene load check…")
             scene_ok, scene_out = run_scene_load_check()
             if not scene_ok:
-                print(f"  ✗ Scene load FAIL — главната сцена крашва:")
+                print("  ✗ Scene load FAIL — главната сцена крашва:")
                 for ln in scene_out.splitlines()[-15:]:
                     print(f"    {ln}")
-                review_feedback = (
+                retry_feedback = (
                     "Scene load check провали: главната сцена крашва при зареждане headless.\n"
                     f"Изход:\n{scene_out[-800:]}"
                 )
                 git_unstage_all()
-                if attempt < MAX_RETRIES:
-                    try:
-                        move_item_status(
-                            meta["project_id"], item["item_id"],
-                            meta["status_field_id"],
-                            options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
-                        )
-                    except RuntimeError as e:
-                        sys.exit(f"\nГРЕШКА: {e}")
                 continue
-            print(f"  ✓ Scene load OK")
+            print("  ✓ Scene load OK")
 
-            # ── Тест suite ──
-            print(f"  → Стартирам тест suite…")
+            # ── Existing test suite (regression gate) ──
+            print("  → Стартирам тест suite…")
             test_passed, test_output = run_test_suite()
             print(f"  {'✓' if test_passed else '✗'} Тестове: {'PASS' if test_passed else 'FAIL'}")
+            if not test_passed:
+                retry_feedback = (
+                    "Съществуващият test suite провали след промените.\n"
+                    f"Изход:\n{test_output[-800:]}"
+                )
+                git_unstage_all()
+                continue
 
-            # ── Review агент ──
+            # ── Commit + push → Done (без Review агент) ──
             try:
-                passed, review_feedback = run_review_agent(
-                    item, staged, test_passed, test_output, api_key,
+                git_commit_and_push(item["issue_number"], item["title"], branch)
+            except subprocess.CalledProcessError as e:
+                sys.exit(f"\nГРЕШКА при git commit/push: {e}")
+
+            try:
+                move_item_status(
+                    meta["project_id"], item["item_id"],
+                    meta["status_field_id"], options[STATUS_DONE], STATUS_DONE,
                 )
             except RuntimeError as e:
-                print(f"\nГРЕШКА (Review агент): {e}", file=sys.stderr)
-                git_unstage_all()
-                sys.exit(2)
+                sys.exit(f"\nГРЕШКА при местене в Done: {e}")
 
-            if passed:
-                # ── Commit + push ──
-                try:
-                    git_commit_and_push(item["issue_number"], item["title"], branch)
-                except subprocess.CalledProcessError as e:
-                    sys.exit(f"\nГРЕШКА при git commit/push: {e}")
-
-                # → Done (явно чрез API; `closes #N` в commit затваря issue при merge)
-                try:
-                    move_item_status(
-                        meta["project_id"], item["item_id"],
-                        meta["status_field_id"], options[STATUS_DONE], STATUS_DONE,
-                    )
-                except RuntimeError as e:
-                    sys.exit(f"\nГРЕШКА при местене в Done: {e}")
-
-                print(f"  ✓ #{item['issue_number']} завършен успешно!")
-                task_done = True
-                break
-
-            else:
-                # ── Review FAIL → unstage, обратно In progress ──
-                git_unstage_all()
-                if attempt < MAX_RETRIES:
-                    print(f"  ↩ Връщам в «{STATUS_IN_PROGRESS}» за поправка…")
-                    try:
-                        move_item_status(
-                            meta["project_id"], item["item_id"],
-                            meta["status_field_id"],
-                            options[STATUS_IN_PROGRESS], STATUS_IN_PROGRESS,
-                        )
-                    except RuntimeError as e:
-                        sys.exit(f"\nГРЕШКА: {e}")
+            print(f"  ✓ #{item['issue_number']} завършен успешно!")
+            task_done = True
+            break
 
         if not task_done:
             print(
-                f"\n✗ #{item['issue_number']} не мина ревю след {MAX_RETRIES} опита.\n"
-                f"  Item остава в «{STATUS_IN_REVIEW}».\n"
+                f"\n✗ #{item['issue_number']} не мина проверките след {MAX_RETRIES} опита.\n"
+                f"  Item остава в «{STATUS_IN_PROGRESS}».\n"
                 "  Провери ръчно, поправи и пусни скрипта отново.",
                 file=sys.stderr,
             )
@@ -967,12 +820,12 @@ def main() -> None:
 
     # 5. Финален summary
     print(f"\n{'=' * 66}")
-    print(f"  ✓ Всички {len(ready_items)} задачи завършени успешно!")
+    print(f"  ✓ Всички {len(all_items)} задачи завършени успешно!")
     print(f"  Бранч: {branch}")
     print()
     print("  Следваща стъпка:")
     print("    Провери бранча → отвори PR → мърджни към main.")
-    print("    GitHub затваря issues (closes #N) → Projects → Done.")
+    print("    Batch code review: ръчно на всеки 20–30 таска.")
     print(f"{'=' * 66}")
 
 
