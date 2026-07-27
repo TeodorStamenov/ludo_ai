@@ -93,6 +93,7 @@ func test_null_command_is_rejected_without_rng_use() -> void:
 func test_start_match_not_implemented_preserves_state_and_rng() -> void:
 	var cfg := _two_player_config(11)
 	var state := GameState.create_from_match_config(cfg)
+	assert_true(state.is_setup())
 	var before := state.duplicate_state()
 	var rng := SeededRandomSource.new(cfg.rng_seed)
 	var rng_before := rng.get_state()
@@ -105,6 +106,23 @@ func test_start_match_not_implemented_preserves_state_and_rng() -> void:
 	assert_eq(result.error.code, CommandError.CODE_NOT_IMPLEMENTED)
 	assert_eq(result.event_count(), 0)
 	assert_eq(result.state, state)
+	assert_true(state.equals(before))
+	assert_eq(rng.get_state(), rng_before)
+
+
+func test_start_match_rejected_when_match_already_in_progress() -> void:
+	var state := _setup_in_progress()
+	var before := state.duplicate_state()
+	var rng := SeededRandomSource.new(state.get_rng_seed())
+	var rng_before := rng.get_state()
+	var cmd := StartMatchCommand.create_with_config(state.match_config)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.is_rejected())
+	assert_eq(result.error.code, CommandError.CODE_INVALID_COMMAND)
+	assert_eq(result.event_count(), 0)
 	assert_true(state.equals(before))
 	assert_eq(rng.get_state(), rng_before)
 

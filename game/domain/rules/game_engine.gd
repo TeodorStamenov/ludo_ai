@@ -2,30 +2,11 @@ class_name GameEngine
 extends RefCounted
 ## Централна точка на domain логиката (docs/V1_ARCHITECTURE.md, §3 / §4.3 / §12).
 ##
-## Приема команда, валидира я спрямо текущия GameState и RandomSource,
-## прилага я и връща CommandResult:
+## Публичен договор: команда → CommandResult (ново състояние + събития / грешка).
+## При reject state и RNG остават непроменени (§12).
 ##
-##   accepted : bool
-##   state    : GameState
-##   events   : Array[DomainEvent]
-##   error    : CommandError?  (null при accept)
-##
-## Публичен договор: „команда → ново наблюдаемо състояние + събития“.
-## За v1 state може да се мутира вътрешно; при reject state и RNG остават
-## непроменени (§12).
-##
-## GameEngine не познава Node, сцени, сигнали, input, анимации, файлове,
-## реклами или Android.
-##
-## Делегира правилата на:
-##   - MoveRules    (rules/move_rules.gd)
-##   - StackRules   (rules/stack_rules.gd)
-##   - CaptureRules (rules/capture_rules.gd)
-##   - TurnRules    (rules/turn_rules.gd)
-##   - FinishRules  (rules/finish_rules.gd)
-##
-## Конкретните command handlers се попълват от follow-up задачи (#84–#95).
-## Базовият engine осигурява envelope валидация, диспечер и §12 инварианти.
+## Делегира правилата на MoveRules / StackRules / CaptureRules / TurnRules /
+## FinishRules. Конкретните handlers се попълват от #84–#95.
 
 
 @warning_ignore("unused_private_class_variable")
@@ -93,7 +74,7 @@ func validate_and_apply(
 			CommandError.invalid_command("unknown command_type"))
 
 
-## Dictionary адаптер за MatchSession / stubs (accepted, state, events, error:String).
+## Dictionary адаптер за MatchSession (accepted, state, events, error:String).
 ## error е празен низ при accept; иначе стабилен CommandError.code.
 func apply_command(
 		state: GameState,
@@ -126,6 +107,12 @@ func _validate_envelope(state: GameState, command: GameCommand) -> CommandError:
 		return CommandError.create(
 				CommandError.CODE_SEQUENCE_MISMATCH,
 				"command.sequence is not the next expected sequence")
+
+	if command is StartMatchCommand:
+		if state.is_in_progress():
+			return CommandError.invalid_command(
+					"StartMatchCommand is not allowed while match is in progress")
+		return null
 
 	if command is RollDiceCommand or command is MovePawnCommand:
 		if not state.is_in_progress():
