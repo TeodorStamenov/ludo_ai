@@ -15,7 +15,6 @@ var _move_rules: MoveRules
 var _stack_rules: StackRules
 @warning_ignore("unused_private_class_variable")
 var _capture_rules: CaptureRules
-@warning_ignore("unused_private_class_variable")
 var _turn_rules: TurnRules
 @warning_ignore("unused_private_class_variable")
 var _finish_rules: FinishRules
@@ -156,9 +155,10 @@ func _apply_start_match(
 				CommandError.invalid_command("StartMatchCommand sequence could not be recorded"))
 
 	next.set_phase(MatchPhase.IN_PROGRESS)
-	var first_player: PlayerState = next.get_active_player()
-	var all_in_base: bool = _player_all_pawns_in_base(first_player)
-	next.turn.begin_player_turn(1, all_in_base)
+	if not _turn_rules.begin_player_turn(next, next.active_player_index, 1):
+		return CommandResult.rejected(
+				state,
+				CommandError.invalid_command("StartMatchCommand could not begin first turn"))
 
 	var events: Array = [
 		MatchStartedEvent.create_started(next.match_id, config, accepted_sequence),
@@ -166,15 +166,6 @@ func _apply_start_match(
 				next, TurnChangedEvent.PLAYER_INDEX_NONE, accepted_sequence),
 	]
 	return CommandResult.ok(next, events)
-
-
-func _player_all_pawns_in_base(player: PlayerState) -> bool:
-	if player == null or player.pawns.is_empty():
-		return true
-	for entry in player.pawns:
-		if not (entry is PawnState) or not (entry as PawnState).is_in_base():
-			return false
-	return true
 
 
 ## #91 / #86: RollDiceCommand → seeded зар + фаза AWAITING_ROLL.
