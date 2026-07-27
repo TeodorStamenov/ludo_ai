@@ -1,10 +1,10 @@
 extends TestCase
-## Business-critical тестове за GameplayJournal (Task #132 / #133 / #134 /
+## Business-critical тестове за GameplayJournal (Task #132 / #133 / #134 / #135 /
 ## docs/V1_ARCHITECTURE.md §11 / §12 / §16.3).
 ##
 ## Инварианти: append-only ред; accepted commands за replay без reject/hash шум;
 ## command_from_dict диспеч; round-trip без загуба; MatchSession записва header
-## (#133) и приети команди (#134) при start / receive_command.
+## (#133), приети (#134) и отхвърлени команди с причина (#135).
 
 
 func _make_config() -> MatchConfig:
@@ -249,8 +249,8 @@ func test_match_session_records_accepted_commands_in_journal() -> void:
 			"accepted-only path must not insert reject/hash entries")
 
 
-func test_match_session_does_not_journal_rejected_commands() -> void:
-	## #134: reject не влиза като accepted (запис на reject → #135).
+func test_match_session_records_rejected_commands_in_journal() -> void:
+	## #135: reject влиза като rejected_command + reason; не като accepted.
 	var state := GameState.new()
 	state.match_id = &"m_200_5"
 	var session := MatchSession.new()
@@ -267,16 +267,31 @@ func test_match_session_does_not_journal_rejected_commands() -> void:
 	var count_before := journal.entry_count()
 	var accepted_before := journal.get_accepted_commands().size()
 
-	var rejected := {"fired": false}
-	session.command_rejected.connect(func(_cmd, _reason): rejected.fired = true)
+	var rejected := {"fired": false, "reason": ""}
+	session.command_rejected.connect(
+			func(_cmd, reason: String):
+				rejected.fired = true
+				rejected.reason = reason)
 	session.receive_command(RollDiceCommand.new(&"green"))
 
 	assert_true(rejected.fired)
-	assert_eq(journal.entry_count(), count_before,
-			"rejected command must not append a journal entry yet (#135)")
-	assert_eq(journal.get_accepted_commands().size(), accepted_before)
+	assert_eq(str(rejected.reason), "illegal_move")
+	assert_eq(journal.entry_count(), count_before + 1,
+			"rejected command must append one journal entry (#135)")
+	assert_eq(journal.get_accepted_commands().size(), accepted_before,
+			"rejected command must not appear in accepted replay sequence")
 	assert_eq(state.command_sequence, 1,
 			"rejected command must not advance command_sequence")
+
+	var entries := journal.get_entries()
+	var last: Dictionary = entries[entries.size() - 1]
+	assert_eq(StringName(str(last["kind"])), GameplayJournal.KIND_REJECTED_COMMAND)
+	assert_eq(str(last["reason"]), "illegal_move")
+	var cmd_data: Variant = last.get("command", {})
+	assert_true(cmd_data is Dictionary)
+	assert_eq(StringName(str((cmd_data as Dictionary).get("command_type", ""))),
+			GameCommand.TYPE_ROLL_DICE)
+	assert_eq(int((cmd_data as Dictionary).get("sequence", 0)), 2)
 
 
 class _AcceptEngine extends GameEngine:

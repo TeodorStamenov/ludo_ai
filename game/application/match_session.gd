@@ -16,7 +16,7 @@ extends RefCounted
 ##     сигнализира Presentation за очакван human input;
 ##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
 ##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
-##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#134);
+##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#135);
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
@@ -102,8 +102,11 @@ func receive_command(command: GameCommand) -> void:
 
 	if not result.get("accepted", false):
 		# §12: отхвърлена команда не променя state или RNG — без capture_rng.
-		# Запис на reject в journal → #135.
-		command_rejected.emit(command, str(result.get("error", "rejected")))
+		# Replay (#137) игнорира reject entries; bug report / debug ги четат (#135).
+		var reason := str(result.get("error", "rejected"))
+		if _journal != null:
+			_journal.record_rejected_command(command, reason)
+		command_rejected.emit(command, reason)
 		return
 
 	_state = result.get("state", _state)
@@ -430,7 +433,7 @@ func _clear_human_action_routes() -> void:
 
 ## Създава / нулира GameplayJournal за текущия match_id (#132).
 ## Записва MatchConfig, seed и content version в header-а (#133).
-## Приети команди се добавят в receive_command (#134); reject/hash → #135–#136.
+## Приети/отхвърлени команди се добавят в receive_command (#134–#135); hash → #136.
 func _begin_journal() -> void:
 	if _journal == null:
 		_journal = GameplayJournal.new()

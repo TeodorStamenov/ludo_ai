@@ -43,6 +43,7 @@ presentation gate → AI/human advance → MatchSummary). Външните ко�
 само през `CommandBus.submit()` (HumanController.action_ready и AI advance).
 `EventQueue` буферира DomainEvent-и FIFO; `events_presented` прави
 `acknowledge(sequence)`. `GameplayJournal` се създава при start/restore (`get_journal()`); header-ът
-записва MatchConfig, seed и content version (#133). Приетите команди се
-записват в journal при успешен `receive_command` (#134). Reject/hash → #135–#136.
-Останалите application класове се довършват в собствени roadmap задачи.
+записва MatchConfig, seed и content version (#133). Приетите и отхвърлените
+команди (с причина) се записват в journal при `receive_command` (#134–#135).
+State hash → #136. Останалите application класове се довършват в собствени
+roadmap задачи.
