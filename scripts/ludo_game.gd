@@ -32,19 +32,31 @@ var _roll_allowed: bool = true
 var _gameplay_rng: SeededRandomSource = SeededRandomSource.new(
 		MatchConfig.generate_rng_seed())
 
+## Forced debug rolls — само в debug build (#163 / §6.4). Null в production.
+var _debug_dice: DebugDiceAdapter = null
+
 
 func _ready() -> void:
 	dice_button.pressed.connect(_on_dice_button_pressed)
 	dice.dice_rolled.connect(_on_dice_rolled)
 	dice.roll_requested.connect(_on_dice_button_pressed)
-
-	for i in range(1, 7):
-		var button: Button = debug_rolls.get_node("Roll%d" % i) as Button
-		button.pressed.connect(_on_debug_roll_pressed.bind(i))
+	_setup_debug_rolls()
 
 	_yellow_path = Classic15x15Board.player_route_grid_positions_for(PlayerId.YELLOW)
 	_spawn_yellow_pawns()
 	_start_yellow_turn()
+
+
+## Debug бутоните 1–6 съществуват само при authorized DebugDiceAdapter (#163).
+func _setup_debug_rolls() -> void:
+	_debug_dice = DebugDiceAdapter.create_authorized()
+	if _debug_dice == null:
+		debug_rolls.visible = false
+		debug_rolls.process_mode = Node.PROCESS_MODE_DISABLED
+		return
+	for i in range(1, 7):
+		var button: Button = debug_rolls.get_node("Roll%d" % i) as Button
+		button.pressed.connect(_on_debug_roll_pressed.bind(i))
 
 
 func _spawn_yellow_pawns() -> void:
@@ -116,7 +128,12 @@ func _on_dice_button_pressed() -> void:
 
 
 func _on_debug_roll_pressed(value: int) -> void:
-	_try_roll_dice(value)
+	if _debug_dice == null:
+		return
+	var forced: int = _debug_dice.request_forced_face(value)
+	if forced == 0:
+		return
+	_try_roll_dice(forced)
 
 
 func _try_roll_dice(forced_value: int = 0) -> void:

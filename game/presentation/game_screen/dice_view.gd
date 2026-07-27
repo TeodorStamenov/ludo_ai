@@ -11,6 +11,9 @@ extends Node3D
 ## Не генерира gameplay случайността (#160). Резултатът идва от domain чрез
 ## DiceRolledEvent (#161) — GamePresenter / AnimationQueue викат
 ## present_dice_rolled().
+##
+## Debug бутоните 1–6 (#163) не са част от този node: живеят в Game HUD /
+## прототипния UI и минават през DebugDiceAdapter (само debug build).
 
 signal dice_rolled(value: int)
 signal roll_requested
