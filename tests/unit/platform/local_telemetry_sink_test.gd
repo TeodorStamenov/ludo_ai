@@ -1,11 +1,12 @@
 extends TestCase
-## Unit тестове за LocalTelemetrySink — файлово-базиран JSONL telemetry адаптер
-## и локален bug report bundle при invariant violation (#143).
+## Unit тестове за LocalTelemetrySink — файлово-базиран JSONL telemetry адаптер,
+## локален bug report bundle при invariant violation (#143) и кратко
+## MatchSummary при нормално приключил мач (#145).
 ##
 ## Тестовете записват в user://telemetry.log и user://logs/; setUp/tearDown
 ## изчистват артефактите. Проверяват буферирането, auto-flush при
-## FLUSH_THRESHOLD, atomic-append логиката и незабавния flush + bundle
-## при invariant violation.
+## FLUSH_THRESHOLD, atomic-append логиката, незабавния flush + bundle
+## при invariant violation и circular eviction на MatchSummary логове.
 ##
 ## БЕЛЕЖКА: LocalTelemetrySink не прилага auto-flush при освобождаване
 ## (NOTIFICATION_PREDELETE е ненадеждно за RefCounted в Godot 4.6).
@@ -41,7 +42,9 @@ func _delete_bug_reports() -> void:
 	dir.list_dir_begin()
 	var name := dir.get_next()
 	while name != "":
-		if not dir.current_is_dir() and name.begins_with("bug_report_"):
+		if not dir.current_is_dir() and (
+				name.begins_with("bug_report_") or name.begins_with("match_summary_")
+		):
 			dir.remove(name)
 		name = dir.get_next()
 	dir.list_dir_end()
@@ -75,6 +78,31 @@ func _list_bug_report_paths() -> Array[String]:
 		name = dir.get_next()
 	dir.list_dir_end()
 	return paths
+
+
+func _list_match_summary_paths() -> Array[String]:
+	var paths: Array[String] = []
+	var dir := DirAccess.open(_LOGS_DIR)
+	if dir == null:
+		return paths
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if not dir.current_is_dir() and name.begins_with("match_summary_") and name.ends_with(".json"):
+			paths.append("%s/%s" % [_LOGS_DIR, name])
+		name = dir.get_next()
+	dir.list_dir_end()
+	return paths
+
+
+func _valid_summary(match_id: String = "m_ok") -> Dictionary:
+	MatchId._reset_counter_for_tests()
+	var result := MatchResult.create(MatchId.generate(), [
+		MatchResult.PlayerStanding.create(PlayerId.GREEN, 1),
+		MatchResult.PlayerStanding.create(PlayerId.YELLOW, 2),
+	])
+	result.match_id = StringName(match_id)
+	return MatchSummary.build_from_match_result(result, 9)
 
 
 func _read_json_file(path: String) -> Dictionary:
@@ -243,6 +271,65 @@ func test_bug_report_bundle_sanitizes_match_id_in_filename() -> void:
 	assert_false(filename.contains(".."), "no path traversal in filename")
 	assert_false(filename.contains("/"), "no slash in filename")
 	assert_false(filename.contains(" "), "spaces sanitized")
+
+
+# --- MatchSummary for normally finished matches (#145) ---
+
+func test_record_match_finished_writes_summary_file() -> void:
+	var summary := _valid_summary("m_ok")
+	sink.record_match_finished(summary)
+
+	var path := sink.get_last_match_summary_path()
+	assert_false(path.is_empty(), "last match summary path set")
+	assert_true(FileAccess.file_exists(path), "summary file exists on disk")
+
+	var files := _list_match_summary_paths()
+	assert_eq(files.size(), 1, "exactly one match summary file")
+	assert_eq(files[0], path)
+
+	var stored := _read_json_file(path)
+	assert_true(MatchSummary.is_valid_payload(stored), "stored payload valid")
+	assert_eq(stored.get(MatchSummary.KEY_MATCH_ID), "m_ok")
+	assert_eq(int(stored.get(MatchSummary.KEY_COMMAND_SEQUENCE, -1)), 9)
+	assert_true(stored.has(MatchSummary.KEY_RECORDED_AT), "recorded_at stamped on write")
+	assert_false(stored.has("journal"), "normal finish log must not embed journal")
+
+
+func test_record_match_finished_writes_telemetry_event() -> void:
+	sink.record_match_finished(_valid_summary("m_evt"))
+	var lines := _read_log_lines()
+	var found := false
+	for line: String in lines:
+		var parsed = JSON.parse_string(line)
+		if parsed is Dictionary and parsed.get("type") == "match_finished":
+			found = true
+			var payload: Dictionary = parsed.get("payload", {})
+			assert_eq(payload.get("match_id"), "m_evt")
+			assert_true(str(payload.get("summary_path", "")).begins_with(_LOGS_DIR))
+	assert_true(found, "match_finished entry found in telemetry.log")
+
+
+func test_record_match_finished_empty_is_noop() -> void:
+	sink.record_match_finished({})
+	assert_true(sink.get_last_match_summary_path().is_empty())
+	assert_eq(_list_match_summary_paths().size(), 0)
+
+
+func test_match_summary_circular_buffer_evicts_oldest() -> void:
+	sink = LocalTelemetrySink.new(2)
+	sink.record_match_finished(_valid_summary("m_1"))
+	sink.record_match_finished(_valid_summary("m_2"))
+	sink.record_match_finished(_valid_summary("m_3"))
+
+	var files := _list_match_summary_paths()
+	assert_eq(files.size(), 2, "capacity must not be exceeded")
+	var ids: Array[String] = []
+	for path: String in files:
+		var stored := _read_json_file(path)
+		ids.append(str(stored.get(MatchSummary.KEY_MATCH_ID, "")))
+	assert_false(ids.has("m_1"), "oldest normal summary must be evicted")
+	assert_true(ids.has("m_2"))
+	assert_true(ids.has("m_3"))
 
 
 # --- Append (не overwrite) при множество flush-ове ---

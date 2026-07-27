@@ -32,6 +32,7 @@ Presentation ──► Application ──► Domain
 | `gameplay_journal.gd`     | Append-only journal на активния мач (replay / bug report / #132) |
 | `bug_report_bundle.gd`    | Diagnostic payload при нарушен invariant (#143; запис в platform) |
 | `debug_match_buffer.gd`   | Circular buffer за последните ~5 debug журнала (#144) |
+| `match_summary.gd`        | Кратко резюме при нормално приключил мач (#145) |
 | `deterministic_replay_runner.gd` | Headless replay от journal (seed + accepted commands → state hash / #137) |
 | `match_simulator.gd`      | Headless пълен мач без сцена (AI + auto presentation gate / #139); max command stuck limit (#141) |
 | `match_batch_simulator.gd`| Batch от хиляди AI мачове + крайни инварианти (§12 / #140) |
@@ -65,5 +66,7 @@ presentation gate и проверява state hash (#137). `MatchSimulator` въ
 При нарушение `LocalTelemetrySink` записва `BugReportBundle` в
 `user://logs/` (#143). `DebugMatchBuffer` пази последните ~5 подробни
 journal-а в памет (FIFO eviction); `MatchSession` го пълни при finish/halt,
-ако е инжектиран (#144). Останалите application класове се довършват в
-собствени roadmap задачи.
+ако е инжектиран (#144). При нормално `MatchFinished` `MatchSummary`
+строи кратък payload и `LocalTelemetrySink` го записва в `user://logs/`
+с circular eviction на старите нормални логове (#145). Останалите
+application класове се довършват в собствени roadmap задачи.

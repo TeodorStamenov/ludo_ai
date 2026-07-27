@@ -193,6 +193,30 @@ func test_create_from_game_state_reads_ranking_and_player_fields() -> void:
 			MatchConfig.ControllerType.HUMAN)
 
 
+func test_create_from_game_state_to_dict_is_match_summary_payload() -> void:
+	## #145: нормално приключил мач → MatchResult.to_dict() е ядрото на MatchSummary.
+	MatchId._reset_counter_for_tests()
+	var cfg := MatchConfig.create_two_player_opposite()
+	cfg.rng_seed = 11
+	var state := GameState.create_from_match_config(cfg)
+	state.set_phase(MatchPhase.FINISHED)
+	state.rank_player(PlayerId.GREEN)
+	state.rank_player(PlayerId.YELLOW)
+	state.command_sequence = 42
+	var result := MatchResult.create_from_game_state(state)
+	assert_true(result.is_valid(), "finished ranked match must yield valid MatchResult")
+	var payload := result.to_dict()
+	assert_eq(int(payload.get("schema_version", 0)), MatchResult.SCHEMA_VERSION)
+	assert_eq(StringName(str(payload.get("match_id", ""))), state.match_id)
+	assert_eq((payload.get("ranking", []) as Array).size(), 2)
+	assert_eq(int(payload["ranking"][0]["rank"]), 1)
+	assert_eq(str(payload["ranking"][0]["player_id"]), String(PlayerId.GREEN))
+	assert_eq(int(payload["ranking"][1]["rank"]), 2)
+	assert_false(payload.has("journal"), "MatchSummary must not embed journal")
+	assert_false(payload.has("snapshot"), "MatchSummary must not embed snapshot")
+	assert_false(payload.has("xp"), "XP се изчислява извън domain MatchResult")
+
+
 func test_create_from_game_state_null_returns_empty_invalid() -> void:
 	var result := MatchResult.create_from_game_state(null)
 	assert_false(result.is_valid())

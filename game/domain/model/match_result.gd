@@ -7,8 +7,9 @@ extends RefCounted
 ## Произвежда се от MatchSession при MatchFinished и се подава към
 ## Application слоя за XP изчисление, Results екран и ProgressRepository.
 ##
-## Application „MatchSummary“ е Dictionary payload-ът от to_dict() /
-## to_player_summary() — typed моделът живее тук в domain.
+## Application „MatchSummary“ (#145) е Dictionary payload-ът от to_dict() /
+## to_player_summary() плюс session метаданни (command_sequence) —
+## typed моделът живее тук в domain; builder-ът е game/application/match_summary.gd.
 ##
 ## Схема:
 ##   schema_version, match_id, mode, campaign_level_id?,

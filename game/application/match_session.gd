@@ -21,7 +21,8 @@ extends RefCounted
 ##     записва TelemetrySink → локален BugReportBundle (#143) и спира мача;
 ##   - при край на мача (finish / invariant halt) архивира journal в
 ##     DebugMatchBuffer (#144), ако е инжектиран (debug builds);
-##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
+##   - при MatchFinished произвежда кратко MatchSummary (#145), записва го
+##     през TelemetrySink (user://logs/) и го публикува с match_finished.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
 ## is_snapshot_valid(), get_last_stable_snapshot(), restore_from_snapshot(),
@@ -174,6 +175,7 @@ func receive_command(command: GameCommand) -> void:
 		_active = false
 		var summary := _build_summary()
 		_archive_debug_match(summary)
+		_record_normal_match_summary(summary)
 		match_finished.emit(summary)
 
 
@@ -425,14 +427,17 @@ func _is_match_over(events: Array) -> bool:
 	return false
 
 
-## MatchSummary = MatchResult.to_dict() (§5.2); command_sequence е session метаданни.
+## Кратко MatchSummary за нормално приключил мач (§5.2 / #145).
 func _build_summary() -> Dictionary:
-	var result := MatchResult.create_from_game_state(_state)
-	var summary: Dictionary = result.to_dict()
-	summary["command_sequence"] = (
-			_state.command_sequence if _state != null
-			else GameState.COMMAND_SEQUENCE_START)
-	return summary
+	return MatchSummary.build_from_game_state(_state)
+
+
+## Записва кратко MatchSummary през TelemetrySink (#145). No-op без sink.
+## Не се вика при invariant halt — там отива BugReportBundle (#143).
+func _record_normal_match_summary(summary: Dictionary) -> void:
+	if _telemetry == null or summary.is_empty():
+		return
+	_telemetry.record_match_finished(summary)
 
 
 ## Попълва DomainEvent.command_sequence за replay / presentation gate.

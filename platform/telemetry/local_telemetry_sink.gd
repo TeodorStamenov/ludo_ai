@@ -4,8 +4,11 @@ extends TelemetrySink
 ## (docs/V1_ARCHITECTURE.md, раздел 10).
 ##
 ## Записва state hash-ове и telemetry events в user://telemetry.log
-## като JSONL. При invariant violation (#143) създава и bug report
-## bundle в user://logs/bug_report_<match_id>_<unix>.json (атомичен запис).
+## като JSONL. При invariant violation (#143) създава bug report
+## bundle в user://logs/bug_report_<match_id>_<unix>.json.
+## При нормално приключил мач (#145) записва кратко MatchSummary в
+## user://logs/match_summary_<match_id>_<unix>.json и изтрива старите
+## чрез ограничен circular buffer (MatchSummary.DEFAULT_LOG_CAPACITY).
 ##
 ## Лични данни не влизат в записа. При invariant violation
 ## незабавно прави flush и изписва push_error в конзолата.
@@ -18,10 +21,17 @@ extends TelemetrySink
 const _LOG_PATH := "user://telemetry.log"
 const _LOGS_DIR := "user://logs"
 const _BUG_REPORT_PREFIX := "bug_report_"
+const _MATCH_SUMMARY_PREFIX := "match_summary_"
 const FLUSH_THRESHOLD := 20
 
 var _buffer: Array[String] = []
 var _last_bug_report_path: String = ""
+var _last_match_summary_path: String = ""
+var _match_summary_log_capacity: int = MatchSummary.DEFAULT_LOG_CAPACITY
+
+
+func _init(match_summary_log_capacity: int = MatchSummary.DEFAULT_LOG_CAPACITY) -> void:
+	_match_summary_log_capacity = maxi(1, match_summary_log_capacity)
 
 
 func record_event(event_type: StringName, payload: Dictionary = {}) -> void:
@@ -58,9 +68,28 @@ func record_invariant_violation(match_id: StringName, description: String,
 	flush()
 
 
+func record_match_finished(summary: Dictionary) -> void:
+	if summary.is_empty():
+		return
+	_last_match_summary_path = _write_match_summary(summary)
+	var event_payload := {
+		"match_id": str(summary.get(MatchSummary.KEY_MATCH_ID, "")),
+	}
+	if not _last_match_summary_path.is_empty():
+		event_payload["summary_path"] = _last_match_summary_path
+	record_event(&"match_finished", event_payload)
+	flush()
+	_evict_old_match_summaries()
+
+
 ## Път към последния записан bug report bundle, или "" ако няма / записът е неуспешен.
 func get_last_bug_report_path() -> String:
 	return _last_bug_report_path
+
+
+## Път към последния записан MatchSummary лог, или "" ако няма / записът е неуспешен.
+func get_last_match_summary_path() -> String:
+	return _last_match_summary_path
 
 
 func flush() -> void:
@@ -98,16 +127,66 @@ func _write_bug_report_bundle(
 		safe_id = "unknown"
 	var stamp := str(int(Time.get_unix_time_from_system()))
 	var filename := "%s%s_%s.json" % [_BUG_REPORT_PREFIX, safe_id, stamp]
+	return _atomic_write_json(filename, bundle)
+
+
+func _write_match_summary(summary: Dictionary) -> String:
+	if not _ensure_logs_dir():
+		return ""
+	var payload := summary.duplicate(true)
+	if not payload.has(MatchSummary.KEY_RECORDED_AT):
+		payload[MatchSummary.KEY_RECORDED_AT] = Time.get_datetime_string_from_system()
+	var raw_id := str(payload.get(MatchSummary.KEY_MATCH_ID, ""))
+	var safe_id := _sanitize_filename_part(raw_id)
+	if safe_id.is_empty():
+		safe_id = "unknown"
+	var stamp := str(int(Time.get_unix_time_from_system()))
+	# Уникален суфикс при няколко записа в една и съща секунда.
+	var uniq := str(_list_match_summary_filenames().size())
+	var filename := "%s%s_%s_%s.json" % [_MATCH_SUMMARY_PREFIX, safe_id, stamp, uniq]
+	return _atomic_write_json(filename, payload)
+
+
+## Изтрива най-старите match_summary_*.json над capacity (FIFO по име).
+func _evict_old_match_summaries() -> void:
+	var names := _list_match_summary_filenames()
+	if names.size() <= _match_summary_log_capacity:
+		return
+	names.sort()
+	var to_remove := names.size() - _match_summary_log_capacity
+	var dir := DirAccess.open(_LOGS_DIR)
+	if dir == null:
+		return
+	for i in to_remove:
+		dir.remove(names[i])
+
+
+func _list_match_summary_filenames() -> Array[String]:
+	var names: Array[String] = []
+	var dir := DirAccess.open(_LOGS_DIR)
+	if dir == null:
+		return names
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if not dir.current_is_dir() and name.begins_with(_MATCH_SUMMARY_PREFIX) and name.ends_with(".json"):
+			names.append(name)
+		name = dir.get_next()
+	dir.list_dir_end()
+	return names
+
+
+func _atomic_write_json(filename: String, data: Dictionary) -> String:
 	var tmp_name := filename.get_basename() + ".tmp"
 	var tmp_path := "%s/%s" % [_LOGS_DIR, tmp_name]
 	var final_path := "%s/%s" % [_LOGS_DIR, filename]
 
 	var file := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if not file:
-		push_error("LocalTelemetrySink: cannot write bug report '%s' (error %d)" % [
+		push_error("LocalTelemetrySink: cannot write '%s' (error %d)" % [
 			tmp_path, FileAccess.get_open_error()])
 		return ""
-	file.store_string(JSON.stringify(bundle, "\t"))
+	file.store_string(JSON.stringify(data, "\t"))
 	file = null
 
 	var dir := DirAccess.open(_LOGS_DIR)
@@ -118,7 +197,7 @@ func _write_bug_report_bundle(
 		dir.remove(filename)
 	var err := dir.rename(tmp_name, filename)
 	if err != OK:
-		push_error("LocalTelemetrySink: rename bug report '%s' -> '%s' failed: %d" % [
+		push_error("LocalTelemetrySink: rename '%s' -> '%s' failed: %d" % [
 			tmp_name, filename, err])
 		return ""
 	return final_path
