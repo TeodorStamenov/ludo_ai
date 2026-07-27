@@ -284,7 +284,7 @@ Main Menu ──┬──► Нова игра (Match Setup) ──► Game ─�
   - `scripts/ludo_board.gd` — изометрична дъска 15×15, построяване на тайлове,
     изчислени бази, spawn клетки и пълен път за жълтия играч.
   - `scripts/pawn.gd`, `scenes/pawn.tscn` — пионка.
-  - `scripts/dice.gd`, `scripts/dice_3d.gd`, `scenes/Dice.tscn`,
-    `scenes/dice_3d.tscn`, `scenes/dice_world.tscn` — зар (2D и 3D варианти).
+  - `game/presentation/game_screen/dice_view.gd`, `scenes/Dice.tscn`,
+    `scenes/dice_world.tscn` — зар (`DiceView`; legacy `dice_3d` премахнат #164).
   - `scripts/ludo_game.gd`, `scenes/ludo_game.tscn` — главна сцена.
 - Временни арт асети в `rss/` (CHIP тайлове); финалният арт ще бъде поръчан.
