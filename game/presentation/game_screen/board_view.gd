@@ -1,21 +1,11 @@
 @tool
 class_name BoardView
 extends Node2D
-## Временен BoardView — пренесен от scripts/ludo_board.gd
-## (docs/V1_ARCHITECTURE.md §6.2, Етап C).
+## Визуална дъска от BoardDefinition (docs/V1_ARCHITECTURE.md §6.2).
 ##
-## Отговорности:
-##   - строи 15×15 геометрията (изометрични CHIP тайлове);
-##   - пази cell_id → Node2D / локална позиция;
-##   - НЕ пази текущ играч, зар, маршрути или правила.
-##
-## Изометричната математика е в IsometricMath (#147).
-## cell_id → позиция е в CellPositionMap (#149).
-## Tile node names = CellId (не @Sprite2D@N) — lookup само през _cell_nodes (#150).
-## Gameplay topology (бази/spawn/маршрути/home stretch) е само в Domain
-## (Classic15x15Board) — премахната оттук (#148).
-## Хардкоднатият visual layout остава до #152 (BoardDefinition).
-## Единствен source of truth за тайловете: runtime _build_board (#151).
+## Строи геометрията от BoardDefinition.cells; позиции чрез CellPositionMap.
+## Текстурите са временен CHIP mapping до BoardThemeDefinition.
+## Не пази текущ играч, зар, маршрути или правила.
 
 const CHIP_RED := "res://rss/CHIP/07.png"
 const CHIP_GREEN := "res://rss/CHIP/03.png"
@@ -33,6 +23,10 @@ const CHIP_PURPLE := "res://rss/CHIP/05.png"
 	set(_value):
 		_build_board()
 
+## Domain геометрия — единствен източник кои клетки съществуват.
+var _board_definition: BoardDefinition = null
+## cell_id → PlayerId за BASE / SPAWN / HOME (от player_definitions).
+var _cell_owners: Dictionary = {}
 ## cell_id (CellId) → Sprite2D на тайла. Празен до _build_board.
 var _cell_nodes: Dictionary = {}
 ## Пълен cell_id → локална изометрична позиция (15×15).
@@ -43,6 +37,18 @@ func _ready() -> void:
 	_build_board()
 	var viewport_size: Vector2 = get_viewport_rect().size
 	position = viewport_size / 2.0
+
+
+## Задава BoardDefinition и престроява тайловете. null → classic_15x15 default.
+func set_board_definition(definition: BoardDefinition) -> void:
+	_board_definition = definition
+	_rebuild_cell_owners()
+	_build_board()
+
+
+func get_board_definition() -> BoardDefinition:
+	_ensure_board_definition()
+	return _board_definition
 
 
 func get_cell_local_position(grid_pos: Vector2i) -> Vector2:
@@ -64,10 +70,59 @@ func get_cell_node(cell_id: StringName) -> Node2D:
 	return _cell_nodes.get(cell_id) as Node2D
 
 
-func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> Sprite2D:
-	var cell_id: StringName = CellId.from_vec(grid_pos)
+func _ensure_board_definition() -> void:
+	if _board_definition != null:
+		return
+	_board_definition = Classic15x15Board.create()
+	_rebuild_cell_owners()
+
+
+func _rebuild_cell_owners() -> void:
+	_cell_owners.clear()
+	if _board_definition == null:
+		return
+	for item in _board_definition.player_definitions:
+		var player := item as PlayerBoardDefinition
+		if player == null:
+			continue
+		var player_id: StringName = player.player_id
+		if player.spawn_cell != &"":
+			_cell_owners[player.spawn_cell] = player_id
+		for cell in player.base_cells:
+			_cell_owners[StringName(cell)] = player_id
+		for cell in player.home_stretch:
+			_cell_owners[StringName(cell)] = player_id
+
+
+func _texture_path_for_cell(cell: CellDefinition) -> String:
+	match cell.cell_type:
+		CellType.CENTER:
+			return CHIP_RED
+		CellType.PATH:
+			return CHIP_PURPLE
+		CellType.BASE, CellType.SPAWN, CellType.HOME:
+			return _player_chip_path(_cell_owners.get(cell.cell_id, &"") as StringName)
+		_:
+			return CHIP_PURPLE
+
+
+func _player_chip_path(player_id: StringName) -> String:
+	match player_id:
+		PlayerId.GREEN:
+			return CHIP_GREEN
+		PlayerId.ORANGE:
+			return CHIP_ORANGE
+		PlayerId.YELLOW:
+			return CHIP_YELLOW
+		PlayerId.CYAN:
+			return CHIP_CYAN
+		_:
+			return CHIP_PURPLE
+
+
+func _add_tile(texture_path: String, cell: CellDefinition, parent_node: Node) -> Sprite2D:
+	var cell_id: StringName = cell.cell_id
 	var sprite := Sprite2D.new()
-	# Стабилно име = cell_id — без editor-generated @Sprite2D@N (#150).
 	sprite.name = String(cell_id)
 	sprite.set_meta(&"cell_id", cell_id)
 	sprite.texture = load(texture_path)
@@ -91,6 +146,24 @@ func _clear_tiles(tiles_node: Node) -> void:
 	_cell_nodes.clear()
 
 
+func _sorted_cells() -> Array[CellDefinition]:
+	var result: Array[CellDefinition] = []
+	for key in _board_definition.cells.keys():
+		var cell := _board_definition.cells[key] as CellDefinition
+		if cell != null:
+			result.append(cell)
+	result.sort_custom(func(a: CellDefinition, b: CellDefinition) -> bool:
+		var za: int = a.grid_col + a.grid_row
+		var zb: int = b.grid_col + b.grid_row
+		if za != zb:
+			return za < zb
+		if a.grid_row != b.grid_row:
+			return a.grid_row < b.grid_row
+		return a.grid_col < b.grid_col
+	)
+	return result
+
+
 func _build_board() -> void:
 	var tiles_node: Node = get_node_or_null("Tiles")
 	if not tiles_node:
@@ -101,58 +174,8 @@ func _build_board() -> void:
 			tiles_node.owner = get_tree().edited_scene_root
 
 	_clear_tiles(tiles_node)
+	_ensure_board_definition()
 	_cell_positions.rebuild(board_scale)
 
-	# Layout: 11x11 area within 15x15 grid. Center is (7,7).
-	# NW: Green, NE: Orange, SE: Yellow, SW: Cyan
-	for y in range(15):
-		for x in range(15):
-			var tex: String = ""
-
-			if x >= 2 and x <= 3 and y >= 2 and y <= 3:
-				tex = CHIP_GREEN
-			elif x >= 11 and x <= 12 and y >= 2 and y <= 3:
-				tex = CHIP_ORANGE
-			elif x >= 11 and x <= 12 and y >= 11 and y <= 12:
-				tex = CHIP_YELLOW
-			elif x >= 2 and x <= 3 and y >= 11 and y <= 12:
-				tex = CHIP_CYAN
-			elif x == 7 and y == 7:
-				tex = CHIP_RED
-
-			var is_north := y >= 2 and y <= 6 and x >= 6 and x <= 8
-			var is_east := x >= 8 and x <= 12 and y >= 6 and y <= 8
-			var is_south := y >= 8 and y <= 12 and x >= 6 and x <= 8
-			var is_west := x >= 2 and x <= 6 and y >= 6 and y <= 8
-
-			if is_north:
-				if x == 7 and y >= 3 and y <= 6:
-					tex = CHIP_GREEN
-				elif x == 8 and y == 2:
-					tex = CHIP_GREEN
-				else:
-					tex = CHIP_PURPLE
-			elif is_east:
-				if y == 7 and x >= 8 and x <= 11:
-					tex = CHIP_ORANGE
-				elif x == 12 and y == 8:
-					tex = CHIP_ORANGE
-				else:
-					tex = CHIP_PURPLE
-			elif is_south:
-				if x == 7 and y >= 8 and y <= 11:
-					tex = CHIP_YELLOW
-				elif x == 6 and y == 12:
-					tex = CHIP_YELLOW
-				else:
-					tex = CHIP_PURPLE
-			elif is_west:
-				if y == 7 and x >= 3 and x <= 6:
-					tex = CHIP_CYAN
-				elif x == 2 and y == 6:
-					tex = CHIP_CYAN
-				else:
-					tex = CHIP_PURPLE
-
-			if tex != "":
-				_add_tile(tex, Vector2i(x, y), tiles_node)
+	for cell in _sorted_cells():
+		_add_tile(_texture_path_for_cell(cell), cell, tiles_node)
