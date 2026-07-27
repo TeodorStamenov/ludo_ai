@@ -5,13 +5,13 @@ extends RefCounted
 ##
 ## Отговорности:
 ##   - HOME_STRETCH → FINISHED при точен зар до центъра (#99);
-##   - класиране на играч с 4 прибрани пионки (PlayerRanked);
+##   - приключване на играч при 4 FINISHED → PlayerRanked (#120);
 ##   - автоматично последно място когато остава 1 некласиран;
 ##   - MATCH_FINISHED: MatchPhase.FINISHED + TurnPhase.MATCH_FINISHED + MatchFinishedEvent.
 ##
 ## Маршрутът не включва CENTER — remaining_to_finish = remaining_to_last_home + 1.
 ## TurnRules сочи OUTCOME_MATCH_FINISHED; GameEngine вика apply_match_finished (#90).
-## Завършил / класиран играч не получава нов ход (TurnRules.should_skip_player).
+## Завършил / класиран играч не получава нов ход (TurnRules.should_skip_player / #120).
 
 
 ## Оставащи стъпки до центъра (последна HOME + 1). 0 = извън маршрута / вече минато.
@@ -62,7 +62,7 @@ func apply_finish_pawn(
 	return true
 
 
-## Играч с 4 FINISHED пионки, който още не е класиран.
+## Играч с 4 FINISHED пионки, който още не е класиран (#120).
 func should_rank_player(player: PlayerState) -> bool:
 	return (
 			player != null
@@ -92,7 +92,8 @@ func is_ranking_complete(state: GameState) -> bool:
 	return state.ranking.size() == count and count_unranked_players(state) == 0
 
 
-## Класира играч с 4 FINISHED пионки. Връща PlayerRankedEvent или null.
+## Приключва играч с 4 FINISHED (#120): следващо място + PlayerRankedEvent.
+## Връща null ако няма 4 прибрани / вече е класиран / невалиден вход.
 func rank_finished_player(
 		state: GameState,
 		player_id: StringName,

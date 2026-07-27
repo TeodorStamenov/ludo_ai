@@ -343,7 +343,10 @@ func _apply_move_pawn(
 		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
 		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
 
-	var outcome: StringName = _turn_rules.resolve_after_move(next.turn, false)
+	# #120: 4 FINISHED → PlayerRanked; завършил не получава extra roll / нов ход.
+	var player_completed: bool = next_player.is_ranked()
+	var outcome: StringName = _turn_rules.resolve_after_move(
+			next.turn, false, player_completed)
 	_append_turn_end_advance(next, outcome, accepted_sequence, events)
 
 	_sync_dice_from_turn(next, command.player_id)

@@ -182,7 +182,13 @@ func begin_resolving_move(turn: TurnState) -> bool:
 
 
 ## След приложен ход: gift → RESOLVING_POWER_UP, иначе complete_turn_action.
-func resolve_after_move(turn: TurnState, landed_on_gift: bool = false) -> StringName:
+## player_completed: играчът току-що е класиран с 4 FINISHED (#120) —
+## без extra roll; принудително TURN_END (завършил не получава нов ход, §12).
+func resolve_after_move(
+		turn: TurnState,
+		landed_on_gift: bool = false,
+		player_completed: bool = false
+) -> StringName:
 	if turn == null:
 		return OUTCOME_TURN_END
 	if turn.is_awaiting_move():
@@ -192,6 +198,10 @@ func resolve_after_move(turn: TurnState, landed_on_gift: bool = false) -> String
 	if landed_on_gift:
 		turn.enter_resolving_power_up()
 		return OUTCOME_RESOLVING_POWER_UP
+	if player_completed:
+		turn.clear_extra_roll()
+		turn.enter_turn_end()
+		return OUTCOME_TURN_END
 	return complete_turn_action(turn)
 
 
