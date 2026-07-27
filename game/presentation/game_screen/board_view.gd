@@ -15,7 +15,7 @@ extends Node2D
 ## Gameplay topology (бази/spawn/маршрути/home stretch) е само в Domain
 ## (Classic15x15Board) — премахната оттук (#148).
 ## Хардкоднатият visual layout остава до #152 (BoardDefinition).
-## Baked vs runtime tiles dual source — #151.
+## Единствен source of truth за тайловете: runtime _build_board (#151).
 
 const CHIP_RED := "res://rss/CHIP/07.png"
 const CHIP_GREEN := "res://rss/CHIP/03.png"
@@ -33,17 +33,14 @@ const CHIP_PURPLE := "res://rss/CHIP/05.png"
 	set(_value):
 		_build_board()
 
-## cell_id (CellId) → Sprite2D на тайла. Празен до _build_board / _index_existing_tiles.
+## cell_id (CellId) → Sprite2D на тайла. Празен до _build_board.
 var _cell_nodes: Dictionary = {}
 ## Пълен cell_id → локална изометрична позиция (15×15).
 var _cell_positions: CellPositionMap = CellPositionMap.new(0.5)
 
 
 func _ready() -> void:
-	if Engine.is_editor_hint():
-		_index_existing_tiles()
-	else:
-		_build_board()
+	_build_board()
 	var viewport_size: Vector2 = get_viewport_rect().size
 	position = viewport_size / 2.0
 
@@ -67,32 +64,6 @@ func get_cell_node(cell_id: StringName) -> Node2D:
 	return _cell_nodes.get(cell_id) as Node2D
 
 
-## Индексира вече налични tile children по стабилен cell_id (име или meta).
-## Игнорира възли с невалидни / editor-generated имена.
-func _index_existing_tiles() -> void:
-	_cell_nodes.clear()
-	_cell_positions.rebuild(board_scale)
-	var tiles_node: Node = get_node_or_null("Tiles")
-	if tiles_node == null:
-		return
-	for child in tiles_node.get_children():
-		var cell_id: StringName = _cell_id_from_tile_node(child)
-		if cell_id == &"":
-			continue
-		_cell_nodes[cell_id] = child as Node2D
-
-
-func _cell_id_from_tile_node(node: Node) -> StringName:
-	if node.has_meta(&"cell_id"):
-		var meta_id: StringName = node.get_meta(&"cell_id") as StringName
-		if CellId.is_valid(meta_id):
-			return meta_id
-	var name_id := StringName(node.name)
-	if CellId.is_valid(name_id):
-		return name_id
-	return &""
-
-
 func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> Sprite2D:
 	var cell_id: StringName = CellId.from_vec(grid_pos)
 	var sprite := Sprite2D.new()
@@ -105,8 +76,7 @@ func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> S
 	sprite.centered = true
 	sprite.z_index = _cell_positions.z_index_of(cell_id)
 	parent_node.add_child(sprite)
-	if Engine.is_editor_hint():
-		sprite.owner = get_tree().edited_scene_root
+	# Без owner — тайловете не се bake-ват в .tscn (#151).
 
 	_cell_nodes[cell_id] = sprite
 	return sprite
