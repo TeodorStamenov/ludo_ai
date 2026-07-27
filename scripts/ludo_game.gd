@@ -27,10 +27,16 @@ var _extra_roll_pending: bool = false
 var _base_attempts_left: int = BASE_ROLL_ATTEMPTS
 var _roll_allowed: bool = true
 
+## Временен gameplay RNG за прототипа (#160). DiceView не хвърля сам;
+## целево (#161) стойността идва от MatchSession / DiceRolledEvent.
+var _gameplay_rng: SeededRandomSource = SeededRandomSource.new(
+		MatchConfig.generate_rng_seed())
+
 
 func _ready() -> void:
 	dice_button.pressed.connect(_on_dice_button_pressed)
 	dice.dice_rolled.connect(_on_dice_rolled)
+	dice.roll_requested.connect(_on_dice_button_pressed)
 
 	for i in range(1, 7):
 		var button: Button = debug_rolls.get_node("Roll%d" % i) as Button
@@ -121,10 +127,11 @@ func _try_roll_dice(forced_value: int = 0) -> void:
 	if _current_player != PlayerId.YELLOW:
 		return
 	_roll_allowed = false
-	if forced_value > 0:
-		dice.roll(forced_value)
-	else:
-		dice.roll()
+	var value: int = (
+			forced_value if DiceState.is_face_value(forced_value)
+			else _gameplay_rng.next_int(DiceState.VALUE_MIN, DiceState.VALUE_MAX)
+	)
+	dice.roll(value)
 
 
 func _on_dice_rolled(value: int) -> void:

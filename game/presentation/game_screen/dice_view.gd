@@ -3,15 +3,15 @@ extends Node3D
 ## Визуализация на зара (docs/V1_ARCHITECTURE.md §6.4, Етап C).
 ##
 ## Пренесен от scripts/dice.gd. Съдържа само presentation:
-##   - получава/проиграва резултат като анимация към дадено лице;
+##   - получава готов резултат 1–6 и проиграва анимация към това лице;
 ##   - козметични вариации (spin, wobble, jump) през PresentationRandomSource;
-##   - hit target за клик върху 3D зара.
+##   - hit target емитира roll_requested — не хвърля сам.
 ##
-## Целево: резултатът идва от DiceRolledEvent / domain (#161).
-## Временно (#160): roll() без forced_value още генерира лицето локално,
-## за да остане scenes/ludo_game.tscn playable.
+## Не генерира gameplay случайността (#160). Целево (#161): стойността идва
+## от DiceRolledEvent / domain през GamePresenter / AnimationQueue.
 
 signal dice_rolled(value: int)
+signal roll_requested
 
 ## Rest orientation so that face N points world-up (rss/dice mesh).
 ## +X=6, -X=1, +Y=4, -Y=3, +Z=2, -Z=5
@@ -59,19 +59,16 @@ func _on_click_area_input_event(
 	if event is InputEventMouseButton \
 			and event.pressed \
 			and event.button_index == MOUSE_BUTTON_LEFT:
-		roll()
+		roll_requested.emit()
 
 
-## Проиграва анимация към value. forced_value 1–6 → това лице;
-## 0 / невалидно → временно локално лице (#160 премахва gameplay RNG).
-func roll(forced_value: int = 0) -> void:
+## Проиграва анимация към даденото лице (1–6). Невалидна стойност → no-op.
+func roll(value: int) -> void:
 	if is_rolling:
 		return
+	if not DiceState.is_face_value(value):
+		return
 
-	var value: int = (
-			forced_value if DiceState.is_face_value(forced_value)
-			else cosmetic_rng.next_int(1, 6)
-	)
 	is_rolling = true
 	await _play_toss_animation(value)
 	is_rolling = false
