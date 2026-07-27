@@ -1,10 +1,11 @@
 extends TestCase
-## Business-critical тестове за допълнително хвърляне при 6 (Task #93 /
+## Business-critical тестове за допълнително хвърляне при 6 (Task #102 /
 ## docs/V1_GAME_DESIGN.md §3.1; CURRENT_YELLOW_BEHAVIOR YEL-013 / YEL-032 /
-## YEL-043 / YEL-045; docs/V1_ARCHITECTURE.md §4.2).
+## YEL-042 / YEL-043 / YEL-045; docs/V1_ARCHITECTURE.md §4.2 / §12 / §14).
 ##
-## Инварианти: зар 6 → grant_extra_roll; след ход → AWAITING_ROLL на същия
-## играч без TurnChanged; при 6 без валиден ход → пак extra roll; 1–5 → край.
+## Правилото е в TurnRules (#93). Тук: зар 6 → grant_extra_roll; след ход →
+## AWAITING_ROLL на същия играч без TurnChanged и с 1 опит; при 6 без валиден
+## ход → пак extra roll; 1–5 → край / TurnChanged; поредица от 6-ци се трупа.
 
 
 var _rules: TurnRules
@@ -25,6 +26,48 @@ func test_grants_extra_roll_only_on_six() -> void:
 				"зар %d не дава допълнителен ход" % face)
 
 
+func test_complete_turn_action_extra_roll_keeps_turn_number_and_single_attempt() -> void:
+	var turn := TurnState.create_for_player_turn(3, true)
+	assert_eq(turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
+	turn.grant_extra_roll()
+	turn.enter_resolving_move()
+
+	var outcome := _rules.complete_turn_action(turn)
+
+	assert_eq(outcome, TurnRules.OUTCOME_EXTRA_ROLL)
+	assert_true(turn.is_awaiting_roll())
+	assert_eq(turn.turn_number, 3)
+	assert_false(turn.has_extra_roll_pending())
+	assert_false(turn.has_dice_result())
+	assert_eq(turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
+	assert_true(turn.allows_roll_dice())
+
+
+func test_resolve_after_move_on_six_enters_extra_roll() -> void:
+	var turn := TurnState.create_for_player_turn(1, false)
+	_rules.resolve_after_roll(turn, 6, false, [&"green_0"])
+	assert_true(turn.has_extra_roll_pending())
+
+	var outcome := _rules.resolve_after_move(turn, false)
+
+	assert_eq(outcome, TurnRules.OUTCOME_EXTRA_ROLL)
+	assert_true(turn.is_awaiting_roll())
+	assert_eq(turn.turn_number, 1)
+	assert_eq(turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
+	assert_false(turn.has_extra_roll_pending())
+
+
+func test_resolve_after_move_on_non_six_ends_turn_yel_042() -> void:
+	var turn := TurnState.create_for_player_turn(1, false)
+	_rules.resolve_after_roll(turn, 4, false, [&"green_0"])
+	assert_false(turn.has_extra_roll_pending())
+
+	var outcome := _rules.resolve_after_move(turn, false)
+
+	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)
+	assert_true(turn.is_turn_end())
+
+
 func test_roll_six_from_base_grants_pending_extra_yel_013() -> void:
 	var state := _setup_in_progress()
 	var rng := _fixed_rng(6)
@@ -38,6 +81,7 @@ func test_roll_six_from_base_grants_pending_extra_yel_013() -> void:
 	assert_true(result.state.turn.has_extra_roll_pending())
 	assert_eq(result.state.turn.dice_value, 6)
 	assert_true((result.events[0] as DiceRolledEvent).is_six())
+	assert_false(_events_contain_turn_changed(result.events))
 
 
 func test_exit_base_after_six_enters_extra_roll_same_player_yel_032() -> void:
@@ -61,11 +105,15 @@ func test_exit_base_after_six_enters_extra_roll_same_player_yel_032() -> void:
 	assert_eq(after_move.state.turn.turn_number, turn_before)
 	assert_true(after_move.state.turn.is_awaiting_roll())
 	assert_true(after_move.state.turn.allows_roll_dice())
+	assert_eq(
+			after_move.state.turn.base_attempts_remaining,
+			TurnState.SINGLE_ROLL_ATTEMPTS)
 	assert_false(after_move.state.turn.has_extra_roll_pending())
 	assert_false(after_move.state.turn.has_dice_result())
 	assert_false(after_move.state.dice.has_result())
 	assert_eq(after_move.event_count(), 1)
 	assert_true(after_move.events[0] is PawnExitedBaseEvent)
+	assert_false(_events_contain_turn_changed(after_move.events))
 
 
 func test_board_move_on_six_keeps_player_without_turn_changed_yel_043() -> void:
@@ -92,10 +140,37 @@ func test_board_move_on_six_keeps_player_without_turn_changed_yel_043() -> void:
 	assert_eq(after_move.state.turn.turn_number, turn_before)
 	assert_true(after_move.state.turn.is_awaiting_roll())
 	assert_true(after_move.state.turn.allows_roll_dice())
+	assert_eq(
+			after_move.state.turn.base_attempts_remaining,
+			TurnState.SINGLE_ROLL_ATTEMPTS)
 	assert_eq(after_move.event_count(), 1)
 	assert_true(after_move.events[0] is PawnMovedEvent)
+	assert_false(_events_contain_turn_changed(after_move.events))
 	assert_eq(
 			after_move.state.get_player(player_id).get_pawn(pawn_id).path_index, 6)
+
+
+func test_board_move_on_non_six_advances_turn_yel_042() -> void:
+	var state := _setup_pawn_on_spawn_awaiting_roll()
+	var player_id: StringName = state.get_active_player_id()
+	var active_before: int = state.active_player_index
+	var pawn_id: StringName = state.get_active_player().get_pawn_by_index(0).pawn_id
+	var rng := _fixed_rng(4)
+
+	var roll_cmd := RollDiceCommand.create_for_player(player_id)
+	state.stamp_command(roll_cmd)
+	var after_roll := _engine.validate_and_apply(state, roll_cmd, rng)
+	assert_true(after_roll.accepted)
+	assert_false(after_roll.state.turn.has_extra_roll_pending())
+
+	var move_cmd := MovePawnCommand.create_for_pawn(player_id, pawn_id)
+	after_roll.state.stamp_command(move_cmd)
+	var after_move := _engine.validate_and_apply(after_roll.state, move_cmd, rng)
+
+	assert_true(after_move.accepted)
+	assert_ne(after_move.state.active_player_index, active_before)
+	assert_true(after_move.events[0] is PawnMovedEvent)
+	assert_true(after_move.events[1] is TurnChangedEvent)
 
 
 func test_six_with_no_valid_move_still_grants_extra_roll_yel_045() -> void:
@@ -114,11 +189,15 @@ func test_six_with_no_valid_move_still_grants_extra_roll_yel_045() -> void:
 	assert_eq(result.state.turn.turn_number, turn_before)
 	assert_true(result.state.turn.is_awaiting_roll())
 	assert_true(result.state.turn.allows_roll_dice())
+	assert_eq(
+			result.state.turn.base_attempts_remaining,
+			TurnState.SINGLE_ROLL_ATTEMPTS)
 	assert_false(result.state.turn.has_extra_roll_pending())
 	assert_false(result.state.turn.has_dice_result())
 	assert_eq(result.event_count(), 1)
 	assert_true(result.events[0] is DiceRolledEvent)
 	assert_true((result.events[0] as DiceRolledEvent).is_six())
+	assert_false(_events_contain_turn_changed(result.events))
 
 
 func test_non_six_with_no_valid_move_ends_turn_yel_045() -> void:
@@ -154,6 +233,9 @@ func test_consecutive_sixes_grant_another_extra_roll() -> void:
 	assert_true(after_move1.accepted)
 	assert_true(after_move1.state.turn.is_awaiting_roll())
 	assert_eq(after_move1.state.get_active_player_id(), player_id)
+	assert_eq(
+			after_move1.state.turn.base_attempts_remaining,
+			TurnState.SINGLE_ROLL_ATTEMPTS)
 
 	var roll2 := RollDiceCommand.create_for_player(player_id)
 	after_move1.state.stamp_command(roll2)
@@ -174,6 +256,7 @@ func test_consecutive_sixes_grant_another_extra_roll() -> void:
 	assert_true(after_move2.state.turn.allows_roll_dice())
 	assert_eq(after_move2.event_count(), 1)
 	assert_true(after_move2.events[0] is PawnMovedEvent)
+	assert_false(_events_contain_turn_changed(after_move2.events))
 
 
 func test_extra_roll_then_non_six_move_advances_to_next_player() -> void:
@@ -208,6 +291,13 @@ func test_extra_roll_then_non_six_move_advances_to_next_player() -> void:
 	assert_ne(after_done.state.active_player_index, active_before)
 	assert_true(after_done.events[0] is PawnMovedEvent)
 	assert_true(after_done.events[1] is TurnChangedEvent)
+
+
+func _events_contain_turn_changed(events: Array) -> bool:
+	for entry in events:
+		if entry is TurnChangedEvent:
+			return true
+	return false
 
 
 func _fixed_rng(face: int) -> RandomSource:
