@@ -13,11 +13,13 @@ extends RefCounted
 ##   - макс. 2 свои на MAIN_PATH / spawn (#108 / GAP-004 / GAP-006);
 ##   - опит за трета своя → невалиден ход (#109);
 ##   - кацане върху противникова купчина от 2 → невалиден ход (#111);
-##   - прескачане на междинни купчини (не са стена) (#112).
+##   - прескачане на междинни купчини (не са стена) (#112);
+##   - чужд home stretch е недостъпен за кацане / взимане (#115).
 ##
 ## Capture / stack immunity / прибиране → CaptureRules / StackRules / FinishRules.
 ## Stack formation events → GameEngine + StackRules.resolve_stack_formed (#110).
 ## Capture events → GameEngine + CaptureRules.resolve_capture (#113).
+## Home stretch защита от противници → CaptureRules (#115).
 ## Gift → RESOLVING_POWER_UP.
 
 
@@ -281,6 +283,7 @@ func resolve_traversed_cell_ids(
 ## MAIN_PATH дестинация с противникова купчина от 2 → невалидна (#111).
 ## Междинни MAIN_PATH клетки (вкл. противникови купчини) не блокират (#112).
 ## Capture на единична противникова след кацане → CaptureRules.resolve_capture (#113).
+## Собствен home stretch: само occupancy на свои (#97 / YEL-053). Чужд → #115.
 func can_advance_on_board(
 		state: GameState,
 		player: PlayerState,
@@ -312,6 +315,8 @@ func can_advance_on_board(
 				dest_cell, player.player_id, pawn.pawn_id) > 0:
 			return false
 		return true
+	if _capture_rules.is_foreign_home_stretch(dest_cell, player.player_id):
+		return false
 	if _capture_rules.blocks_landing(state, dest_cell, player.player_id):
 		return false
 	return _stack_rules.can_place_own_pawn(

@@ -6,6 +6,7 @@ extends RefCounted
 ## Единична незащитена противникова пионка се взима при стъпване върху нея (#113).
 ## Взетата пионка се връща в свободна позиция в базата на своя играч (#114).
 ## Пионки в home stretch / BASE / FINISHED са защитени от взимане (#115).
+## Чужд home stretch блокира кацане (#115); собственият е достъпен само по собствения route.
 ## Купчина от 2 е имунизирана — противник не може да стъпи на клетката (#111).
 ## Купчината не е стена — противниците могат да я прескачат при движение (#112).
 ##
@@ -31,12 +32,33 @@ func is_immune_stack(
 	return _stack_rules.is_enemy_stack(state, cell_id, attacking_player_id)
 
 
-## True ако кацане на MAIN_PATH клетка е забранено заради имунна купчина (#111).
+## True ако пионката е в зона, недостъпна за противници (#115 / V1_GAME_DESIGN §3.2).
+## HOME_STRETCH, BASE и FINISHED — само MAIN_PATH може да се атакува.
+func is_protected_from_opponents(pawn: PawnState) -> bool:
+	if pawn == null:
+		return false
+	return not pawn.is_on_main_path()
+
+
+## True ако cell_id е home stretch на друг играч — противник не може да кацне (#115).
+func is_foreign_home_stretch(
+		cell_id: StringName,
+		for_player_id: StringName
+) -> bool:
+	if cell_id == &"" or for_player_id == &"":
+		return false
+	var owner := Classic15x15Board.home_stretch_owner(cell_id)
+	return owner != &"" and owner != for_player_id
+
+
+## True ако кацане е забранено: имунна купчина (#111) или чужд home stretch (#115).
 func blocks_landing(
 		state: GameState,
 		cell_id: StringName,
 		landing_player_id: StringName
 ) -> bool:
+	if is_foreign_home_stretch(cell_id, landing_player_id):
+		return true
 	return is_immune_stack(state, cell_id, landing_player_id)
 
 
@@ -54,7 +76,7 @@ func blocks_passage(
 func is_capturable(pawn: PawnState) -> bool:
 	if pawn == null:
 		return false
-	if not pawn.is_on_main_path():
+	if is_protected_from_opponents(pawn):
 		return false
 	if pawn.cell_id == &"":
 		return false

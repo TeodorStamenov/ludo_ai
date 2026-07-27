@@ -1,9 +1,11 @@
 extends TestCase
 ## Business-critical тестове за CaptureRules — имунитет на купчина (#111),
-## прескачане (#112), взимане (#113) и връщане в свободна база (#114)
+## прескачане (#112), взимане (#113), връщане в свободна база (#114) и
+## защита на home stretch от противници (#115)
 ## (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.1–3.2).
 ##
-## Home stretch защита (#115) — is_capturable изисква MAIN_PATH.
+## #115: HOME_STRETCH / BASE / FINISHED не са capturable; чужд home stretch
+## блокира кацане; маршрутите не пресичат чужд home stretch.
 
 
 var _capture: CaptureRules
@@ -340,7 +342,33 @@ func test_shielded_enemy_is_not_capturable() -> void:
 	assert_true(green_pawn.equals(before))
 
 
-## #113/#115: home stretch пионка не е capturable.
+## #115: HOME_STRETCH / BASE / FINISHED са защитени; само MAIN_PATH е capturable.
+func test_protected_zones_are_not_capturable() -> void:
+	var state := _two_player_in_progress()
+	var green := state.get_player(PlayerId.GREEN)
+	var home: StringName = Classic15x15Board.home_stretch_cells_for(
+			PlayerId.GREEN)[0]
+	var base: StringName = Classic15x15Board.base_cells_for(PlayerId.GREEN)[0]
+	var home_pawn := green.get_pawn_by_index(0)
+	var base_pawn := green.get_pawn_by_index(1)
+	var finished_pawn := green.get_pawn_by_index(2)
+	var path_pawn := green.get_pawn_by_index(3)
+	home_pawn.set_position(PawnZone.HOME_STRETCH, 50, home)
+	base_pawn.place_in_base(base)
+	finished_pawn.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH)
+	path_pawn.set_position(PawnZone.MAIN_PATH, 20, CellId.from_grid(6, 8))
+
+	assert_true(_capture.is_protected_from_opponents(home_pawn))
+	assert_true(_capture.is_protected_from_opponents(base_pawn))
+	assert_true(_capture.is_protected_from_opponents(finished_pawn))
+	assert_false(_capture.is_protected_from_opponents(path_pawn))
+	assert_false(_capture.is_capturable(home_pawn))
+	assert_false(_capture.is_capturable(base_pawn))
+	assert_false(_capture.is_capturable(finished_pawn))
+	assert_true(_capture.is_capturable(path_pawn))
+
+
+## #115: home stretch пионка не се взима дори при съвпадение на cell_id.
 func test_home_stretch_pawn_is_not_capturable() -> void:
 	var state := _two_player_in_progress()
 	var home: StringName = Classic15x15Board.home_stretch_cells_for(
@@ -350,10 +378,80 @@ func test_home_stretch_pawn_is_not_capturable() -> void:
 	var yellow := state.get_player(PlayerId.YELLOW).get_pawn_by_index(0)
 	yellow.set_position(PawnZone.MAIN_PATH, 4, home)
 
+	assert_true(_capture.is_protected_from_opponents(green_pawn))
 	assert_false(_capture.is_capturable(green_pawn))
 	assert_null(_capture.find_capturable_at(state, home, PlayerId.YELLOW))
 	assert_eq(_capture.resolve_capture(state, yellow, 1).size(), 0)
 	assert_true(green_pawn.is_in_home_stretch())
+	assert_eq(green_pawn.cell_id, home)
+
+
+## #115: чужд home stretch блокира кацане; собственият не.
+func test_foreign_home_stretch_blocks_landing() -> void:
+	var state := _two_player_in_progress()
+	var green_home: StringName = Classic15x15Board.home_stretch_cells_for(
+			PlayerId.GREEN)[0]
+	var yellow_home: StringName = Classic15x15Board.home_stretch_cells_for(
+			PlayerId.YELLOW)[0]
+	var path_cell: StringName = CellId.from_grid(6, 8)
+
+	assert_true(_capture.is_foreign_home_stretch(green_home, PlayerId.YELLOW))
+	assert_false(_capture.is_foreign_home_stretch(yellow_home, PlayerId.YELLOW))
+	assert_false(_capture.is_foreign_home_stretch(path_cell, PlayerId.YELLOW))
+	assert_true(_capture.blocks_landing(state, green_home, PlayerId.YELLOW))
+	assert_false(_capture.blocks_landing(state, yellow_home, PlayerId.YELLOW))
+	assert_false(_capture.blocks_landing(state, path_cell, PlayerId.YELLOW))
+
+
+## #115: маршрутите не включват чужд home stretch — структурна защита.
+func test_player_routes_never_include_foreign_home_stretch() -> void:
+	for player_id in PlayerId.ALL:
+		var route := Classic15x15Board.player_route_cell_ids_for(player_id)
+		for cell_id in route:
+			var owner := Classic15x15Board.home_stretch_owner(cell_id)
+			if owner == &"":
+				continue
+			assert_eq(owner, player_id,
+					"%s route не трябва да съдържа чужд home stretch %s" % [
+						player_id, cell_id])
+			assert_false(_capture.is_foreign_home_stretch(cell_id, player_id))
+
+
+## Engine #115: пионка в home stretch остава там след ход на противник по MAIN_PATH.
+func test_engine_opponent_move_does_not_capture_home_stretch_pawn() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var green_home: StringName = Classic15x15Board.home_stretch_cells_for(
+			PlayerId.GREEN)[1]
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	green_pawn.set_position(PawnZone.HOME_STRETCH, 51, green_home)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(99)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnMovedEvent)
+	for event in result.events:
+		assert_false(event is PawnCapturedEvent,
+				"home stretch пионка не се взима")
+		assert_false(event is PawnSentHomeEvent)
+	var after_green := result.state.get_player(PlayerId.GREEN).get_pawn(
+			green_pawn.pawn_id)
+	assert_true(after_green.is_in_home_stretch())
+	assert_eq(after_green.cell_id, green_home)
+	assert_eq(result.state.get_player(PlayerId.YELLOW).get_pawn(
+			mover.pawn_id).cell_id, dest_cell)
 
 
 ## Engine #113: ход върху единична противникова → Moved + Captured + SentHome.
