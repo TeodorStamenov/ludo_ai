@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://hfc7740v41oc"]
 
-[ext_resource type="Script" uid="uid://wdsa6bckcom" path="res://scripts/dice.gd" id="1_dice"]
+[ext_resource type="Script" uid="uid://c8nm613c8v38r" path="res://game/presentation/game_screen/dice_view.gd" id="1_dice"]
 [ext_resource type="Texture2D" uid="uid://31dupp1rq3oo" path="res://rss/dice/dice_red_color.png" id="2_1mws5"]
 [ext_resource type="AnimationLibrary" uid="uid://dklcdi8wfmkhl" path="res://animations/dice_rolls.tres" id="3_anims"]
 

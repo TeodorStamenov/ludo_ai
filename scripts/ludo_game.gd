@@ -6,7 +6,7 @@ const BASE_ROLL_ATTEMPTS := 3
 
 @onready var board: BoardView = $Board
 @onready var pawns_root: Node2D = $Pawns
-@onready var dice: Node3D = $UI/DiceViewportContainer/SubViewport/DiceWorld/Dice
+@onready var dice: DiceView = $UI/DiceViewportContainer/SubViewport/DiceWorld/Dice
 @onready var dice_result: Label = $UI/DiceResult
 @onready var dice_button: Button = $UI/DiceButton
 @onready var debug_rolls: HBoxContainer = $UI/DebugRolls
