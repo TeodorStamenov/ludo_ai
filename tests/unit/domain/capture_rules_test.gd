@@ -1,9 +1,10 @@
 extends TestCase
 ## Business-critical тестове за CaptureRules — имунитет на купчина (#111),
-## прескачане на противникови купчини (#112) и инварианти за взимане
-## (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.2).
+## прескачане на противникови купчини (#112) и взимане на единична пионка (#113)
+## (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.1–3.2).
 ##
-## Пълно взимане на единична пионка → #113–#115.
+## Връщане в свободна база (#114) е част от resolve_capture за playable MVP.
+## Home stretch защита (#115) — is_capturable изисква MAIN_PATH.
 
 
 var _capture: CaptureRules
@@ -42,15 +43,19 @@ func test_enemy_stack_of_two_is_immune_and_blocks_landing() -> void:
 	assert_true(_capture.blocks_landing(state, cell, PlayerId.YELLOW))
 
 
-## Една противникова → не е имунна (кацането за взимане е #113).
+## Една противникова → не е имунна; capturable (#113).
 func test_single_enemy_pawn_is_not_immune_stack() -> void:
 	var state := _two_player_in_progress()
 	var cell: StringName = CellId.from_grid(6, 8)
-	state.get_player(PlayerId.GREEN).get_pawn_by_index(0).set_position(
-			PawnZone.MAIN_PATH, 20, cell)
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	green_pawn.set_position(PawnZone.MAIN_PATH, 20, cell)
 
 	assert_false(_capture.is_immune_stack(state, cell, PlayerId.YELLOW))
 	assert_false(_capture.blocks_landing(state, cell, PlayerId.YELLOW))
+	assert_true(_capture.is_capturable(green_pawn))
+	var found := _capture.find_capturable_at(state, cell, PlayerId.YELLOW)
+	assert_not_null(found)
+	assert_eq(found.pawn_id, green_pawn.pawn_id)
 
 
 ## #111: кацане върху enemy stack → невалиден ход; изключен от valid list.
@@ -76,7 +81,7 @@ func test_landing_on_enemy_stack_is_illegal_and_excluded() -> void:
 	assert_false(_rules.collect_valid_pawn_ids(state, player, 3).has(mover.pawn_id))
 
 
-## #111: единична противникова на дестинацията не блокира (взимане → #113).
+## #111/#113: единична противникова на дестинацията не блокира — ходът е валиден за взимане.
 func test_landing_on_single_enemy_is_not_blocked_by_stack_immunity() -> void:
 	var state := _two_player_in_progress()
 	state.set_active_player(PlayerId.YELLOW)
@@ -266,6 +271,197 @@ func test_engine_accepts_jump_over_enemy_stack() -> void:
 	for entry in result.events:
 		assert_false(entry is PawnCapturedEvent,
 				"прескачането не взима купчината")
+
+
+## #113: resolve_capture след кацане → PawnCaptured + PawnSentHome; противникът в база.
+func test_resolve_capture_sends_single_enemy_home() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player(PlayerId.YELLOW)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	var green_base: StringName = green_pawn.cell_id
+	green_pawn.set_position(PawnZone.MAIN_PATH, 20, dest_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+
+	assert_true(_rules.apply_board_move(state, player, mover, 3))
+	assert_eq(mover.cell_id, dest_cell)
+	var events := _capture.resolve_capture(state, mover, 7)
+
+	assert_eq(events.size(), 2)
+	assert_true(events[0] is PawnCapturedEvent)
+	assert_true(events[1] is PawnSentHomeEvent)
+	var captured_event := events[0] as PawnCapturedEvent
+	var sent := events[1] as PawnSentHomeEvent
+	assert_true(captured_event.is_valid())
+	assert_eq(captured_event.capturing_pawn_id, mover.pawn_id)
+	assert_eq(captured_event.captured_pawn_id, green_pawn.pawn_id)
+	assert_eq(captured_event.command_sequence, 7)
+	assert_true(sent.is_valid())
+	assert_eq(sent.pawn_id, green_pawn.pawn_id)
+	assert_eq(sent.from_cell_id, dest_cell)
+	assert_true(green_pawn.is_in_base())
+	assert_eq(green_pawn.cell_id, sent.base_cell_id)
+	assert_eq(green_pawn.cell_id, green_base,
+			"първи свободен слот е оригиналната base клетка")
+	assert_eq(CellOccupancy.from_state(state).count_opponents_at(
+			dest_cell, PlayerId.YELLOW), 0)
+
+
+## #113: празна дестинация → няма capture events.
+func test_resolve_capture_null_on_empty_landing() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player(PlayerId.YELLOW)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+
+	assert_true(_rules.apply_board_move(state, player, mover, 3))
+	assert_eq(_capture.resolve_capture(state, mover, 1).size(), 0)
+
+
+## #113: щит → не е capturable; resolve не мутира.
+func test_shielded_enemy_is_not_capturable() -> void:
+	var state := _two_player_in_progress()
+	var cell: StringName = CellId.from_grid(6, 8)
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	green_pawn.set_position(PawnZone.MAIN_PATH, 20, cell)
+	green_pawn.apply_shield(2)
+	var yellow := state.get_player(PlayerId.YELLOW).get_pawn_by_index(0)
+	yellow.set_position(PawnZone.MAIN_PATH, 4, cell)
+
+	assert_false(_capture.is_capturable(green_pawn))
+	assert_null(_capture.find_capturable_at(state, cell, PlayerId.YELLOW))
+	var before := green_pawn.duplicate_state()
+	assert_eq(_capture.resolve_capture(state, yellow, 1).size(), 0)
+	assert_true(green_pawn.equals(before))
+
+
+## #113/#115: home stretch пионка не е capturable.
+func test_home_stretch_pawn_is_not_capturable() -> void:
+	var state := _two_player_in_progress()
+	var home: StringName = Classic15x15Board.home_stretch_cells_for(
+			PlayerId.GREEN)[0]
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	green_pawn.set_position(PawnZone.HOME_STRETCH, 50, home)
+	var yellow := state.get_player(PlayerId.YELLOW).get_pawn_by_index(0)
+	yellow.set_position(PawnZone.MAIN_PATH, 4, home)
+
+	assert_false(_capture.is_capturable(green_pawn))
+	assert_null(_capture.find_capturable_at(state, home, PlayerId.YELLOW))
+	assert_eq(_capture.resolve_capture(state, yellow, 1).size(), 0)
+	assert_true(green_pawn.is_in_home_stretch())
+
+
+## Engine #113: ход върху единична противникова → Moved + Captured + SentHome.
+func test_engine_landing_on_single_enemy_captures_and_sends_home() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	var expected_base: StringName = green_pawn.cell_id
+	green_pawn.set_position(PawnZone.MAIN_PATH, 20, dest_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(99)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnMovedEvent)
+	assert_true(result.events[1] is PawnCapturedEvent)
+	assert_true(result.events[2] is PawnSentHomeEvent)
+	var captured_event := result.events[1] as PawnCapturedEvent
+	var sent := result.events[2] as PawnSentHomeEvent
+	assert_eq(captured_event.capturing_pawn_id, mover.pawn_id)
+	assert_eq(captured_event.captured_pawn_id, green_pawn.pawn_id)
+	assert_eq(sent.pawn_id, green_pawn.pawn_id)
+	assert_eq(sent.from_cell_id, dest_cell)
+	assert_eq(sent.base_cell_id, expected_base)
+	var after_mover := result.state.get_player(PlayerId.YELLOW).get_pawn(mover.pawn_id)
+	var after_victim := result.state.get_player(PlayerId.GREEN).get_pawn(green_pawn.pawn_id)
+	assert_eq(after_mover.cell_id, dest_cell)
+	assert_true(after_victim.is_in_base())
+	assert_eq(after_victim.cell_id, expected_base)
+	assert_eq(CellOccupancy.from_state(result.state).count_at(dest_cell), 1)
+
+
+## Engine #113: exit-base върху spawn с единична противникова → capture.
+func test_engine_exit_base_onto_single_enemy_captures() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var spawn := Classic15x15Board.spawn_cell_for(PlayerId.YELLOW)
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	var expected_base: StringName = green_pawn.cell_id
+	green_pawn.set_position(PawnZone.MAIN_PATH, 0, spawn)
+	var in_base := player.get_pawn_by_index(0)
+	state.turn.enter_awaiting_move(DiceState.EXIT_BASE_VALUE, [in_base.pawn_id])
+	state.dice.set_roll(player.player_id, DiceState.EXIT_BASE_VALUE)
+	var rng := SeededRandomSource.new(55)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, in_base.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnExitedBaseEvent)
+	assert_true(result.events[1] is PawnCapturedEvent)
+	assert_true(result.events[2] is PawnSentHomeEvent)
+	var after_victim := result.state.get_player(PlayerId.GREEN).get_pawn(green_pawn.pawn_id)
+	assert_true(after_victim.is_in_base())
+	assert_eq(after_victim.cell_id, expected_base)
+	var after_mover := result.state.get_player(PlayerId.YELLOW).get_pawn(in_base.pawn_id)
+	assert_eq(after_mover.cell_id, spawn)
+	assert_true(after_mover.is_on_main_path())
+
+
+## Engine #113: кацане върху своя + единична противникова → capture после stack.
+func test_engine_capture_then_stack_formed_on_mixed_cell() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var resident := player.get_pawn_by_index(1)
+	resident.set_position(PawnZone.MAIN_PATH, dest_index, dest_cell)
+	var green_pawn := state.get_player(PlayerId.GREEN).get_pawn_by_index(0)
+	green_pawn.set_position(PawnZone.MAIN_PATH, 20, dest_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(99)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnMovedEvent)
+	assert_true(result.events[1] is PawnCapturedEvent)
+	assert_true(result.events[2] is PawnSentHomeEvent)
+	assert_true(result.events[3] is PawnStackFormedEvent)
+	var formed := result.events[3] as PawnStackFormedEvent
+	assert_eq(formed.cell_id, dest_cell)
+	assert_true(_stacks.is_friendly_stack(result.state, dest_cell, PlayerId.YELLOW))
+	assert_true(result.state.get_player(PlayerId.GREEN).get_pawn(
+			green_pawn.pawn_id).is_in_base())
 
 
 func _two_player_in_progress(rng_seed: int = 42) -> GameState:

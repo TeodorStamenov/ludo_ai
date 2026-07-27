@@ -228,7 +228,8 @@ func _apply_roll_dice(
 ## MovePawnCommand в AWAITING_MOVE → RESOLVING_MOVE (#87/#88):
 ## exit-base (YEL-030/032), ход по маршрута (YEL-040–055) или прибиране (#99).
 ## FINISHED пионка се reject-ва (#100). Трета своя на клетка → ILLEGAL_MOVE (#109).
-## Кацане върху своя → PawnStackFormed (#110). Capture / gifts → по-късни tasks.
+## Кацане върху своя → PawnStackFormed (#110). Единична противникова → capture (#113).
+## Gifts → по-късни tasks.
 func _apply_move_pawn(
 		state: GameState,
 		command: MovePawnCommand,
@@ -316,6 +317,7 @@ func _apply_move_pawn(
 					CommandError.illegal_move("exit base could not be applied"))
 		events.append(PawnExitedBaseEvent.create_from_states(
 				before, next_pawn, accepted_sequence))
+		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
 		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
 	elif _finish_rules.can_finish_pawn(next, next_player, next_pawn, dice_value):
 		if not _finish_rules.apply_finish_pawn(
@@ -338,6 +340,7 @@ func _apply_move_pawn(
 					CommandError.illegal_move("board move could not be applied"))
 		events.append(PawnMovedEvent.create_from_states(
 				before, next_pawn, accepted_sequence))
+		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
 		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
 
 	var outcome: StringName = _turn_rules.resolve_after_move(next.turn, false)
@@ -346,6 +349,18 @@ func _apply_move_pawn(
 	_sync_dice_from_turn(next, command.player_id)
 	next.capture_rng(rng)
 	return CommandResult.ok(next, events)
+
+
+## #113: кацане върху единична незащитена противникова → PawnCaptured + PawnSentHome.
+## Преди stack formed — capture освобождава клетката от противника.
+func _append_capture_if_any(
+		state: GameState,
+		arriving: PawnState,
+		command_sequence: int,
+		events: Array
+) -> void:
+	for entry in _capture_rules.resolve_capture(state, arriving, command_sequence):
+		events.append(entry)
 
 
 ## #110: кацане върху една своя на MAIN_PATH → PawnStackFormed след exit/move.

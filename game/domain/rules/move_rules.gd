@@ -17,6 +17,7 @@ extends RefCounted
 ##
 ## Capture / stack immunity / прибиране → CaptureRules / StackRules / FinishRules.
 ## Stack formation events → GameEngine + StackRules.resolve_stack_formed (#110).
+## Capture events → GameEngine + CaptureRules.resolve_capture (#113).
 ## Gift → RESOLVING_POWER_UP.
 
 
@@ -279,7 +280,7 @@ func resolve_traversed_cell_ids(
 ## MAIN_PATH дестинация: макс. 2 свои — трета е невалидна (#108 / #109 / GAP-004).
 ## MAIN_PATH дестинация с противникова купчина от 2 → невалидна (#111).
 ## Междинни MAIN_PATH клетки (вкл. противникови купчини) не блокират (#112).
-## Capture на единична противникова → CaptureRules (#113+).
+## Capture на единична противникова след кацане → CaptureRules.resolve_capture (#113).
 func can_advance_on_board(
 		state: GameState,
 		player: PlayerState,

@@ -14,6 +14,7 @@ extends RefCounted
 ## GameEngine reject при трета своя → #109.
 ## Имунитет при кацане (MoveRules + CaptureRules.blocks_landing) → #111.
 ## Прескачане: CaptureRules.blocks_passage + MoveRules en-route (#112).
+## Взимане на единична противникова → CaptureRules.resolve_capture (#113).
 
 
 const MAX_OWN_PAWNS_PER_CELL: int = CellOccupancy.MAX_OWN_PAWNS_PER_CELL
