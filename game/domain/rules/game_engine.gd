@@ -255,26 +255,11 @@ func _apply_move_pawn(
 						CommandError.CODE_UNKNOWN_PAWN,
 						"pawn_id not found on active player"))
 
-	if pawn.is_finished():
-		return CommandResult.rejected(
-				state,
-				CommandError.illegal_move("finished pawn cannot move"))
-
 	var dice_value: int = state.turn.dice_value
-	if pawn.is_in_base():
-		if not _move_rules.allows_exit_base(dice_value):
-			return CommandResult.rejected(
-					state,
-					CommandError.illegal_move("exit base requires dice 6"))
-	elif pawn.is_on_board():
-		if not _move_rules.can_advance_on_board(state, player, pawn, dice_value):
-			return CommandResult.rejected(
-					state,
-					CommandError.illegal_move("board move is not legal for dice"))
-	else:
+	if not _move_rules.can_move_pawn(state, player, pawn, dice_value):
 		return CommandResult.rejected(
 				state,
-				CommandError.illegal_move("pawn is not movable from current zone"))
+				CommandError.illegal_move("pawn is not movable for current dice"))
 
 	var next: GameState = state.duplicate_state()
 	var next_player := next.get_active_player()

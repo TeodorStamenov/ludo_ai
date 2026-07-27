@@ -1,10 +1,11 @@
 extends TestCase
 ## Unit тестове за MoveRules — правилата за движение по маршрута.
 ##
-## Критични инварианти (docs/V1_ARCHITECTURE.md, раздел 12 / Task #92):
-##   - Пионка излиза от базата само при хвърлено 6 (виж exit_base_rule_test).
+## Критични инварианти (docs/V1_ARCHITECTURE.md, раздел 12):
+##   - Пионка излиза от базата само при хвърлено 6 (виж exit_base_rule_test / #92).
 ##   - Хвърлено 6 дава право на допълнителен ход (виж extra_roll_on_six_test / #93).
 ##   - Три опита при всички пионки в база (виж three_attempts_from_base_test / #94).
+##   - Валидни пионки след зар (виж valid_pawns_after_roll_test / #95).
 ##   - Движение по общото трасе и влизане в home stretch.
 ##   - Точен зар за завършване в края на home stretch.
 

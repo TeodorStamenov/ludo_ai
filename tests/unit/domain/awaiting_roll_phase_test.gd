@@ -116,9 +116,11 @@ func test_same_seed_same_dice_sequence() -> void:
 
 func test_roll_with_pawn_on_board_uses_single_attempt_yel_004() -> void:
 	var state := _setup_in_progress()
-	_place_pawn_on_main_path(state.get_active_player(), 0)
+	var player := state.get_active_player()
+	_place_pawn_on_main_path(player, 0)
 	state.turn.begin_player_turn(1, false)
 	assert_eq(state.turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
+	var pawn_id: StringName = player.get_pawn_by_index(0).pawn_id
 	var rng := _fixed_rng(4)
 	var cmd := RollDiceCommand.create_for_player(state.get_active_player_id())
 	state.stamp_command(cmd)
@@ -126,11 +128,12 @@ func test_roll_with_pawn_on_board_uses_single_attempt_yel_004() -> void:
 	var result := _engine.validate_and_apply(state, cmd, rng)
 
 	assert_true(result.accepted)
-	# Няма валиден ход (YEL-045 / overshoot) → TURN_END → следващ играч.
-	assert_true(result.state.turn.is_awaiting_roll())
-	assert_eq(result.state.active_player_index, 1)
+	assert_true(result.state.turn.is_awaiting_move())
+	assert_eq(result.state.active_player_index, 0)
+	assert_eq(result.state.turn.valid_pawn_ids.size(), 1)
+	assert_eq(result.state.turn.valid_pawn_ids[0], pawn_id)
 	assert_true(result.events[0] is DiceRolledEvent)
-	assert_true(result.events[1] is TurnChangedEvent)
+	assert_true(result.events[1] is ValidMovesChangedEvent)
 
 
 func _roll_once(rng_seed: int) -> CommandResult:
@@ -177,7 +180,7 @@ func _setup_in_progress_with_seed(rng_seed: int) -> GameState:
 func _place_pawn_on_main_path(player: PlayerState, pawn_index: int) -> void:
 	var pawn := player.get_pawn_by_index(pawn_index)
 	assert_not_null(pawn)
-	pawn.exit_base_to_spawn(CellId.from_grid(6, 7))
+	pawn.exit_base_to_spawn(Classic15x15Board.spawn_cell_for(player.player_id))
 
 
 ## Test double: винаги връща фиксирано лице на зара (за YEL сценарии).

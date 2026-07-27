@@ -4,8 +4,8 @@ extends RefCounted
 ## docs/V1_GAME_DESIGN.md §3; CURRENT_YELLOW_BEHAVIOR YEL-013/030/040–045/050–055).
 ##
 ## Отговорности:
-##   - излизане от база само при 6;
-##   - изчисляване на валидни пионки след зар;
+##   - излизане от база само при 6 (#92);
+##   - изчисляване на валидни пионки след зар (#95 / YEL-020/044/045/052–055);
 ##   - движение по общото трасе / home stretch (точен зар — без GAP-008 clamp).
 ##
 ## Capture / stacks / FINISHED → CaptureRules / StackRules / FinishRules.
@@ -21,28 +21,57 @@ func allows_exit_base(dice_value: int) -> bool:
 	return dice_value == EXIT_BASE_VALUE
 
 
-## Пионки, за които MovePawnCommand е валидна след зар.
-## База → само при 6 (YEL-013 / #92). Дъска → can_advance_on_board (YEL-040+).
+## True ако пионката може да излезе от база с дадения зар (YEL-030 / #92).
+func can_exit_base(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if state == null or player == null or pawn == null:
+		return false
+	if not pawn.is_in_base():
+		return false
+	if not allows_exit_base(dice_value):
+		return false
+	return resolve_spawn_cell(state, player.player_id) != &""
+
+
+## True ако MovePawnCommand за пионката е валидна при този зар (#95).
+func can_move_pawn(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if pawn == null:
+		return false
+	if pawn.is_finished():
+		return false
+	if pawn.is_in_base():
+		return can_exit_base(state, player, pawn, dice_value)
+	if pawn.is_on_board():
+		return can_advance_on_board(state, player, pawn, dice_value)
+	return false
+
+
+## Пионки, за които MovePawnCommand е валидна след зар (#95).
+## База → 6 + spawn (YEL-013/030). Дъска → can_advance_on_board (YEL-040+).
+## Празен резултат = няма ход (YEL-045). Редът следва player.pawns.
 func collect_valid_pawn_ids(
 		state: GameState,
 		player: PlayerState,
 		dice_value: int
 ) -> Array:
 	var result: Array = []
-	if player == null or not DiceState.is_face_value(dice_value):
+	if state == null or player == null or not DiceState.is_face_value(dice_value):
 		return result
 	for entry in player.pawns:
 		if not (entry is PawnState):
 			continue
 		var pawn := entry as PawnState
-		if pawn.is_finished():
-			continue
-		if pawn.is_in_base():
-			if allows_exit_base(dice_value):
-				result.append(pawn.pawn_id)
-		elif pawn.is_on_board():
-			if can_advance_on_board(state, player, pawn, dice_value):
-				result.append(pawn.pawn_id)
+		if can_move_pawn(state, player, pawn, dice_value):
+			result.append(pawn.pawn_id)
 	return result
 
 
@@ -108,7 +137,7 @@ func can_advance_on_board(
 	return true
 
 
-## Извежда пионка от база на spawn (YEL-030). Изисква BASE + валиден зар 6.
+## Извежда пионка от база на spawn (YEL-030). Изисква can_exit_base.
 ## Мутира pawn; връща false без промяна при невалидни входни данни.
 func apply_exit_base(
 		state: GameState,
@@ -116,15 +145,9 @@ func apply_exit_base(
 		pawn: PawnState,
 		dice_value: int
 ) -> bool:
-	if state == null or player == null or pawn == null:
-		return false
-	if not pawn.is_in_base():
-		return false
-	if not allows_exit_base(dice_value):
+	if not can_exit_base(state, player, pawn, dice_value):
 		return false
 	var spawn := resolve_spawn_cell(state, player.player_id)
-	if spawn == &"":
-		return false
 	pawn.exit_base_to_spawn(spawn)
 	return true
 

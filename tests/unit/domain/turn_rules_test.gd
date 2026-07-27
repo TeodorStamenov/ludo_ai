@@ -237,4 +237,4 @@ func _two_player_in_progress() -> GameState:
 func _place_pawn_on_main_path(player: PlayerState, pawn_index: int) -> void:
 	var pawn := player.get_pawn_by_index(pawn_index)
 	assert_not_null(pawn)
-	pawn.exit_base_to_spawn(CellId.from_grid(6, 7))
+	pawn.exit_base_to_spawn(Classic15x15Board.spawn_cell_for(player.player_id))

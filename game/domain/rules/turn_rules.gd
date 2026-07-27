@@ -11,7 +11,7 @@ extends RefCounted
 ##   - after-roll / after-move / after-power-up изход към следваща фаза;
 ##   - TURN_END → advance (TurnChanged) + tick на щитове на входящия играч.
 ##
-## GameEngine вика тези методи; изчисляването на валидни пионки е в MoveRules (#95).
+## GameEngine вика тези методи; валидните пионки идват от MoveRules.collect_valid_pawn_ids (#95).
 ## MatchPhase.FINISHED се задава от FinishRules (#90) при OUTCOME_MATCH_FINISHED.
 
 
