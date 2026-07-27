@@ -96,12 +96,19 @@ func resolve_player_route(state: GameState, player_id: StringName) -> Array[Stri
 	return Classic15x15Board.player_route_cell_ids_for(player_id)
 
 
+## Оставащи клетки до края на маршрута (последна HOME). 0 = на края / извън (YEL-055).
+func remaining_steps_to_route_end(from_index: int, route_length: int) -> int:
+	if from_index < 0 or route_length <= 0 or from_index >= route_length:
+		return 0
+	return (route_length - 1) - from_index
+
+
 ## Destination path_index след `steps` от `from_index`. Overshoot / край → NONE.
-## Точен зар до края на маршрута (YEL-052 / GAP-008 rejected — без clamp).
+## Точен зар до края на маршрута (YEL-051/052 / GAP-008 rejected — без clamp).
 func resolve_destination_index(from_index: int, steps: int, route_length: int) -> int:
 	if from_index < 0 or steps <= 0 or route_length <= 0:
 		return DESTINATION_NONE
-	var remaining: int = (route_length - 1) - from_index
+	var remaining: int = remaining_steps_to_route_end(from_index, route_length)
 	if remaining <= 0:
 		return DESTINATION_NONE
 	if steps > remaining:
@@ -127,6 +134,7 @@ func resolve_traversed_cell_ids(
 
 ## True ако пионка на дъската може да се премести с дадения зар (YEL-040/050/052/053/055).
 ## Home stretch дестинация: само ако крайната клетка е свободна от своя пионка (YEL-053).
+## Междинни HOME клетки не блокират (YEL-054).
 func can_advance_on_board(
 		state: GameState,
 		player: PlayerState,
@@ -154,6 +162,40 @@ func can_advance_on_board(
 		if _own_other_pawn_on_cell(player, pawn.pawn_id, dest_cell):
 			return false
 	return true
+
+
+## True ако пионката е в home stretch и зарът е валиден точен ход (YEL-051–055 / #98).
+func can_advance_in_home_stretch(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if pawn == null or not pawn.is_in_home_stretch():
+		return false
+	return can_advance_on_board(state, player, pawn, dice_value)
+
+
+## True ако ход от HOME_STRETCH би надхвърлил края на маршрута (YEL-052 / #98).
+func would_overshoot_in_home_stretch(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if pawn == null or player == null or state == null:
+		return false
+	if not pawn.is_in_home_stretch():
+		return false
+	if not DiceState.is_face_value(dice_value):
+		return false
+	var route := resolve_player_route(state, player.player_id)
+	if route.is_empty():
+		return false
+	if pawn.path_index < 0 or pawn.path_index >= route.size():
+		return false
+	var remaining: int = remaining_steps_to_route_end(pawn.path_index, route.size())
+	return dice_value > remaining
 
 
 ## True ако ходът от MAIN_PATH би влязъл в собствения home stretch (YEL-050 / #97).
@@ -189,8 +231,9 @@ func apply_exit_base(
 	return true
 
 
-## Премества пионка с dice_value клетки по маршрута (YEL-040 / #96, YEL-050 / #97).
+## Премества пионка с dice_value клетки по маршрута (YEL-040 / #96, YEL-050–055 / #97–#98).
 ## MAIN_PATH дестинация → MAIN_PATH; home stretch дестинация → HOME_STRETCH (без обиколка).
+## Вътре в home stretch: само точен зар без overshoot; FINISHED → #99.
 ## Мутира pawn; връща false без промяна ако ходът е невалиден.
 func apply_board_move(
 		state: GameState,

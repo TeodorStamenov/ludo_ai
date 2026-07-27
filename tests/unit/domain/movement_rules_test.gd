@@ -8,7 +8,7 @@ extends TestCase
 ##   - Валидни пионки след зар (виж valid_pawns_after_roll_test / #95).
 ##   - Движение по общото трасе (виж main_path_movement_test / #96).
 ##   - Влизане в home stretch (виж home_stretch_test / #97).
-##   - Точен зар при завършване в home stretch (#98).
+##   - Точен зар в home stretch (виж exact_home_stretch_dice_test / #98).
 
 
 func test_move_rules_extends_ref_counted() -> void:
