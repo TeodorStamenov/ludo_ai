@@ -92,8 +92,7 @@ func _on_click_area_input_event(
 		roll_requested.emit()
 
 
-## Instant face update без toss анимация — EventViewBinder / sync gate (#167).
-## Animated present_dice_rolled() е за #168 (await animation_finished).
+## Instant face update без toss анимация — EventViewBinder.present() snap (#167).
 func apply_dice_rolled(event: DiceRolledEvent) -> void:
 	if event == null or not event.is_valid():
 		return
@@ -102,7 +101,7 @@ func apply_dice_rolled(event: DiceRolledEvent) -> void:
 
 
 ## Проиграва анимация от DiceRolledEvent (#161). Невалидно / null → no-op.
-## AnimationQueue (#168) чака animation_finished(KIND_ROLL) след края.
+## AnimationQueue / present_for_playback (#168) await-ват до animation_finished(KIND_ROLL).
 func present_dice_rolled(event: DiceRolledEvent) -> void:
 	if event == null or not event.is_valid():
 		return

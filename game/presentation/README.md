@@ -22,14 +22,16 @@ Presentation **може** да импортира от `game/application/` и `g
 
 ```text
 MatchSession.events_published(sequence, events)
-    → GamePresenter → AnimationQueue
-    → EventViewBinder.present(event) → DiceView / PawnView / HUD …
+    → GamePresenter → AnimationQueue.play_batch
+    → EventViewBinder.present_for_playback(event)  (последователен await)
+          → DiceView / PawnView / HUD …
     → AnimationQueue.all_done(sequence)
     → GamePresenter → MatchSession.events_presented(sequence)
 ```
 
-Domain не чака tween. Presentation потвърждава след всяка анимация
-(`EventViewBinder` прилага фактите към views; #168 добавя последователен await).
+Domain не чака tween. Presentation потвърждава след всяка анимация:
+`AnimationQueue.play_batch` → `EventViewBinder.present_for_playback` (последователен
+await, #168) → `all_done` → `events_presented`.
 
 ## .tscn сцени
 

@@ -5,7 +5,7 @@ extends Node
 ##
 ## Отговорности:
 ##   - слуша events_published(sequence, events) от MatchSession;
-##   - предава батча към AnimationQueue (+ EventViewBinder → views, #167);
+##   - предава батча към AnimationQueue (последователен playback #168 + binder #167);
 ##   - след AnimationQueue.all_done() извиква session.events_presented(sequence);
 ##   - преобразува ValidMovesChanged / awaiting_human_action → подсветяване;
 ##   - преобразува клик/tap върху пионка → MovePawnCommand през HumanController;

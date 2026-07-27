@@ -2,9 +2,10 @@ class_name EventViewBinder
 extends RefCounted
 ## Свързва DomainEvent → визуални изгледи (docs/V1_ARCHITECTURE.md §6.1 / §3).
 ##
-## AnimationQueue вика present() за всеки event в батча. MVP (#167): синхронно
-## прилага крайното визуално състояние (snap). Последователните анимации и
-## await на animation_finished са #168 / #169 / #172+.
+## `present()` — синхронен snap (#167), за instant apply без tween.
+## `present_for_playback()` — async за AnimationQueue (#168): чака анимации
+## (DiceRolled → present_dice_rolled / animation_finished). Клетъчни pawn
+## tween-и остават #172+; дотогава pawn events минават като snap.
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -38,12 +39,12 @@ func set_valid_moves_handler(handler: Callable) -> void:
 	_valid_moves_handler = handler
 
 
-## Прилага едно DomainEvent към свързаните изгледи. Невалидно / null → no-op.
+## Прилага едно DomainEvent синхронно (snap). Невалидно / null → no-op.
 func present(event: DomainEvent) -> void:
 	if event == null:
 		return
 	if event is DiceRolledEvent:
-		_present_dice_rolled(event as DiceRolledEvent)
+		_present_dice_rolled_snap(event as DiceRolledEvent)
 	elif event is ValidMovesChangedEvent:
 		_present_valid_moves_changed(event as ValidMovesChangedEvent)
 	elif event is PawnMovedEvent:
@@ -72,8 +73,30 @@ func present(event: DomainEvent) -> void:
 		_present_power_up_resolved(event as PowerUpResolvedEvent)
 
 
-func _present_dice_rolled(event: DiceRolledEvent) -> void:
+## Async playback за AnimationQueue (#168). Изчаква анимирани views;
+## останалите events минават през present() без yield.
+func present_for_playback(event: DomainEvent) -> void:
+	if event == null:
+		return
+	if event is DiceRolledEvent:
+		await _present_dice_rolled_animated(event as DiceRolledEvent)
+	else:
+		present(event)
+
+
+func _present_dice_rolled_snap(event: DiceRolledEvent) -> void:
 	if _dice_view != null and is_instance_valid(_dice_view):
+		_dice_view.apply_dice_rolled(event)
+	_notify_hud(&"present_dice_rolled", event)
+
+
+## Toss анимация + await; при липсващ/занят зар — snap fallback (без deadlock).
+func _present_dice_rolled_animated(event: DiceRolledEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	if _dice_view != null and is_instance_valid(_dice_view) and not _dice_view.is_rolling:
+		await _dice_view.present_dice_rolled(event)
+	elif _dice_view != null and is_instance_valid(_dice_view):
 		_dice_view.apply_dice_rolled(event)
 	_notify_hud(&"present_dice_rolled", event)
 
