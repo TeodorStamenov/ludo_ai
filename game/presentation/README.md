@@ -44,6 +44,9 @@ Domain не чака tween. Presentation потвърждава след вся�
 стои. Hop клетка по клетка по маршрута (#172 / YEL-040); `KIND_MOVE` едва
 след последната клетка.
 
+`PawnExitedBase` (#173 / YEL-030): hop от базовата клетка към spawn след
+приет `MovePawnCommand` при 6; `KIND_MOVE` след кацане. Busy pawn → snap.
+
 ## .tscn сцени
 
 Сцените (`.tscn` файлове) се създават в Godot Editor.  

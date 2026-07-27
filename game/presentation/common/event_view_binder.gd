@@ -7,7 +7,8 @@ extends RefCounted
 ## анимация и чака `animation_finished` чрез AnimationFinishedGate (#169).
 ## DiceRolled → present_dice_rolled + gate(KIND_ROLL).
 ## PawnMoved → hop клетка по клетка по маршрута (#172 / YEL-040) след приет
-## MovePawnCommand (#171 / YEL-023). Exit-base / home / finish tween — #173+.
+## MovePawnCommand (#171 / YEL-023).
+## PawnExitedBase → hop база → spawn (#173 / YEL-030). Home / finish — #175+.
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -85,6 +86,8 @@ func present_for_playback(event: DomainEvent) -> void:
 		await _present_dice_rolled_animated(event as DiceRolledEvent)
 	elif event is PawnMovedEvent:
 		await _present_pawn_moved_animated(event as PawnMovedEvent)
+	elif event is PawnExitedBaseEvent:
+		await _present_pawn_exited_base_animated(event as PawnExitedBaseEvent)
 	else:
 		present(event)
 
@@ -213,6 +216,25 @@ func _present_pawn_exited_base(event: PawnExitedBaseEvent) -> void:
 		return
 	var target: Vector2 = _local_for_pawn(pawn, event.spawn_cell_id)
 	pawn.present_pawn_exited_base(event, target)
+
+
+## Hop база → spawn след приет MovePawnCommand (#173 / YEL-030).
+## Busy pawn → snap към spawn (без deadlock). KIND_MOVE след кацане.
+func _present_pawn_exited_base_animated(event: PawnExitedBaseEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var pawn: PawnView = _pawn_of(event.pawn_id)
+	if pawn == null:
+		return
+	var target: Vector2 = _local_for_pawn(pawn, event.spawn_cell_id)
+	if not pawn.is_moving:
+		await AnimationFinishedGate.await_started(
+				pawn,
+				PawnView.KIND_MOVE,
+				pawn.present_pawn_exited_base_animated.bind(event, target)
+		)
+	else:
+		pawn.present_pawn_exited_base(event, target)
 
 
 func _present_pawn_sent_home(event: PawnSentHomeEvent) -> void:

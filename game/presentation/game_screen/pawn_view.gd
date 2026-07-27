@@ -7,7 +7,7 @@ extends Sprite2D
 ## и hit target за mouse + touch (GAP-011). Логическите in_base, path_index,
 ## shield и valid move живеят в PawnState.
 ##
-## animation_finished(kind) се емитира след еднократни move/home анимации.
+## animation_finished(kind) се емитира след еднократни move/exit/home анимации.
 ## AnimationFinishedGate (#169) го чака преди следващия event в опашката.
 ## Loop cues (valid-move, selected) не го емитират.
 ##
@@ -29,6 +29,8 @@ const SELECTED_MODULATE := Color(1.45, 1.35, 0.75, 1.0)
 const MOVE_HOP_PX := 10.0
 ## Продължителност на един hop между съседни клетки (YEL-040 / yellow prototype).
 const STEP_DURATION := 0.18
+## Hop от база към spawn (YEL-030 / yellow prototype move_to_local).
+const EXIT_DURATION := 0.28
 const HOME_DURATION := 0.55
 const HOME_SCALE_MIN := 0.82
 const HOME_MODULATE := Color(0.88, 0.90, 1.0, 0.85)
@@ -52,7 +54,7 @@ var pawn_id: StringName = &""
 
 var is_selectable: bool = false
 var is_selected: bool = false
-## True докато move/home tween тече — EventViewBinder ползва за snap fallback (#171).
+## True докато move/exit/home tween тече — EventViewBinder ползва за snap fallback.
 var is_moving: bool = false
 
 var _rest_position: Vector2 = Vector2.ZERO
@@ -198,11 +200,33 @@ func present_pawn_moved_animated(
 	animation_finished.emit(KIND_MOVE)
 
 
-## Instant apply от PawnExitedBaseEvent (#167). Анимация на излизане е #173.
+## Instant apply от PawnExitedBaseEvent (#167). Анимираният hop е #173.
 func present_pawn_exited_base(event: PawnExitedBaseEvent, local_target: Vector2) -> void:
 	if event == null or not event.is_valid():
 		return
 	_apply_cell_pose(event.spawn_cell_id, local_target)
+
+
+## Hop от база към spawn след приет MovePawnCommand (#173 / YEL-030).
+## Емитира animation_finished(KIND_MOVE) след кацане на spawn (#169).
+func present_pawn_exited_base_animated(
+		event: PawnExitedBaseEvent,
+		local_target: Vector2
+) -> void:
+	if event == null or not event.is_valid():
+		return
+	_prepare_for_action()
+	_stop_action_tween()
+	if CellId.is_valid(event.spawn_cell_id):
+		grid_pos = CellId.to_vec(event.spawn_cell_id)
+		z_index = grid_pos.x + grid_pos.y + 1
+	is_moving = true
+	await _tween_hop_to(local_target, EXIT_DURATION)
+	_rest_position = local_target
+	position = local_target
+	_action_tween = null
+	is_moving = false
+	animation_finished.emit(KIND_MOVE)
 
 
 ## Instant apply от PawnSentHomeEvent (#167). Меко „вкъщи“ tween е #175.
