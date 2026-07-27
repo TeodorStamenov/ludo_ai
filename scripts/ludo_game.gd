@@ -4,7 +4,7 @@ const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 const YELLOW_PAWN_TEXTURE := "res://rss/pawns/User05.png"
 const BASE_ROLL_ATTEMPTS := 3
 
-@onready var board: LudoBoard = $Board
+@onready var board: BoardView = $Board
 @onready var pawns_root: Node2D = $Pawns
 @onready var dice: Node3D = $UI/DiceViewportContainer/SubViewport/DiceWorld/Dice
 @onready var dice_result: Label = $UI/DiceResult

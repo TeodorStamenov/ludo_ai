@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cvd7g0y4y8btq"]
 
-[ext_resource type="Script" uid="uid://bxnresy8k3880" path="res://scripts/ludo_board.gd" id="1_board_script"]
+[ext_resource type="Script" uid="uid://fhmoswvj52cf" path="res://game/presentation/game_screen/board_view.gd" id="1_board_script"]
 [ext_resource type="Script" uid="uid://c423datp828uj" path="res://scripts/ludo_game.gd" id="1_game_script"]
 [ext_resource type="PackedScene" path="res://scenes/dice_world.tscn" id="2_dice_world"]
 [ext_resource type="Texture2D" uid="uid://duyqfdml2pqnp" path="res://rss/CHIP/01.png" id="2_ubud5"]
