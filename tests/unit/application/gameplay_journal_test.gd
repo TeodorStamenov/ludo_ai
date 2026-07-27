@@ -1,10 +1,10 @@
 extends TestCase
 ## Business-critical тестове за GameplayJournal (Task #132 / #133 / #134 / #135 /
-## docs/V1_ARCHITECTURE.md §11 / §12 / §16.3).
+## #136 / docs/V1_ARCHITECTURE.md §11 / §12 / §16.3).
 ##
 ## Инварианти: append-only ред; accepted commands за replay без reject/hash шум;
 ## command_from_dict диспеч; round-trip без загуба; MatchSession записва header
-## (#133), приети (#134) и отхвърлени команди с причина (#135).
+## (#133), приети (#134), отхвърлени с причина (#135) и state hash (#136).
 
 
 func _make_config() -> MatchConfig:
@@ -245,8 +245,42 @@ func test_match_session_records_accepted_commands_in_journal() -> void:
 	assert_eq(accepted[1].sequence, 2)
 	assert_eq(accepted[1].player_id, &"green")
 	assert_eq(accepted[1].match_id, &"m_200_4")
-	assert_eq(journal.entry_count(), 2,
-			"accepted-only path must not insert reject/hash entries")
+	assert_eq(journal.entry_count(), 4,
+			"each accepted command is followed by a state_hash entry (#136)")
+
+
+func test_match_session_records_state_hash_after_each_accepted_command() -> void:
+	## #136: след всяка приета команда — state_hash със sequence и compute_hash().
+	var state := GameState.new()
+	state.match_id = &"m_200_6"
+	var session := MatchSession.new()
+	session.start(
+			_make_config(),
+			state,
+			_AcceptEngine.new(),
+			SeededRandomSource.new(1),
+			{},
+			EventQueue.new())
+
+	var journal := session.get_journal()
+	var entries := journal.get_entries()
+	assert_eq(entries.size(), 2)
+	assert_eq(StringName(str(entries[0]["kind"])), GameplayJournal.KIND_ACCEPTED_COMMAND)
+	assert_eq(StringName(str(entries[1]["kind"])), GameplayJournal.KIND_STATE_HASH)
+	assert_eq(int(entries[1]["sequence"]), 1)
+	assert_eq(str(entries[1]["hash"]), str(session.get_state().compute_hash()))
+
+	session.events_presented(session.get_pending_sequence())
+	session.receive_command(RollDiceCommand.new(&"green"))
+
+	entries = journal.get_entries()
+	assert_eq(entries.size(), 4)
+	assert_eq(StringName(str(entries[2]["kind"])), GameplayJournal.KIND_ACCEPTED_COMMAND)
+	assert_eq(StringName(str(entries[3]["kind"])), GameplayJournal.KIND_STATE_HASH)
+	assert_eq(int(entries[3]["sequence"]), 2)
+	assert_eq(str(entries[3]["hash"]), str(session.get_state().compute_hash()))
+	assert_eq(journal.get_accepted_commands().size(), 2,
+			"state_hash entries must not appear in accepted replay sequence")
 
 
 func test_match_session_records_rejected_commands_in_journal() -> void:
@@ -277,7 +311,7 @@ func test_match_session_records_rejected_commands_in_journal() -> void:
 	assert_true(rejected.fired)
 	assert_eq(str(rejected.reason), "illegal_move")
 	assert_eq(journal.entry_count(), count_before + 1,
-			"rejected command must append one journal entry (#135)")
+			"rejected command must append one journal entry (#135), without state_hash")
 	assert_eq(journal.get_accepted_commands().size(), accepted_before,
 			"rejected command must not appear in accepted replay sequence")
 	assert_eq(state.command_sequence, 1,
