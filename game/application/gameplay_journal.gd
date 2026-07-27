@@ -73,6 +73,7 @@ func record_header(
 
 
 ## Записва приета команда (#134). Null → no-op.
+## MatchSession вика това след успешен GameEngine.apply — не при reject.
 func record_accepted_command(command: GameCommand) -> void:
 	if command == null:
 		return

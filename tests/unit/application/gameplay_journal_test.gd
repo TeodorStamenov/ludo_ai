@@ -1,10 +1,10 @@
 extends TestCase
-## Business-critical тестове за GameplayJournal (Task #132 / #133 /
+## Business-critical тестове за GameplayJournal (Task #132 / #133 / #134 /
 ## docs/V1_ARCHITECTURE.md §11 / §12 / §16.3).
 ##
 ## Инварианти: append-only ред; accepted commands за replay без reject/hash шум;
 ## command_from_dict диспеч; round-trip без загуба; MatchSession записва header
-## (MatchConfig + seed + content version) при start.
+## (#133) и приети команди (#134) при start / receive_command.
 
 
 func _make_config() -> MatchConfig:
@@ -215,6 +215,70 @@ func test_match_session_records_journal_header_on_restore() -> void:
 	assert_eq(journal.content_version, GameplayJournal.CONTENT_VERSION)
 
 
+func test_match_session_records_accepted_commands_in_journal() -> void:
+	## #134 / replay: приети команди влизат в journal в хронологичен ред със sequence.
+	var state := GameState.new()
+	state.match_id = &"m_200_4"
+	var session := MatchSession.new()
+	session.start(
+			_make_config(),
+			state,
+			_AcceptEngine.new(),
+			SeededRandomSource.new(1),
+			{},
+			EventQueue.new())
+
+	var journal := session.get_journal()
+	var accepted := journal.get_accepted_commands()
+	assert_eq(accepted.size(), 1, "StartMatchCommand must be journaled on start")
+	assert_true(accepted[0] is StartMatchCommand)
+	assert_eq(accepted[0].sequence, 1)
+	assert_eq(accepted[0].match_id, &"m_200_4")
+
+	session.events_presented(session.get_pending_sequence())
+	session.receive_command(RollDiceCommand.new(&"green"))
+
+	accepted = journal.get_accepted_commands()
+	assert_eq(accepted.size(), 2)
+	assert_true(accepted[0] is StartMatchCommand)
+	assert_true(accepted[1] is RollDiceCommand)
+	assert_eq(accepted[1].sequence, 2)
+	assert_eq(accepted[1].player_id, &"green")
+	assert_eq(accepted[1].match_id, &"m_200_4")
+	assert_eq(journal.entry_count(), 2,
+			"accepted-only path must not insert reject/hash entries")
+
+
+func test_match_session_does_not_journal_rejected_commands() -> void:
+	## #134: reject не влиза като accepted (запис на reject → #135).
+	var state := GameState.new()
+	state.match_id = &"m_200_5"
+	var session := MatchSession.new()
+	session.start(
+			_make_config(),
+			state,
+			_AcceptThenRejectEngine.new(),
+			SeededRandomSource.new(1),
+			{},
+			EventQueue.new())
+	session.events_presented(session.get_pending_sequence())
+
+	var journal := session.get_journal()
+	var count_before := journal.entry_count()
+	var accepted_before := journal.get_accepted_commands().size()
+
+	var rejected := {"fired": false}
+	session.command_rejected.connect(func(_cmd, _reason): rejected.fired = true)
+	session.receive_command(RollDiceCommand.new(&"green"))
+
+	assert_true(rejected.fired)
+	assert_eq(journal.entry_count(), count_before,
+			"rejected command must not append a journal entry yet (#135)")
+	assert_eq(journal.get_accepted_commands().size(), accepted_before)
+	assert_eq(state.command_sequence, 1,
+			"rejected command must not advance command_sequence")
+
+
 class _AcceptEngine extends GameEngine:
 	func apply_command(state: GameState, command: GameCommand, _rng: RandomSource) -> Dictionary:
 		if state != null and command != null:
@@ -224,6 +288,28 @@ class _AcceptEngine extends GameEngine:
 			"state": state,
 			"events": [],
 			"error": null,
+		}
+
+	func get_legal_actions(_state: GameState) -> Array:
+		return []
+
+
+class _AcceptThenRejectEngine extends GameEngine:
+	func apply_command(state: GameState, command: GameCommand, _rng: RandomSource) -> Dictionary:
+		if command is StartMatchCommand:
+			if state != null and command != null:
+				state.record_accepted_command(command.sequence)
+			return {
+				"accepted": true,
+				"state": state,
+				"events": [],
+				"error": null,
+			}
+		return {
+			"accepted": false,
+			"state": state,
+			"events": [],
+			"error": "illegal_move",
 		}
 
 	func get_legal_actions(_state: GameState) -> Array:
