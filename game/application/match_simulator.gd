@@ -24,6 +24,7 @@ const KEY_HIT_LIMIT := "hit_limit"
 const KEY_ERROR := "error"
 
 ## Soft safety — достатъчно за нормален 2–4p мач; #141 ще стегне лимита.
+## След всяка приета команда (през events_presented) проверява §12 инварианти (#142).
 const DEFAULT_MAX_STEPS := 100_000
 
 var _engine: GameEngine = null
@@ -71,16 +72,42 @@ func run(
 	var steps := 0
 	var hit_limit := false
 	while session.is_active() or session.is_presentation_pending():
+		if session.is_invariant_halted():
+			return _failure_session(
+					"invariant violation: %s" % GameStateInvariantChecker.describe_first_runtime_violation(
+							session.get_state()),
+					session,
+					summary_box["summary"],
+					steps,
+					false)
 		if steps >= max_steps:
 			hit_limit = true
 			break
 		if session.is_presentation_pending():
 			session.events_presented(session.get_pending_sequence())
 			steps += 1
+			var mid_state: GameState = session.get_state()
+			if mid_state != null and not GameStateInvariantChecker.is_runtime_valid(mid_state):
+				return _failure_session(
+						"invariant violation: %s" % GameStateInvariantChecker.describe_first_runtime_violation(
+								mid_state),
+						session,
+						summary_box["summary"],
+						steps,
+						false)
 			continue
 		# Активен мач без pending и без AI ход → блокирал (няма legal actions).
 		return _failure_session(
 				"match stuck: active without pending presentation or AI action",
+				session,
+				summary_box["summary"],
+				steps,
+				false)
+
+	if session.is_invariant_halted():
+		return _failure_session(
+				"invariant violation: %s" % GameStateInvariantChecker.describe_first_runtime_violation(
+						session.get_state()),
 				session,
 				summary_box["summary"],
 				steps,

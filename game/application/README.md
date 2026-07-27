@@ -57,4 +57,6 @@ presentation gate и проверява state hash (#137). `MatchSimulator` въ
 пълен AI мач без сцена: auto `events_presented` до `MATCH_FINISHED` (#139).
 `MatchBatchSimulator` пуска N AI мача с различни seed-ове и проверява крайни
 инварианти (finished / `GameState.is_valid` / ranking / MatchSummary) (#140).
+`GameStateInvariantChecker` + mid-match checks в `MatchSession` /
+`MatchSimulator` пазят §12 инварианти след всяка приета команда (#142).
 Останалите application класове се довършват в собствени roadmap задачи.

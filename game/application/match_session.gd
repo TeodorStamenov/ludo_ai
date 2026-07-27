@@ -17,6 +17,8 @@ extends RefCounted
 ##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
 ##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
 ##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#137);
+##   - след приета команда проверява §12 инварианти (#142); при нарушение
+##     записва в TelemetrySink (bug report bundle → #143) и спира мача;
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
@@ -27,6 +29,7 @@ signal events_published(sequence: int, events: Array)
 signal match_finished(summary: Dictionary)
 signal awaiting_human_action(player_id: StringName, state_view: Dictionary, legal_actions: Array)
 signal command_rejected(command: GameCommand, reason: String)
+signal invariant_violated(description: String, snapshot: Dictionary)
 
 ## Snapshot payload за SaveRepository.active_match (§5.2 / §9 / §11).
 ## LocalSaveRepository обвива с envelope {schema_version, saved_at, payload}.
@@ -47,9 +50,11 @@ var _controllers: Dictionary = {}
 var _event_queue: EventQueue = null
 var _command_bus: CommandBus = null
 var _journal: GameplayJournal = null
+var _telemetry: TelemetrySink = null
 var _pending_sequence: int = -1
 var _active: bool = false
 var _last_stable_snapshot: Dictionary = {}
+var _invariant_halted: bool = false
 
 
 func start(
@@ -69,6 +74,7 @@ func start(
 	_event_queue = event_queue if event_queue != null else EventQueue.new()
 	_pending_sequence = -1
 	_active = true
+	_invariant_halted = false
 	_last_stable_snapshot = {}
 	_setup_command_bus()
 	_begin_journal()
@@ -76,6 +82,20 @@ func start(
 	# При mid-match restore: живият RNG ← snapshot; иначе snapshot ← жив RNG.
 	_sync_rng_on_start()
 	receive_command(StartMatchCommand.new(config))
+
+
+## Опционален TelemetrySink за invariant_violation (#142; bug report → #143).
+func set_telemetry_sink(sink: TelemetrySink) -> void:
+	_telemetry = sink
+
+
+func get_telemetry_sink() -> TelemetrySink:
+	return _telemetry
+
+
+## True ако мачът е спрян заради нарушен §12 инвариант (#142).
+func is_invariant_halted() -> bool:
+	return _invariant_halted
 
 
 func receive_command(command: GameCommand) -> void:
@@ -126,6 +146,11 @@ func receive_command(command: GameCommand) -> void:
 	# Divergence / bug report (#136): hash след приета команда, с актуален rng_state.
 	if _journal != null:
 		_journal.record_state_hash(_state.command_sequence, _state.compute_hash())
+
+	# §12 mid-match runtime checks (#142) — преди events към Presentation.
+	if not _assert_invariants_or_halt():
+		return
+
 	var events: Array = result.get("events", [])
 	_stamp_events(events, command.sequence)
 	_event_queue.enqueue(events)
@@ -306,6 +331,7 @@ func restore_from_snapshot(
 	_event_queue = event_queue if event_queue != null else EventQueue.new()
 	_pending_sequence = -1
 	_active = _state.is_in_progress()
+	_invariant_halted = false
 	_last_stable_snapshot = snapshot.duplicate(true)
 
 	if rng != null:
@@ -445,3 +471,24 @@ func _begin_journal() -> void:
 	# Replay / bug report четат seed от header (не от живия RNG state).
 	var seed_value: int = _config.rng_seed if _config != null else 0
 	_journal.record_header(_config, seed_value)
+
+
+## §12 runtime checks след приета команда (#142). При нарушение: telemetry,
+## invariant_violated сигнал, спира мача (без events_published).
+func _assert_invariants_or_halt() -> bool:
+	var check := GameStateInvariantChecker.validate_runtime(_state)
+	if check.is_ok():
+		return true
+	var description := GameStateInvariantChecker.describe_first_runtime_violation(_state)
+	var snapshot := to_snapshot()
+	push_error("MatchSession: invariant violation seq=%d: %s" % [
+			_state.command_sequence if _state != null else -1,
+			description])
+	if _telemetry != null:
+		var match_id: StringName = _state.match_id if _state != null else &""
+		_telemetry.record_invariant_violation(match_id, description, snapshot)
+	_invariant_halted = true
+	_active = false
+	_pending_sequence = -1
+	invariant_violated.emit(description, snapshot)
+	return false

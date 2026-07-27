@@ -25,6 +25,16 @@ class StubState extends GameState:
 	func to_dict() -> Dictionary:
 		return {}
 
+	## Orchestration stub — не е пълен GameState; §12 board checks са N/A.
+	func is_valid() -> bool:
+		return true
+
+	func is_in_progress() -> bool:
+		return false
+
+	func compute_hash() -> int:
+		return 0
+
 
 class StubEngine extends GameEngine:
 	var _events_to_return: Array = []

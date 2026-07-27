@@ -5,7 +5,8 @@ extends RefCounted
 ##
 ## Обвива MatchSimulator: различни seed-ове, агрегирана статистика и
 ## крайни инварианти (finished + GameState.is_valid + стабилен ranking).
-## Mid-match runtime checks → #142; stuck command limit → #141.
+## Mid-match runtime checks: MatchSession / MatchSimulator (#142);
+## stuck command limit → #141.
 ##
 ## STRESS_MATCH_COUNT = 1000 е офлайн цел. CI тестовете ползват по-малък
 ## брой заради suite timeout.
