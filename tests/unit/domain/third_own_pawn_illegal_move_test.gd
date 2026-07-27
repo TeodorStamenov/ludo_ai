@@ -15,7 +15,7 @@ var _engine: GameEngine
 
 func before_each() -> void:
 	_stacks = StackRules.new()
-	_rules = MoveRules.new(null, _stacks)
+	_rules = MoveRules.new(null, _stacks, CaptureRules.new(_stacks))
 	_engine = GameEngine.new()
 	MatchId._reset_counter_for_tests()
 

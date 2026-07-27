@@ -3,7 +3,8 @@ extends TestCase
 ## docs/V1_ARCHITECTURE.md §4.4 / §12; GAP-004 / GAP-006).
 ##
 ## Max-2 / reject трета → #108–#109. Образуване (PawnStackFormed) и разпадане
-## при напускане → #110. Имунитет / прескачане → #111–#112.
+## при напускане → #110. Имунитет при кацане → #111 (capture_rules_test).
+## Прескачане → #112.
 
 
 var _rules: MoveRules
@@ -13,7 +14,7 @@ var _engine: GameEngine
 
 func before_each() -> void:
 	_stacks = StackRules.new()
-	_rules = MoveRules.new(null, _stacks)
+	_rules = MoveRules.new(null, _stacks, CaptureRules.new(_stacks))
 	_engine = GameEngine.new()
 	MatchId._reset_counter_for_tests()
 

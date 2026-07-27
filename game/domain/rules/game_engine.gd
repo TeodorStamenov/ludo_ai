@@ -11,7 +11,6 @@ extends RefCounted
 
 var _move_rules: MoveRules
 var _stack_rules: StackRules
-@warning_ignore("unused_private_class_variable")
 var _capture_rules: CaptureRules
 var _turn_rules: TurnRules
 var _finish_rules: FinishRules
@@ -26,11 +25,14 @@ func _init(
 ) -> void:
 	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
 	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
+	_capture_rules = (
+			capture_rules if capture_rules != null
+			else CaptureRules.new(_stack_rules)
+	)
 	_move_rules = (
 			move_rules if move_rules != null
-			else MoveRules.new(_finish_rules, _stack_rules)
+			else MoveRules.new(_finish_rules, _stack_rules, _capture_rules)
 	)
-	_capture_rules = capture_rules if capture_rules != null else CaptureRules.new()
 	_turn_rules = turn_rules if turn_rules != null else TurnRules.new()
 
 
@@ -271,6 +273,11 @@ func _apply_move_pawn(
 			return CommandResult.rejected(
 					state,
 					CommandError.illegal_move("cannot place third own pawn on cell"))
+		# #111: кацане върху имунна противникова купчина от 2.
+		if _move_rules.would_land_on_enemy_stack(state, player, pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("cannot land on immune enemy stack"))
 		return CommandResult.rejected(
 				state,
 				CommandError.illegal_move("pawn is not movable for current dice"))

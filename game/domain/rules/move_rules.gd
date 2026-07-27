@@ -11,7 +11,8 @@ extends RefCounted
 ##   - точен зар вътре в home stretch (#98 / YEL-051–055);
 ##   - забрана за движение на FINISHED пионка (#100) — can_move_pawn / collect;
 ##   - макс. 2 свои на MAIN_PATH / spawn (#108 / GAP-004 / GAP-006);
-##   - опит за трета своя → невалиден ход (#109).
+##   - опит за трета своя → невалиден ход (#109);
+##   - кацане върху противникова купчина от 2 → невалиден ход (#111).
 ##
 ## Capture / stack immunity / прибиране → CaptureRules / StackRules / FinishRules.
 ## Stack formation events → GameEngine + StackRules.resolve_stack_formed (#110).
@@ -24,11 +25,20 @@ const DESTINATION_NONE: int = -1
 
 var _finish_rules: FinishRules
 var _stack_rules: StackRules
+var _capture_rules: CaptureRules
 
 
-func _init(finish_rules: FinishRules = null, stack_rules: StackRules = null) -> void:
+func _init(
+		finish_rules: FinishRules = null,
+		stack_rules: StackRules = null,
+		capture_rules: CaptureRules = null
+) -> void:
 	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
 	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
+	_capture_rules = (
+			capture_rules if capture_rules != null
+			else CaptureRules.new(_stack_rules)
+	)
 
 
 func allows_exit_base(dice_value: int) -> bool:
@@ -37,6 +47,7 @@ func allows_exit_base(dice_value: int) -> bool:
 
 ## True ако пионката може да излезе от база с дадения зар (YEL-030 / #92).
 ## Spawn трябва да приема собствена пионка без да надхвърли max 2 (#108 / GAP-006).
+## Spawn с противникова купчина от 2 е блокиран (#111).
 func can_exit_base(
 		state: GameState,
 		player: PlayerState,
@@ -51,6 +62,8 @@ func can_exit_base(
 		return false
 	var spawn := resolve_spawn_cell(state, player.player_id)
 	if spawn == &"":
+		return false
+	if _capture_rules.blocks_landing(state, spawn, player.player_id):
 		return false
 	return _stack_rules.can_place_own_pawn(state, spawn, player.player_id, pawn.pawn_id)
 
@@ -92,6 +105,43 @@ func would_place_third_own_pawn(
 		return false
 	return not _stack_rules.can_place_own_pawn(
 			state, dest_cell, player.player_id, pawn.pawn_id)
+
+
+## True ако ходът би кацнал върху имунна противникова купчина от 2 (#111).
+## Междинни клетки не се проверяват — прескачането е позволено (#112).
+func would_land_on_enemy_stack(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if state == null or player == null or pawn == null:
+		return false
+	if pawn.is_in_base():
+		if not allows_exit_base(dice_value):
+			return false
+		var spawn := resolve_spawn_cell(state, player.player_id)
+		if spawn == &"":
+			return false
+		return _capture_rules.blocks_landing(state, spawn, player.player_id)
+	if not pawn.is_on_board():
+		return false
+	if not DiceState.is_face_value(dice_value):
+		return false
+	var route := resolve_player_route(state, player.player_id)
+	if route.is_empty():
+		return false
+	if pawn.path_index < 0 or pawn.path_index >= route.size():
+		return false
+	if route[pawn.path_index] != pawn.cell_id:
+		return false
+	var dest_index := resolve_destination_index(pawn.path_index, dice_value, route.size())
+	if dest_index == DESTINATION_NONE:
+		return false
+	var dest_cell: StringName = route[dest_index]
+	if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell):
+		return false
+	return _capture_rules.blocks_landing(state, dest_cell, player.player_id)
 
 
 ## True ако MovePawnCommand за пионката е валидна при този зар (#95 / #100).
@@ -195,8 +245,9 @@ func resolve_traversed_cell_ids(
 ## Home stretch дестинация: само ако крайната клетка е свободна от своя пионка (YEL-053).
 ## Междинни HOME клетки не блокират (YEL-054).
 ## MAIN_PATH дестинация: макс. 2 свои — трета е невалидна (#108 / #109 / GAP-004).
+## MAIN_PATH дестинация с противникова купчина от 2 → невалидна (#111).
 ## Междинни MAIN_PATH клетки (вкл. купчини) не блокират преминаване (#112).
-## Capture landing → CaptureRules (#113+).
+## Capture на единична противникова → CaptureRules (#113+).
 func can_advance_on_board(
 		state: GameState,
 		player: PlayerState,
@@ -226,6 +277,8 @@ func can_advance_on_board(
 				dest_cell, player.player_id, pawn.pawn_id) > 0:
 			return false
 		return true
+	if _capture_rules.blocks_landing(state, dest_cell, player.player_id):
+		return false
 	return _stack_rules.can_place_own_pawn(
 			state, dest_cell, player.player_id, pawn.pawn_id)
 

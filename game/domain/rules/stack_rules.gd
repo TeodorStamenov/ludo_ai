@@ -12,7 +12,8 @@ extends RefCounted
 ## Occupancy query view: CellOccupancy (#107).
 ## MoveRules ползва can_place_own_pawn за MAIN_PATH / spawn landing (#108).
 ## GameEngine reject при трета своя → #109.
-## Имунитет / прескачане → #111–#112.
+## Имунитет при кацане (MoveRules + CaptureRules.blocks_landing) → #111.
+## Прескачане на междинни купчини → #112.
 
 
 const MAX_OWN_PAWNS_PER_CELL: int = CellOccupancy.MAX_OWN_PAWNS_PER_CELL
