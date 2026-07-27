@@ -3,11 +3,11 @@ extends Sprite2D
 ## Визуален представител на една пионка (docs/V1_ARCHITECTURE.md §6.3, Етап C).
 ##
 ## Съдържа само presentation данни: pawn_id, визуален asset/skin,
-## selected / valid-move / move / stack / home (sleep) анимации, colorblind marker
-## и hit target за mouse + touch (GAP-011). Логическите in_base, path_index,
-## shield и valid move живеят в PawnState.
+## selected / valid-move / move / stack / home (sleep) / finish анимации,
+## colorblind marker и hit target за mouse + touch (GAP-011). Логическите
+## in_base, path_index, shield и valid move живеят в PawnState.
 ##
-## animation_finished(kind) се емитира след еднократни move/exit/stack/home анимации.
+## animation_finished(kind) се емитира след еднократни move/exit/stack/home/finish.
 ## AnimationFinishedGate (#169) го чака преди следващия event в опашката.
 ## Loop cues (valid-move, selected) не го емитират.
 ##
@@ -21,6 +21,7 @@ signal animation_finished(kind: StringName)
 const KIND_MOVE := &"move"
 const KIND_HOME := &"home"
 const KIND_STACK := &"stack"
+const KIND_FINISH := &"finish"
 
 const BOB_AMPLITUDE := 5.0
 const BOB_DURATION := 0.35
@@ -39,6 +40,10 @@ const HOME_MODULATE := Color(0.88, 0.90, 1.0, 0.85)
 const STACK_OFFSET := Vector2(12.0, -7.0)
 const STACK_DURATION := 0.2
 const STACK_PULSE_SCALE := 1.08
+## Меко прибиране в центъра (#176) — hop + топъл pulse.
+const FINISH_DURATION := 0.42
+const FINISH_SCALE_PEAK := 1.16
+const FINISH_MODULATE := Color(1.32, 1.22, 0.78, 1.0)
 const SIZE_RATIO := 0.7
 
 const MARKER_NODE_NAME := &"ColorblindMarker"
@@ -59,7 +64,7 @@ var pawn_id: StringName = &""
 
 var is_selectable: bool = false
 var is_selected: bool = false
-## True докато move/exit/stack/home tween тече — EventViewBinder ползва за snap fallback.
+## True докато move/exit/stack/home/finish tween тече — EventViewBinder ползва за snap fallback.
 var is_moving: bool = false
 ## Presentation-only: в купчина с друга пионка (#174). Domain stack е в GameState.
 var is_stacked: bool = false
@@ -261,11 +266,25 @@ func present_pawn_sent_home_animated(
 	await play_home_to(local_target)
 
 
-## Instant apply от PawnFinishedEvent (#167). Finish анимация е #176.
+## Instant apply от PawnFinishedEvent (#167). Мекото прибиране в центъра е #176.
 func present_pawn_finished(event: PawnFinishedEvent, local_target: Vector2) -> void:
 	if event == null or not event.is_valid():
 		return
 	_apply_cell_pose(event.center_cell_id, local_target)
+
+
+## Меко hop+pulse в центъра след home stretch (#176 / V1_GAME_DESIGN §3.2).
+## Емитира animation_finished(KIND_FINISH) след settle (#169).
+func present_pawn_finished_animated(
+		event: PawnFinishedEvent,
+		local_target: Vector2
+) -> void:
+	if event == null or not event.is_valid():
+		return
+	if CellId.is_valid(event.center_cell_id):
+		grid_pos = CellId.to_vec(event.center_cell_id)
+		z_index = grid_pos.x + grid_pos.y + 1
+	await play_finish_to(local_target)
 
 
 ## Capture cue (#167). Позицията на взетата пионка идва от PawnSentHome.
@@ -452,6 +471,51 @@ func play_home_to(local_target: Vector2, duration: float = HOME_DURATION) -> voi
 	_action_tween = null
 	is_moving = false
 	animation_finished.emit(KIND_HOME)
+
+
+## Меко прибиране в центъра (PawnFinished) — hop + топъл pulse (#176).
+func play_finish_to(local_target: Vector2, duration: float = FINISH_DURATION) -> void:
+	_prepare_for_action()
+	_stop_action_tween()
+	is_moving = true
+	var hop_time: float = duration * 0.55
+	var settle_time: float = duration * 0.45
+	var start: Vector2 = position
+	var mid: Vector2 = (start + local_target) * 0.5
+	mid.y -= MOVE_HOP_PX * 1.4
+	var peak: Vector2 = _base_scale * FINISH_SCALE_PEAK
+	_action_tween = create_tween()
+	_action_tween.set_parallel(true)
+	_action_tween.tween_property(self, "position", mid, hop_time * 0.45)\
+		.set_trans(Tween.TRANS_QUAD)\
+		.set_ease(Tween.EASE_OUT)
+	_action_tween.tween_property(self, "scale", peak, hop_time * 0.45)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_OUT)
+	_action_tween.tween_property(self, "modulate", FINISH_MODULATE, hop_time * 0.45)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_OUT)
+	_action_tween.chain()
+	_action_tween.set_parallel(true)
+	_action_tween.tween_property(self, "position", local_target, hop_time * 0.55)\
+		.set_trans(Tween.TRANS_QUAD)\
+		.set_ease(Tween.EASE_IN)
+	_action_tween.chain()
+	_action_tween.set_parallel(true)
+	_action_tween.tween_property(self, "scale", _base_scale, settle_time)\
+		.set_trans(Tween.TRANS_BACK)\
+		.set_ease(Tween.EASE_OUT)
+	_action_tween.tween_property(self, "modulate", _base_modulate, settle_time)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_IN)
+	await _action_tween.finished
+	_rest_position = local_target
+	position = local_target
+	scale = _base_scale
+	modulate = _base_modulate
+	_action_tween = null
+	is_moving = false
+	animation_finished.emit(KIND_FINISH)
 
 
 func _prepare_for_action() -> void:

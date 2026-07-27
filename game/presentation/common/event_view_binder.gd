@@ -10,7 +10,9 @@ extends RefCounted
 ## MovePawnCommand (#171 / YEL-023); разпадане на купчина преди hop (#174).
 ## PawnExitedBase → hop база → spawn (#173 / YEL-030).
 ## PawnStackFormed → offset settle на двете пионки (#174).
-## PawnSentHome → меко „вкъщи“ shrink+settle в базата (#175). Finish — #176.
+## PawnSentHome → меко „вкъщи“ shrink+settle в базата (#175).
+## PawnFinished → hop+pulse в центъра; PawnMoved при finish хопва само
+## остатъка от home stretch (#176).
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -94,6 +96,8 @@ func present_for_playback(event: DomainEvent) -> void:
 		await _present_pawn_stack_formed_animated(event as PawnStackFormedEvent)
 	elif event is PawnSentHomeEvent:
 		await _present_pawn_sent_home_animated(event as PawnSentHomeEvent)
+	elif event is PawnFinishedEvent:
+		await _present_pawn_finished_animated(event as PawnFinishedEvent)
 	else:
 		present(event)
 
@@ -184,7 +188,8 @@ func _present_pawn_moved_animated(event: PawnMovedEvent) -> void:
 
 
 ## Exclusive-from → inclusive-to по player route (board геометрия, не MoveRules).
-## Finish към CENTER: остатъкът от маршрута + център. Непоследователен скок → само to_cell.
+## Finish (CENTER / FINISHED): само остатъкът от home stretch — центърът е
+## PawnFinished (#176). Непоследователен скок → само to_cell.
 func _resolve_move_step_cell_ids(event: PawnMovedEvent) -> Array[StringName]:
 	var cells: Array[StringName] = []
 	if event == null:
@@ -195,7 +200,6 @@ func _resolve_move_step_cell_ids(event: PawnMovedEvent) -> Array[StringName]:
 		if from_idx >= 0:
 			for i in range(from_idx + 1, route.size()):
 				cells.append(route[i])
-		cells.append(CellId.CENTER)
 		return cells
 	var to_idx: int = route.find(event.to_cell_id)
 	if from_idx < 0 or to_idx < 0 or to_idx <= from_idx:
@@ -286,6 +290,25 @@ func _present_pawn_finished(event: PawnFinishedEvent) -> void:
 	_dissolve_stack_snap(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.center_cell_id)
 	pawn.present_pawn_finished(event, target)
+
+
+## Hop+pulse в центъра след home stretch (#176). Busy → snap. KIND_FINISH след settle.
+func _present_pawn_finished_animated(event: PawnFinishedEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var pawn: PawnView = _pawn_of(event.pawn_id)
+	if pawn == null:
+		return
+	await _dissolve_stack_before_departure(pawn)
+	var target: Vector2 = _local_for_pawn(pawn, event.center_cell_id)
+	if not pawn.is_moving:
+		await AnimationFinishedGate.await_started(
+				pawn,
+				PawnView.KIND_FINISH,
+				pawn.present_pawn_finished_animated.bind(event, target)
+		)
+	else:
+		pawn.present_pawn_finished(event, target)
 
 
 func _present_pawn_captured(event: PawnCapturedEvent) -> void:

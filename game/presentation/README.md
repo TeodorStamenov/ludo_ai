@@ -56,6 +56,10 @@ resident (паралелно). Разпадане: преди `PawnMoved` / exit
 `PawnSentHome` (#175): меко „прибиране вкъщи да подремне“ — shrink + settle
 към свободната base клетка след capture. `KIND_HOME` след settle. Busy → snap.
 
+`PawnFinished` (#176): след `PawnMoved` през остатъка на home stretch —
+hop + топъл pulse в `CENTER`. `KIND_FINISH` след settle. Busy → snap.
+Влизане/движение в home stretch без finish остава клетъчен hop (#172).
+
 ## .tscn сцени
 
 Сцените (`.tscn` файлове) се създават в Godot Editor.  
