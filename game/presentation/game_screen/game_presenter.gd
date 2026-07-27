@@ -8,13 +8,13 @@ extends Node
 ##   - предава батча към AnimationQueue;
 ##   - след AnimationQueue.all_done() извиква session.events_presented(sequence);
 ##   - преобразува ValidMovesChanged / awaiting_human_action → подсветяване;
-##   - преобразува клик/tap върху пионка → HumanController.submit_move;
-##   - преобразува клик върху зар → HumanController.submit_roll;
+##   - преобразува клик/tap върху пионка → MovePawnCommand през HumanController;
+##   - преобразува клик върху зар → RollDiceCommand през HumanController;
 ##   - слуша match_finished → results_requested (AppFlow / GameScreen);
 ##   - излага read-only state_view от GameState.to_view() (#6.1).
 ##
-## Не решава дали ход е валиден. Не мести пионки самостоятелно.
-## Не вика GameEngine / MatchSession.receive_command() директно.
+## Не решава дали ход е валиден (engine / legal_actions). Не мести пионки
+## самостоятелно. Не вика GameEngine / MatchSession.receive_command() директно.
 
 signal results_requested(summary: Dictionary)
 signal state_view_changed(state_view: Dictionary)
@@ -235,10 +235,10 @@ func _on_match_finished(summary: Dictionary) -> void:
 func _on_dice_roll_requested() -> void:
 	if not _input_enabled or not _can_roll or _active_human == null:
 		return
-	if not _active_human.is_waiting():
+	# Резолва RollDiceCommand от legal_actions; при успех input се заключва.
+	if not _active_human.submit_roll():
 		return
 	_disable_human_input()
-	_active_human.submit_roll()
 
 
 func _on_pawn_clicked(pawn: PawnView) -> void:
@@ -250,12 +250,18 @@ func _on_pawn_clicked(pawn: PawnView) -> void:
 		return
 
 	var pawn_id: StringName = pawn.pawn_id
-	if _selected_pawn_id == pawn_id:
-		_disable_human_input()
-		_clear_valid_move_highlights()
-		_active_human.submit_move(pawn_id)
+	if not _is_legal_move_pawn(pawn_id):
 		return
 
+	if _selected_pawn_id == pawn_id:
+		# Втори клик → MovePawnCommand от legal_actions (YEL-023).
+		if not _active_human.submit_move(pawn_id):
+			return
+		_disable_human_input()
+		_clear_valid_move_highlights()
+		return
+
+	# Първи клик → само избор (YEL-021 / YEL-022); ходът още не се праща.
 	_clear_selection()
 	_selected_pawn_id = pawn_id
 	pawn.set_selected(true)
@@ -275,6 +281,15 @@ func _extract_valid_pawn_ids(state_view: Dictionary, legal_actions: Array) -> Ar
 func _legal_actions_allow_roll(legal_actions: Array) -> bool:
 	for action in legal_actions:
 		if action is RollDiceCommand:
+			return true
+	return false
+
+
+func _is_legal_move_pawn(pawn_id: StringName) -> bool:
+	if pawn_id == &"":
+		return false
+	for action in _legal_actions:
+		if action is MovePawnCommand and (action as MovePawnCommand).pawn_id == pawn_id:
 			return true
 	return false
 

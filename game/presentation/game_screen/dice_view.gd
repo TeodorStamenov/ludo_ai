@@ -80,6 +80,12 @@ func _on_click_area_input_event(
 	_normal: Vector3,
 	_shape_idx: int
 ) -> void:
+	# 3D picking ползва emulate_mouse_from_touch — не филтрираме DEVICE_ID_EMULATION
+	# (за разлика от PawnView/Area2D, където идват и двата event-а).
+	if event is InputEventScreenTouch:
+		if (event as InputEventScreenTouch).pressed:
+			roll_requested.emit()
+		return
 	if event is InputEventMouseButton \
 			and event.pressed \
 			and event.button_index == MOUSE_BUTTON_LEFT:
