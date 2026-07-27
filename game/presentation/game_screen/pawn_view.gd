@@ -2,15 +2,18 @@ class_name PawnView
 extends Sprite2D
 ## Визуален представител на една пионка (docs/V1_ARCHITECTURE.md §6.3, Етап C).
 ##
-## Съдържа само presentation данни: визуален asset/skin, idle/selected/move
-## анимации и hit target за input. Логическите in_base, path_index, shield и
-## valid move живеят в PawnState — не тук.
+## Съдържа само presentation данни: pawn_id, визуален asset/skin,
+## idle/selected/move анимации и hit target за input. Логическите in_base,
+## path_index, shield и valid move живеят в PawnState — не тук.
 
 signal clicked(pawn: PawnView)
 
 const BOB_AMPLITUDE := 5.0
 const BOB_DURATION := 0.35
 const SIZE_RATIO := 0.7
+
+## Стабилен идентификатор — същият StringName като в PawnState (PawnId формат).
+var pawn_id: StringName = &""
 
 @export var player_id: StringName = &"yellow"
 @export var grid_pos: Vector2i = Vector2i.ZERO

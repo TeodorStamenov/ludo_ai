@@ -68,6 +68,7 @@ func _spawn_yellow_pawns() -> void:
 
 		var pawn: PawnView = PAWN_SCENE.instantiate() as PawnView
 		pawn.name = "Pawn%d" % (i + 1)
+		pawn.pawn_id = logic.pawn_id
 		pawn.player_id = PlayerId.YELLOW
 		pawn.grid_pos = cell
 		pawn.setup(YELLOW_PAWN_TEXTURE, tile_w)
@@ -84,9 +85,11 @@ func _spawn_yellow_pawns() -> void:
 
 
 func _logic_of(pawn: PawnView) -> PawnState:
-	var idx: int = _yellow_pawns.find(pawn)
-	assert(idx >= 0 and idx < _yellow_pawn_states.size())
-	return _yellow_pawn_states[idx]
+	for logic in _yellow_pawn_states:
+		if logic.pawn_id == pawn.pawn_id:
+			return logic
+	assert(false, "no PawnState for pawn_id=%s" % String(pawn.pawn_id))
+	return null
 
 
 func _start_yellow_turn() -> void:
