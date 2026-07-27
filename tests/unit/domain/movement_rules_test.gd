@@ -9,6 +9,7 @@ extends TestCase
 ##   - Движение по общото трасе (виж main_path_movement_test / #104).
 ##   - Влизане в home stretch (виж home_stretch_test / #105).
 ##   - Точен зар в home stretch (виж exact_home_stretch_dice_test / #98).
+##   - Точен зар при завършване (виж exact_finish_dice_test / #106).
 
 
 func test_move_rules_extends_ref_counted() -> void:
