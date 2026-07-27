@@ -4,7 +4,7 @@ extends TestCase
 ## Критични инварианти (docs/V1_ARCHITECTURE.md, раздел 12 / Task #92):
 ##   - Пионка излиза от базата само при хвърлено 6 (виж exit_base_rule_test).
 ##   - Хвърлено 6 дава право на допълнителен ход (виж extra_roll_on_six_test / #93).
-##   - Три опита при всички пионки в база (#94).
+##   - Три опита при всички пионки в база (виж three_attempts_from_base_test / #94).
 ##   - Движение по общото трасе и влизане в home stretch.
 ##   - Точен зар за завършване в края на home stretch.
 
@@ -41,13 +41,6 @@ func test_exit_base_requires_six() -> void:
 	for face in [1, 2, 3, 4, 5]:
 		assert_false(rules.allows_exit_base(face),
 				"зар %d не позволява излизане от база" % face)
-
-
-## Документиран инвариант: три опита при всички пионки в база.
-func test_three_attempts_when_all_in_base_invariant_documented() -> void:
-	var max_attempts_from_base := 3
-	assert_eq(max_attempts_from_base, 3,
-			"Играч с всички пионки в база получава максимум 3 опита")
 
 
 ## Документиран инвариант: диапазонът на зара е [1, 6].

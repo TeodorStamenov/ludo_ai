@@ -6,7 +6,8 @@ extends RefCounted
 ## Отговорности:
 ##   - валидни преходи между TurnPhase;
 ##   - следващ активен играч (прескача класирани);
-##   - опити в база и допълнително хвърляне при 6 (#93 / YEL-013/032/043/045);
+##   - три опита при всички пионки в база (#94 / YEL-003/010–013);
+##   - допълнително хвърляне при 6 (#93 / YEL-013/032/043/045);
 ##   - after-roll / after-move / after-power-up изход към следваща фаза;
 ##   - TURN_END → advance (TurnChanged) + tick на щитове на входящия играч.
 ##
@@ -130,7 +131,9 @@ func _tick_owner_shields(player: PlayerState) -> void:
 			(entry as PawnState).tick_shield()
 
 
-## След известен зар + валидни пионки (YEL-010–013 / YEL-042–045).
+## След известен зар + валидни пионки (#94 YEL-010–013 / YEL-042–045).
+## all_in_base + 1–5 → консумира опит; при оставащи → RETRY_ROLL, иначе TURN_END.
+## Зар 6 не консумира base attempt (YEL-013).
 ## Мутира turn; връща outcome StringName.
 func resolve_after_roll(
 		turn: TurnState,
@@ -145,6 +148,7 @@ func resolve_after_roll(
 
 	turn.set_dice_value(dice_value)
 
+	# #94: при всички в база несполучлив зар (≠6) дава до BASE_ROLL_ATTEMPTS опита.
 	if all_in_base and not grants_extra_roll(dice_value):
 		turn.consume_base_attempt()
 		if turn.has_base_attempts_remaining():
