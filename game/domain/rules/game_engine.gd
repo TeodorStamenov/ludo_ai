@@ -384,7 +384,8 @@ func _append_stack_formed_if_any(
 ## TURN_END → auto-rank last place → advance (TurnChanged / MATCH_FINISHED).
 ## Extra roll при 6 (#93) ≠ advance — остава същият играч в AWAITING_ROLL.
 ## #122: при should_continue_match (≥2 некласирани) НЕ се вика apply_match_finished.
-## MATCH_FINISHED → FinishRules.apply_match_finished (#90) само когато мачът не продължава.
+## #123: при should_finish_match → FinishRules.apply_match_finished (#90), дори ако
+## turn machine е казал NEXT_TURN по грешка (recovery, симетрично на #122).
 func _append_turn_end_advance(
 		state: GameState,
 		outcome: StringName,
@@ -408,7 +409,8 @@ func _append_turn_end_advance(
 			_resume_unranked_turn(state, command_sequence, events)
 		return
 
-	if advance.get("outcome") != TurnRules.OUTCOME_MATCH_FINISHED:
+	# #123: пълен ranking / auto-last готов → приключване на целия мач.
+	if not _finish_rules.should_finish_match(state):
 		return
 	var finished: MatchFinishedEvent = _finish_rules.apply_match_finished(
 			state, command_sequence)
