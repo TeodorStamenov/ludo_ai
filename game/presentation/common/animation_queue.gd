@@ -6,7 +6,7 @@ extends Node
 ## GamePresenter получава батч events от MatchSession и ги поставя тук.
 ## AnimationQueue ги изпълнява един по един:
 ##   1. Избира правилния view (BoardView, PawnView, DiceView, GiftView).
-##   2. Стартира анимацията.
+##   2. Стартира анимацията (напр. DiceRolled → DiceView.present_dice_rolled).
 ##   3. Изчаква сигнал animation_finished.
 ##   4. Преминава към следващото събитие.
 ##   5. При изпразване емитира all_done(sequence).

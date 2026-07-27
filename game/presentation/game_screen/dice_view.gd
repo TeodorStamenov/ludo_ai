@@ -3,15 +3,19 @@ extends Node3D
 ## Визуализация на зара (docs/V1_ARCHITECTURE.md §6.4, Етап C).
 ##
 ## Пренесен от scripts/dice.gd. Съдържа само presentation:
-##   - получава готов резултат 1–6 и проиграва анимация към това лице;
+##   - получава DiceRolledEvent / лице 1–6 и проиграва анимация към това лице;
 ##   - козметични вариации (spin, wobble, jump) през PresentationRandomSource;
 ##   - hit target емитира roll_requested — не хвърля сам.
 ##
-## Не генерира gameplay случайността (#160). Целево (#161): стойността идва
-## от DiceRolledEvent / domain през GamePresenter / AnimationQueue.
+## Не генерира gameplay случайността (#160). Резултатът идва от domain чрез
+## DiceRolledEvent (#161) — GamePresenter / AnimationQueue викат
+## present_dice_rolled().
 
 signal dice_rolled(value: int)
 signal roll_requested
+signal animation_finished(kind: StringName)
+
+const KIND_ROLL := &"roll"
 
 ## Rest orientation so that face N points world-up (rss/dice mesh).
 ## +X=6, -X=1, +Y=4, -Y=3, +Z=2, -Z=5
@@ -62,6 +66,14 @@ func _on_click_area_input_event(
 		roll_requested.emit()
 
 
+## Проиграва анимация от DiceRolledEvent (#161). Невалидно / null → no-op.
+## AnimationQueue чака animation_finished(KIND_ROLL) след края.
+func present_dice_rolled(event: DiceRolledEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	await roll(event.value)
+
+
 ## Проиграва анимация към даденото лице (1–6). Невалидна стойност → no-op.
 func roll(value: int) -> void:
 	if is_rolling:
@@ -73,6 +85,7 @@ func roll(value: int) -> void:
 	await _play_toss_animation(value)
 	is_rolling = false
 	dice_rolled.emit(value)
+	animation_finished.emit(KIND_ROLL)
 
 
 func _snap_to_face(value: int) -> void:
