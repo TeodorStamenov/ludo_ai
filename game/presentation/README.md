@@ -53,6 +53,9 @@ resident (паралелно). Разпадане: преди `PawnMoved` / exit
 партньорът се връща в центъра на клетката (`KIND_STACK`); напускащата тръгва
 от текущия offset.
 
+`PawnSentHome` (#175): меко „прибиране вкъщи да подремне“ — shrink + settle
+към свободната base клетка след capture. `KIND_HOME` след settle. Busy → snap.
+
 ## .tscn сцени
 
 Сцените (`.tscn` файлове) се създават в Godot Editor.  

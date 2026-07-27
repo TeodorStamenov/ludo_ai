@@ -240,11 +240,25 @@ func present_pawn_exited_base_animated(
 	animation_finished.emit(KIND_MOVE)
 
 
-## Instant apply от PawnSentHomeEvent (#167). Меко „вкъщи“ tween е #175.
+## Instant apply от PawnSentHomeEvent (#167). Мекото „вкъщи“ tween е #175.
 func present_pawn_sent_home(event: PawnSentHomeEvent, local_target: Vector2) -> void:
 	if event == null or not event.is_valid():
 		return
 	_apply_cell_pose(event.base_cell_id, local_target)
+
+
+## Меко „прибиране вкъщи да подремне“ след capture (#175 / V1_GAME_DESIGN §1).
+## Емитира animation_finished(KIND_HOME) след settle в базата (#169).
+func present_pawn_sent_home_animated(
+		event: PawnSentHomeEvent,
+		local_target: Vector2
+) -> void:
+	if event == null or not event.is_valid():
+		return
+	if CellId.is_valid(event.base_cell_id):
+		grid_pos = CellId.to_vec(event.base_cell_id)
+		z_index = grid_pos.x + grid_pos.y + 1
+	await play_home_to(local_target)
 
 
 ## Instant apply от PawnFinishedEvent (#167). Finish анимация е #176.

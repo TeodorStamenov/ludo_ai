@@ -9,7 +9,8 @@ extends RefCounted
 ## PawnMoved → hop клетка по клетка по маршрута (#172 / YEL-040) след приет
 ## MovePawnCommand (#171 / YEL-023); разпадане на купчина преди hop (#174).
 ## PawnExitedBase → hop база → spawn (#173 / YEL-030).
-## PawnStackFormed → offset settle на двете пионки (#174). Home / finish — #175+.
+## PawnStackFormed → offset settle на двете пионки (#174).
+## PawnSentHome → меко „вкъщи“ shrink+settle в базата (#175). Finish — #176.
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -91,6 +92,8 @@ func present_for_playback(event: DomainEvent) -> void:
 		await _present_pawn_exited_base_animated(event as PawnExitedBaseEvent)
 	elif event is PawnStackFormedEvent:
 		await _present_pawn_stack_formed_animated(event as PawnStackFormedEvent)
+	elif event is PawnSentHomeEvent:
+		await _present_pawn_sent_home_animated(event as PawnSentHomeEvent)
 	else:
 		present(event)
 
@@ -253,6 +256,25 @@ func _present_pawn_sent_home(event: PawnSentHomeEvent) -> void:
 	_dissolve_stack_snap(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.base_cell_id)
 	pawn.present_pawn_sent_home(event, target)
+
+
+## Меко shrink+settle към база след capture (#175). Busy → snap. KIND_HOME след settle.
+func _present_pawn_sent_home_animated(event: PawnSentHomeEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var pawn: PawnView = _pawn_of(event.pawn_id)
+	if pawn == null:
+		return
+	await _dissolve_stack_before_departure(pawn)
+	var target: Vector2 = _local_for_pawn(pawn, event.base_cell_id)
+	if not pawn.is_moving:
+		await AnimationFinishedGate.await_started(
+				pawn,
+				PawnView.KIND_HOME,
+				pawn.present_pawn_sent_home_animated.bind(event, target)
+		)
+	else:
+		pawn.present_pawn_sent_home(event, target)
 
 
 func _present_pawn_finished(event: PawnFinishedEvent) -> void:
