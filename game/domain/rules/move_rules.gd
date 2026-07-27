@@ -8,9 +8,10 @@ extends RefCounted
 ##   - изчисляване на валидни пионки след зар (#95 / YEL-020/044/045/052–055);
 ##   - движение по общото трасе (#96 / YEL-040–043) — точен зар, без GAP-008 clamp;
 ##   - влизане в home stretch (#97 / YEL-050) — MAIN_PATH → HOME_STRETCH, без обиколка;
-##   - точен зар вътре в home stretch (#98 / YEL-051–055).
+##   - точен зар вътре в home stretch (#98 / YEL-051–055);
+##   - забрана за движение на FINISHED пионка (#100) — can_move_pawn / collect.
 ##
-## Capture / stacks / FINISHED → CaptureRules / StackRules / FinishRules (#99).
+## Capture / stacks / прибиране → CaptureRules / StackRules / FinishRules (#99).
 ## Gift → RESOLVING_POWER_UP.
 
 
@@ -45,7 +46,8 @@ func can_exit_base(
 	return resolve_spawn_cell(state, player.player_id) != &""
 
 
-## True ако MovePawnCommand за пионката е валидна при този зар (#95).
+## True ако MovePawnCommand за пионката е валидна при този зар (#95 / #100).
+## FINISHED пионка никога не е подвижна — независимо от зара.
 func can_move_pawn(
 		state: GameState,
 		player: PlayerState,
@@ -226,13 +228,15 @@ func would_enter_home_stretch(
 
 
 ## Извежда пионка от база на spawn (YEL-030). Изисква can_exit_base.
-## Мутира pawn; връща false без промяна при невалидни входни данни.
+## FINISHED пионка не излиза (#100). Мутира pawn; връща false без промяна при невалидни входни данни.
 func apply_exit_base(
 		state: GameState,
 		player: PlayerState,
 		pawn: PawnState,
 		dice_value: int
 ) -> bool:
+	if pawn == null or pawn.is_finished():
+		return false
 	if not can_exit_base(state, player, pawn, dice_value):
 		return false
 	var spawn := resolve_spawn_cell(state, player.player_id)
@@ -243,13 +247,15 @@ func apply_exit_base(
 ## Премества пионка с dice_value клетки по маршрута (YEL-040 / #96, YEL-050–055 / #97–#98).
 ## MAIN_PATH дестинация → MAIN_PATH; home stretch дестинация → HOME_STRETCH (без обиколка).
 ## Вътре в home stretch: само точен зар без overshoot. Прибиране до CENTER → FinishRules (#99).
-## Мутира pawn; връща false без промяна ако ходът е невалиден.
+## FINISHED пионка не се мести (#100). Мутира pawn; връща false без промяна ако ходът е невалиден.
 func apply_board_move(
 		state: GameState,
 		player: PlayerState,
 		pawn: PawnState,
 		dice_value: int
 ) -> bool:
+	if pawn == null or pawn.is_finished():
+		return false
 	if not can_advance_on_board(state, player, pawn, dice_value):
 		return false
 	var route := resolve_player_route(state, player.player_id)

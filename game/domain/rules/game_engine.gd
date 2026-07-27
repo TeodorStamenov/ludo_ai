@@ -223,7 +223,7 @@ func _apply_roll_dice(
 
 ## MovePawnCommand в AWAITING_MOVE → RESOLVING_MOVE (#87/#88):
 ## exit-base (YEL-030/032), ход по маршрута (YEL-040–055) или прибиране (#99).
-## Capture / stacks / gifts → по-късни tasks.
+## FINISHED пионка се reject-ва (#100). Capture / stacks / gifts → по-късни tasks.
 func _apply_move_pawn(
 		state: GameState,
 		command: MovePawnCommand,
@@ -254,6 +254,12 @@ func _apply_move_pawn(
 				CommandError.create(
 						CommandError.CODE_UNKNOWN_PAWN,
 						"pawn_id not found on active player"))
+
+	# #100: FINISHED пионка е терминална — дори ако е в valid_pawn_ids (tampered client).
+	if pawn.is_finished():
+		return CommandResult.rejected(
+				state,
+				CommandError.illegal_move("finished pawn cannot move"))
 
 	var dice_value: int = state.turn.dice_value
 	if not _move_rules.can_move_pawn(state, player, pawn, dice_value):

@@ -46,13 +46,15 @@ func can_finish_pawn(
 
 
 ## Прибира пионка в центъра (FINISHED, CellId.CENTER). Изисква can_finish_pawn.
-## Мутира pawn; връща false без промяна при невалидни входни данни.
+## Вече FINISHED пионка не се пипа (#100). Мутира pawn; връща false без промяна при невалидни входни данни.
 func apply_finish_pawn(
 		state: GameState,
 		player: PlayerState,
 		pawn: PawnState,
 		dice_value: int
 ) -> bool:
+	if pawn == null or pawn.is_finished():
+		return false
 	if not can_finish_pawn(state, player, pawn, dice_value):
 		return false
 	var route := _resolve_player_route(state, player.player_id)
