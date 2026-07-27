@@ -10,6 +10,7 @@ extends Node2D
 ##   - НЕ пази текущ играч, зар, маршрути или правила.
 ##
 ## Изометричната математика е в IsometricMath (#147).
+## cell_id → позиция е в CellPositionMap (#149).
 ## Gameplay topology (бази/spawn/маршрути/home stretch) е само в Domain
 ## (Classic15x15Board) — премахната оттук (#148).
 ## Хардкоднатият visual layout остава до #152 (BoardDefinition).
@@ -32,8 +33,8 @@ const CHIP_PURPLE := "res://rss/CHIP/05.png"
 
 ## cell_id (CellId) → Sprite2D на тайла. Празен до първо _build_board().
 var _cell_nodes: Dictionary = {}
-## cell_id → локална изометрична позиция спрямо BoardView.
-var _cell_positions: Dictionary = {}
+## Пълен cell_id → локална изометрична позиция (15×15).
+var _cell_positions: CellPositionMap = CellPositionMap.new(0.5)
 
 
 func _ready() -> void:
@@ -51,9 +52,9 @@ func get_tile_display_width() -> float:
 	return IsometricMath.tile_display_width(board_scale)
 
 
-## Локална позиция по стабилен cell_id, или Vector2.ZERO ако липсва.
+## Локална позиция по стабилен cell_id, или Vector2.ZERO при невалиден id.
 func get_cell_position_by_id(cell_id: StringName) -> Vector2:
-	return _cell_positions.get(cell_id, Vector2.ZERO) as Vector2
+	return _cell_positions.position_of(cell_id)
 
 
 ## Sprite2D на клетката, или null ако липсва.
@@ -62,19 +63,18 @@ func get_cell_node(cell_id: StringName) -> Node2D:
 
 
 func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> Sprite2D:
+	var cell_id: StringName = CellId.from_vec(grid_pos)
 	var sprite := Sprite2D.new()
 	sprite.texture = load(texture_path)
-	sprite.position = IsometricMath.grid_to_local(grid_pos, board_scale)
+	sprite.position = _cell_positions.position_of(cell_id)
 	sprite.scale = Vector2(board_scale, board_scale)
 	sprite.centered = true
-	sprite.z_index = IsometricMath.z_index_for(grid_pos)
+	sprite.z_index = _cell_positions.z_index_of(cell_id)
 	parent_node.add_child(sprite)
 	if Engine.is_editor_hint():
 		sprite.owner = get_tree().edited_scene_root
 
-	var cell_id: StringName = CellId.from_vec(grid_pos)
 	_cell_nodes[cell_id] = sprite
-	_cell_positions[cell_id] = sprite.position
 	return sprite
 
 
@@ -91,7 +91,7 @@ func _build_board() -> void:
 		child.queue_free()
 
 	_cell_nodes.clear()
-	_cell_positions.clear()
+	_cell_positions.rebuild(board_scale)
 
 	# Layout: 11x11 area within 15x15 grid. Center is (7,7).
 	# NW: Green, NE: Orange, SE: Yellow, SW: Cyan
