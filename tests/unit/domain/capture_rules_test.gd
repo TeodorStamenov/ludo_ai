@@ -4,7 +4,7 @@ extends TestCase
 ## (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.1–3.2).
 ##
 ## Сценарии end-to-end за взимане → Task #118 / pawn_capture_test.gd.
-## Home stretch защита като отделен suite → #119.
+## Home stretch защита → Task #119 / home_stretch_protection_test.gd.
 
 
 var _capture: CaptureRules

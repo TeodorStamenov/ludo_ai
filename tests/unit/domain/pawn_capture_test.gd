@@ -5,7 +5,7 @@ extends TestCase
 ##
 ## Стъпване върху единична незащитена противникова → PawnCaptured + PawnSentHome
 ## в първа свободна база. Прескачането не взима. Купчина от 2 и щит блокират
-## взимане. Home stretch защита → #119.
+## взимане. Home stretch защита → #119 / home_stretch_protection_test.gd.
 
 
 var _rules: MoveRules

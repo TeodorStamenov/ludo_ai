@@ -42,6 +42,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/jump_over_stack_test.gd",
 	"res://tests/unit/domain/pawn_capture_test.gd",
 	"res://tests/unit/domain/capture_rules_test.gd",
+	"res://tests/unit/domain/home_stretch_protection_test.gd",
 	"res://tests/unit/domain/home_stretch_test.gd",
 	"res://tests/unit/domain/exact_home_stretch_dice_test.gd",
 	"res://tests/unit/domain/exact_finish_dice_test.gd",
