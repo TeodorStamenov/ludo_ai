@@ -25,6 +25,16 @@ class StubState extends GameState:
 	func to_dict() -> Dictionary:
 		return {}
 
+	## Orchestration stub — не е пълен GameState; §12 board checks са N/A.
+	func is_valid() -> bool:
+		return true
+
+	func is_in_progress() -> bool:
+		return false
+
+	func compute_hash() -> int:
+		return 0
+
 
 class StubEngine extends GameEngine:
 	var _events_to_return: Array = []
@@ -58,6 +68,23 @@ class RejectEngine extends GameEngine:
 			"events": [],
 			"error": "illegal_move",
 		}
+
+
+class SpyTelemetrySink extends TelemetrySink:
+	var finished_count: int = 0
+	var last_summary: Dictionary = {}
+	var violation_count: int = 0
+
+	func record_match_finished(summary: Dictionary) -> void:
+		finished_count += 1
+		last_summary = summary.duplicate(true)
+
+	func record_invariant_violation(
+			_match_id: StringName,
+			_description: String,
+			_snapshot: Dictionary = {}
+	) -> void:
+		violation_count += 1
 
 
 func _make_parts() -> Dictionary:
@@ -188,6 +215,46 @@ func test_match_finished_signal_on_match_finished_event() -> void:
 	assert_true(captured.summary.has("ranking"), "MatchSummary must include ranking")
 	assert_true(captured.summary.has("match_id"), "MatchSummary must include match_id")
 	assert_true(captured.summary.has("schema_version"), "MatchSummary must include schema_version")
+	assert_true(captured.summary.has(MatchSummary.KEY_COMMAND_SEQUENCE),
+			"MatchSummary must include command_sequence")
+
+
+func test_match_finished_records_summary_via_telemetry() -> void:
+	var parts := _make_parts()
+	var finish_event := DomainEvent.new()
+	finish_event.event_type = &"MatchFinished"
+	var session := MatchSession.new()
+	var spy := SpyTelemetrySink.new()
+	session.set_telemetry_sink(spy)
+	(parts["engine"] as StubEngine).set_next_events([finish_event])
+	session.start(_make_config(), parts["state"], parts["engine"], parts["rng"],
+			parts["controllers"], parts["event_queue"])
+
+	assert_eq(spy.finished_count, 1, "normal finish must record MatchSummary once")
+	assert_false(spy.last_summary.is_empty(), "recorded summary must be non-empty")
+	assert_true(spy.last_summary.has(MatchSummary.KEY_RANKING))
+	assert_true(spy.last_summary.has(MatchSummary.KEY_COMMAND_SEQUENCE))
+
+
+func test_match_finished_archives_journal_into_debug_match_buffer() -> void:
+	var parts := _make_parts()
+	var finish_event := DomainEvent.new()
+	finish_event.event_type = &"MatchFinished"
+	var session := MatchSession.new()
+	var buffer := DebugMatchBuffer.new(3)
+	session.set_debug_match_buffer(buffer)
+	(parts["engine"] as StubEngine).set_next_events([finish_event])
+	session.start(_make_config(), parts["state"], parts["engine"], parts["rng"],
+			parts["controllers"], parts["event_queue"])
+
+	assert_eq(buffer.size(), 1, "finished match must archive one debug entry")
+	var entry := buffer.get_latest()
+	assert_true(DebugMatchBuffer.is_valid_entry(entry))
+	var journal_dict: Dictionary = entry.get(DebugMatchBuffer.KEY_JOURNAL, {})
+	assert_true(journal_dict.has(GameplayJournal.KEY_ENTRIES),
+			"archived journal must include entries")
+	assert_false(entry.get(DebugMatchBuffer.KEY_SUMMARY, {}).is_empty(),
+			"archived entry should include MatchSummary")
 
 
 func test_session_active_before_match_finished() -> void:

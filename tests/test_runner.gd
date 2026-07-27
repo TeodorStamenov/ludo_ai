@@ -23,6 +23,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/gift_state_test.gd",
 	"res://tests/unit/domain/match_result_test.gd",
 	"res://tests/unit/domain/game_state_test.gd",
+	"res://tests/unit/domain/game_state_invariant_checker_test.gd",
 	"res://tests/unit/domain/game_state_serialization_test.gd",
 	"res://tests/unit/domain/game_state_hash_test.gd",
 	"res://tests/unit/domain/framework_sanity_test.gd",
@@ -115,6 +116,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/application/ai_policy_test.gd",
 	"res://tests/unit/application/match_session_test.gd",
 	"res://tests/unit/application/gameplay_journal_test.gd",
+	"res://tests/unit/application/debug_match_buffer_test.gd",
 	"res://tests/unit/application/deterministic_replay_runner_test.gd",
 	# platform — само реални I/O имплементации
 	"res://tests/unit/platform/local_save_repository_test.gd",

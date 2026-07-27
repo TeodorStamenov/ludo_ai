@@ -17,7 +17,12 @@ extends RefCounted
 ##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
 ##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
 ##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#137);
-##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
+##   - след приета команда проверява §12 инварианти (#142); при нарушение
+##     записва TelemetrySink → локален BugReportBundle (#143) и спира мача;
+##   - при край на мача (finish / invariant halt) архивира journal в
+##     DebugMatchBuffer (#144), ако е инжектиран (debug builds);
+##   - при MatchFinished произвежда кратко MatchSummary (#145), записва го
+##     през TelemetrySink (user://logs/) и го публикува с match_finished.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
 ## is_snapshot_valid(), get_last_stable_snapshot(), restore_from_snapshot(),
@@ -27,6 +32,7 @@ signal events_published(sequence: int, events: Array)
 signal match_finished(summary: Dictionary)
 signal awaiting_human_action(player_id: StringName, state_view: Dictionary, legal_actions: Array)
 signal command_rejected(command: GameCommand, reason: String)
+signal invariant_violated(description: String, snapshot: Dictionary)
 
 ## Snapshot payload за SaveRepository.active_match (§5.2 / §9 / §11).
 ## LocalSaveRepository обвива с envelope {schema_version, saved_at, payload}.
@@ -47,9 +53,12 @@ var _controllers: Dictionary = {}
 var _event_queue: EventQueue = null
 var _command_bus: CommandBus = null
 var _journal: GameplayJournal = null
+var _telemetry: TelemetrySink = null
+var _debug_match_buffer: DebugMatchBuffer = null
 var _pending_sequence: int = -1
 var _active: bool = false
 var _last_stable_snapshot: Dictionary = {}
+var _invariant_halted: bool = false
 
 
 func start(
@@ -69,6 +78,7 @@ func start(
 	_event_queue = event_queue if event_queue != null else EventQueue.new()
 	_pending_sequence = -1
 	_active = true
+	_invariant_halted = false
 	_last_stable_snapshot = {}
 	_setup_command_bus()
 	_begin_journal()
@@ -76,6 +86,30 @@ func start(
 	# При mid-match restore: живият RNG ← snapshot; иначе snapshot ← жив RNG.
 	_sync_rng_on_start()
 	receive_command(StartMatchCommand.new(config))
+
+
+## Опционален TelemetrySink: при invariant violation пише bug report bundle (#143).
+func set_telemetry_sink(sink: TelemetrySink) -> void:
+	_telemetry = sink
+
+
+func get_telemetry_sink() -> TelemetrySink:
+	return _telemetry
+
+
+## Инжектира ограничен circular buffer за последните debug мачове (#144).
+## Обикновено само в debug builds; null = без архивиране.
+func set_debug_match_buffer(buffer: DebugMatchBuffer) -> void:
+	_debug_match_buffer = buffer
+
+
+func get_debug_match_buffer() -> DebugMatchBuffer:
+	return _debug_match_buffer
+
+
+## True ако мачът е спрян заради нарушен §12 инвариант (#142).
+func is_invariant_halted() -> bool:
+	return _invariant_halted
 
 
 func receive_command(command: GameCommand) -> void:
@@ -126,6 +160,11 @@ func receive_command(command: GameCommand) -> void:
 	# Divergence / bug report (#136): hash след приета команда, с актуален rng_state.
 	if _journal != null:
 		_journal.record_state_hash(_state.command_sequence, _state.compute_hash())
+
+	# §12 mid-match runtime checks (#142) — преди events към Presentation.
+	if not _assert_invariants_or_halt():
+		return
+
 	var events: Array = result.get("events", [])
 	_stamp_events(events, command.sequence)
 	_event_queue.enqueue(events)
@@ -134,7 +173,10 @@ func receive_command(command: GameCommand) -> void:
 
 	if _is_match_over(events):
 		_active = false
-		match_finished.emit(_build_summary())
+		var summary := _build_summary()
+		_archive_debug_match(summary)
+		_record_normal_match_summary(summary)
+		match_finished.emit(summary)
 
 
 func events_presented(sequence: int) -> void:
@@ -306,6 +348,7 @@ func restore_from_snapshot(
 	_event_queue = event_queue if event_queue != null else EventQueue.new()
 	_pending_sequence = -1
 	_active = _state.is_in_progress()
+	_invariant_halted = false
 	_last_stable_snapshot = snapshot.duplicate(true)
 
 	if rng != null:
@@ -384,14 +427,17 @@ func _is_match_over(events: Array) -> bool:
 	return false
 
 
-## MatchSummary = MatchResult.to_dict() (§5.2); command_sequence е session метаданни.
+## Кратко MatchSummary за нормално приключил мач (§5.2 / #145).
 func _build_summary() -> Dictionary:
-	var result := MatchResult.create_from_game_state(_state)
-	var summary: Dictionary = result.to_dict()
-	summary["command_sequence"] = (
-			_state.command_sequence if _state != null
-			else GameState.COMMAND_SEQUENCE_START)
-	return summary
+	return MatchSummary.build_from_game_state(_state)
+
+
+## Записва кратко MatchSummary през TelemetrySink (#145). No-op без sink.
+## Не се вика при invariant halt — там отива BugReportBundle (#143).
+func _record_normal_match_summary(summary: Dictionary) -> void:
+	if _telemetry == null or summary.is_empty():
+		return
+	_telemetry.record_match_finished(summary)
 
 
 ## Попълва DomainEvent.command_sequence за replay / presentation gate.
@@ -445,3 +491,34 @@ func _begin_journal() -> void:
 	# Replay / bug report четат seed от header (не от живия RNG state).
 	var seed_value: int = _config.rng_seed if _config != null else 0
 	_journal.record_header(_config, seed_value)
+
+
+## §12 runtime checks след приета команда (#142). При нарушение: telemetry
+## записва локален bug report bundle (#143), invariant_violated сигнал,
+## спира мача (без events_published).
+func _assert_invariants_or_halt() -> bool:
+	var check := GameStateInvariantChecker.validate_runtime(_state)
+	if check.is_ok():
+		return true
+	var description := GameStateInvariantChecker.describe_first_runtime_violation(_state)
+	var snapshot := to_snapshot()
+	push_error("MatchSession: invariant violation seq=%d: %s" % [
+			_state.command_sequence if _state != null else -1,
+			description])
+	if _telemetry != null:
+		var match_id: StringName = _state.match_id if _state != null else &""
+		# LocalTelemetrySink → user://logs/bug_report_*.json (BugReportBundle).
+		_telemetry.record_invariant_violation(match_id, description, snapshot)
+	_invariant_halted = true
+	_active = false
+	_pending_sequence = -1
+	_archive_debug_match({})
+	invariant_violated.emit(description, snapshot)
+	return false
+
+
+## Архивира активния journal в DebugMatchBuffer (#144). No-op без буфер/journal.
+func _archive_debug_match(summary: Dictionary) -> void:
+	if _debug_match_buffer == null or _journal == null:
+		return
+	_debug_match_buffer.push_journal(_journal, summary)
