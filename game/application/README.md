@@ -25,7 +25,9 @@ Presentation ──► Application ──► Domain
 | `match_session.gd`        | Притежава GameState, GameEngine, RNG; оркестрира мача |
 | `match_factory.gd`        | Строи MatchSession от MatchConfig |
 | `command_bus.gd`          | Единственото входно гнездо за GameCommand-и |
-| `event_queue.gd`          | Буферира DomainEvent-и за Presentation |
+| `event_queue.gd`          | FIFO буфер на DomainEvent-и; sequence acknowledge след presentation |
+| `gameplay_journal.gd`     | Append-only journal на активния мач (replay / bug report / #132) |
+| `deterministic_replay_runner.gd` | Headless replay от journal (seed + accepted commands → state hash / #137) |
 | `controller/`             | PlayerController (интерфейс), Human, AI, Remote |
 | `ai/`                     | AIPolicy (интерфейс), Easy, Medium, Hard имплементации |
 | `ports/`                  | Интерфейси към persistence, ads, settings, telemetry |
@@ -35,7 +37,16 @@ Presentation ──► Application ──► Domain
 Създава се за конкретен мач от `MatchFactory` и се освобождава след Results.  
 `AppFlow` (в `app/`) управлява жизнения му цикъл.
 
-## Файловете са scaffold
+## Статус
 
-Отделните класове се имплементират в собствени задачи от roadmap-а
-(issues #20–#131 и #181–#195).
+`MatchSession` оркестрира мача според §5.2 (команди → GameEngine → events →
+presentation gate → AI/human advance → MatchSummary). Външните команди влизат
+само през `CommandBus.submit()` (HumanController.action_ready и AI advance).
+`EventQueue` буферира DomainEvent-и FIFO; `events_presented` прави
+`acknowledge(sequence)`. `GameplayJournal` се създава при start/restore (`get_journal()`); header-ът
+записва MatchConfig, seed и content version (#133). Приетите и отхвърлените
+команди (с причина) и state hash след всяка приета команда се записват в
+journal при `receive_command` (#134–#136). `DeterministicReplayRunner` чете
+journal-а (seed + accepted commands), прилага ги през `GameEngine` без
+presentation gate и проверява state hash (#137). Останалите application
+класове се довършват в собствени roadmap задачи.

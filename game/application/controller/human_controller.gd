@@ -3,11 +3,9 @@ extends PlayerController
 ## Контролер за човешки играч (docs/V1_ARCHITECTURE.md, раздел 5.3).
 ##
 ## НЕ е autonomous — MatchSession го сигнализира чрез awaiting_human_action.
-## GamePresenter активира input и извиква submit_roll() / submit_move(pawn_id),
-## след което сам изпраща командата на MatchSession.receive_command().
-##
-## HumanController съхранява последната валидна команда и я предоставя
-## при поискване — така GamePresenter не трябва да знае за MatchSession директно.
+## GamePresenter активира input и извиква submit_roll() / submit_move(pawn_id).
+## MatchSession свързва action_ready → CommandBus.submit(), така че Presenter
+## не вика MatchSession.receive_command() директно.
 
 signal action_ready(command: GameCommand)
 

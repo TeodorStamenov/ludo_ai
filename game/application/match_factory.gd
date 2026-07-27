@@ -4,14 +4,15 @@ extends RefCounted
 ##
 ## Отговорности:
 ##   - валидира MatchConfig преди старт;
-##   - инициализира SeededRandomSource от rng_seed;
+##   - инициализира GameState (или приема mid-match restore state);
+##   - инициализира SeededRandomSource от rng_state / rng_seed;
 ##   - конструира PlayerController за всяко seat
 ##     (HumanController или AIController + AIPolicy);
-##   - създава EventQueue;
-##   - връща готова за старт MatchSession.
+##   - създава EventQueue и (при нужда) GameEngine;
+##   - връща стартирана MatchSession;
+##   - create_from_snapshot() — resume от active_match payload (#130).
 ##
-## Не създава GameState или GameEngine — те се инжектират отвън,
-## за да може unit тестовете да подменят имплементацията.
+## GameEngine може да се инжектира в _init за stub-ове в тестове.
 
 var _engine: GameEngine = null
 
@@ -24,17 +25,43 @@ func create(config: MatchConfig, state: GameState = null) -> MatchSession:
 	assert(config != null, "MatchFactory.create: config не може да е null")
 	assert(config.is_valid(), "MatchFactory.create: невалиден MatchConfig")
 
+	var resolved_state: GameState = (
+			state if state != null else GameState.create_from_match_config(config))
 	# Предпочита GameState.rng_state при mid-match restore (#60);
 	# иначе детерминиран RNG от MatchConfig.rng_seed.
 	var rng: RandomSource
-	if state != null and state.has_rng_state():
-		rng = state.create_random_source_from_state()
+	if resolved_state.has_rng_state():
+		rng = resolved_state.create_random_source_from_state()
 	else:
 		rng = config.create_random_source()
+	var engine: GameEngine = _engine if _engine != null else GameEngine.new()
 	var controllers := _build_controllers(config)
 	var event_queue := EventQueue.new()
 	var session := MatchSession.new()
-	session.start(config, state, _engine, rng, controllers, event_queue)
+	session.start(config, resolved_state, engine, rng, controllers, event_queue)
+	return session
+
+
+## Resume от MatchSession.to_snapshot() / SaveRepository.active_match payload (§9).
+## Null при невалиден snapshot — без частична инициализация.
+func create_from_snapshot(snapshot: Dictionary) -> MatchSession:
+	if not MatchSession.is_snapshot_valid(snapshot):
+		push_error("MatchFactory.create_from_snapshot: невалиден snapshot")
+		return null
+	var state := GameState.from_dict(
+			snapshot[MatchSession.SNAPSHOT_KEY_STATE] as Dictionary)
+	if state == null or state.match_config == null or not state.match_config.is_valid():
+		push_error("MatchFactory.create_from_snapshot: липсва валиден MatchConfig")
+		return null
+	var config: MatchConfig = state.match_config
+	var rng: RandomSource = state.create_random_source_from_state()
+	var engine: GameEngine = _engine if _engine != null else GameEngine.new()
+	var controllers := _build_controllers(config)
+	var session := MatchSession.new()
+	if not session.restore_from_snapshot(
+			snapshot, engine, rng, controllers, EventQueue.new()):
+		push_error("MatchFactory.create_from_snapshot: restore_from_snapshot failed")
+		return null
 	return session
 
 

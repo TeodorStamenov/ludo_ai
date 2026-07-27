@@ -2,7 +2,9 @@ class_name GameEngine
 extends RefCounted
 ## Централна точка на domain логиката (docs/V1_ARCHITECTURE.md, §3 / §4.3 / §12).
 ##
-## Публичен договор: команда → CommandResult (ново състояние + събития / грешка).
+## Публичен договор:
+##   - validate_and_apply / apply_command → CommandResult (състояние + събития / грешка);
+##   - get_legal_actions(state) → Array[GameCommand] за Human/AI/Remote (§5.3).
 ## При reject state и RNG остават непроменени (§12).
 ##
 ## Делегира правилата на MoveRules / StackRules / CaptureRules / TurnRules /
@@ -83,6 +85,43 @@ func apply_command(
 		rng: RandomSource
 ) -> Dictionary:
 	return _to_apply_dict(validate_and_apply(state, command, rng))
+
+
+## Валидни команди за Human/AI/Remote (§4.2 / §5.3) — един и същ набор.
+## Не мутира state. AWAITING_ROLL → RollDice; AWAITING_MOVE → MovePawn само
+## за пионки в turn.valid_pawn_ids, които минават MoveRules.can_move_pawn
+## (филтрира stale / tampered ids). Командите са stamp-нати с match_id/sequence.
+func get_legal_actions(state: GameState) -> Array:
+	var actions: Array = []
+	if state == null or not state.is_in_progress():
+		return actions
+	if state.turn == null:
+		return actions
+	var active_id := state.get_active_player_id()
+	if active_id == &"":
+		return actions
+
+	if state.turn.allows_roll_dice():
+		actions.append(state.stamp_command(RollDiceCommand.new(active_id)))
+		return actions
+
+	if not state.turn.allows_move_pawn():
+		return actions
+
+	var player := state.get_active_player()
+	if player == null:
+		return actions
+	var dice_value: int = state.turn.dice_value
+	for pawn_entry in state.turn.valid_pawn_ids:
+		var pawn_id := StringName(str(pawn_entry))
+		var pawn := player.get_pawn(pawn_id)
+		if pawn == null:
+			continue
+		if not _move_rules.can_move_pawn(state, player, pawn, dice_value):
+			continue
+		actions.append(state.stamp_command(
+				MovePawnCommand.new(active_id, pawn_id)))
+	return actions
 
 
 func _validate_envelope(state: GameState, command: GameCommand) -> CommandError:
@@ -343,8 +382,8 @@ func _apply_move_pawn(
 		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
 		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
 
-	# #120/#121: 4 FINISHED → PlayerRanked; при 3–4p мачът може да продължи;
-	# завършил не получава extra roll / нов ход.
+	# #120/#121/#122: 4 FINISHED → PlayerRanked; при 3–4p мачът продължава
+	# след 1-во място (≥2 некласирани); завършил не получава extra roll / нов ход.
 	var player_completed: bool = next_player.is_ranked()
 	var outcome: StringName = _turn_rules.resolve_after_move(
 			next.turn, false, player_completed)
@@ -383,7 +422,9 @@ func _append_stack_formed_if_any(
 
 ## TURN_END → auto-rank last place → advance (TurnChanged / MATCH_FINISHED).
 ## Extra roll при 6 (#93) ≠ advance — остава същият играч в AWAITING_ROLL.
-## MATCH_FINISHED → FinishRules.apply_match_finished (#90).
+## #122: при should_continue_match (≥2 некласирани) НЕ се вика apply_match_finished.
+## #123: при should_finish_match → FinishRules.apply_match_finished (#90), дори ако
+## turn machine е казал NEXT_TURN по грешка (recovery, симетрично на #122).
 func _append_turn_end_advance(
 		state: GameState,
 		outcome: StringName,
@@ -400,12 +441,53 @@ func _append_turn_end_advance(
 			state, command_sequence)
 	if advance.get("event") != null:
 		events.append(advance["event"])
-	if advance.get("outcome") != TurnRules.OUTCOME_MATCH_FINISHED:
+
+	# #122: 1-во / междинно място при ≥2 некласирани → мачът тече (§3.1).
+	if _finish_rules.should_continue_match(state):
+		if advance.get("outcome") == TurnRules.OUTCOME_MATCH_FINISHED:
+			_resume_unranked_turn(state, command_sequence, events)
+		return
+
+	# #123: пълен ranking / auto-last готов → приключване на целия мач.
+	if not _finish_rules.should_finish_match(state):
 		return
 	var finished: MatchFinishedEvent = _finish_rules.apply_match_finished(
 			state, command_sequence)
 	if finished != null:
 		events.append(finished)
+
+
+## #122 recovery: TurnRules е влязъл в MATCH_FINISHED въпреки ≥2 некласирани.
+## Възобновява AWAITING_ROLL за първия некласиран seat.
+func _resume_unranked_turn(
+		state: GameState,
+		command_sequence: int,
+		events: Array
+) -> void:
+	if state == null or state.turn == null:
+		return
+	var previous_index: int = state.active_player_index
+	var next_index: int = _turn_rules.find_next_player_index(state, previous_index)
+	if next_index == GameState.ACTIVE_PLAYER_NONE:
+		for i in state.player_count():
+			var player := state.get_player_by_index(i)
+			if player != null and not state.is_ranked(player.player_id):
+				next_index = i
+				break
+	if next_index == GameState.ACTIVE_PLAYER_NONE:
+		return
+	var next_turn_number: int = maxi(state.turn.turn_number + 1, 1)
+	if not _turn_rules.begin_player_turn(state, next_index, next_turn_number):
+		return
+	var already_changed := false
+	for entry in events:
+		if entry is TurnChangedEvent:
+			already_changed = true
+			break
+	if already_changed:
+		return
+	events.append(TurnChangedEvent.create_from_state(
+			state, previous_index, command_sequence))
 
 
 ## Синхрон GameState.dice ↔ turn.dice_value след roll / advance.

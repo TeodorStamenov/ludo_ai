@@ -95,7 +95,7 @@ func to_dict() -> Dictionary:
 
 
 ## Десериализация на базовия envelope. Липсващи полета → подразбиращи се стойности.
-## Не диспечира към subclass — това е отговорност на бъдещ command journal / factory.
+## Не диспечира към subclass — това е отговорност на GameplayJournal.command_from_dict.
 static func from_dict(data: Dictionary) -> GameCommand:
 	var cmd := GameCommand.new()
 	cmd.match_id = StringName(str(data.get("match_id", "")))
