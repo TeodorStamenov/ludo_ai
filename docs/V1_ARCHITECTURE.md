@@ -41,6 +41,9 @@ Presentation ───────► Application ───────► Domai
 
 ## 3. Основен runtime поток
 
+По-подробен walkthrough (команди, фази, presentation gate, headless симулация):
+`docs/MATCH_FLOW.md`.
+
 ```text
 Human / AI Controller
         │

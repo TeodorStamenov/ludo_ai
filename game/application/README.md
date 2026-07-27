@@ -3,6 +3,9 @@
 Application слой — use case оркестрация между Domain и Presentation,
 съгласно `docs/V1_ARCHITECTURE.md` (раздели 5 и 13).
 
+Walkthrough на целия мач (команди, класове, presentation gate):
+`docs/MATCH_FLOW.md`.
+
 ## Правило за зависимости
 
 Application може да импортира от `game/domain/` и `content/`.  
