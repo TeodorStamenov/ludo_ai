@@ -177,13 +177,18 @@ def get_project_metadata(project_number: int) -> dict:
     }
 
 
-def get_items_by_status(project_id: str, status_field_id: str, status: str) -> list[dict]:
-    """Връща всички project items с даден статус."""
+def get_items_by_statuses(
+    project_id: str,
+    status_field_id: str,
+    statuses: list[str],
+) -> dict[str, list[dict]]:
+    """Връща project items групирани по статус (с pagination — board-ът >100 items)."""
     query = """
-    query($projectId: ID!) {
+    query($projectId: ID!, $cursor: String) {
       node(id: $projectId) {
         ... on ProjectV2 {
-          items(first: 100) {
+          items(first: 100, after: $cursor) {
+            pageInfo { hasNextPage endCursor }
             nodes {
               id
               fieldValues(first: 20) {
@@ -208,24 +213,40 @@ def get_items_by_status(project_id: str, status_field_id: str, status: str) -> l
       }
     }
     """
-    data = gh_graphql(query, {"projectId": project_id})
-    items = data["data"]["node"]["items"]["nodes"]
-    result = []
-    for item in items:
-        for fv in item["fieldValues"]["nodes"]:
-            if (fv.get("name") == status
-                    and fv.get("field", {}).get("id") == status_field_id):
-                issue = item.get("content") or {}
-                if issue.get("number"):
-                    result.append({
-                        "item_id":      item["id"],
-                        "issue_number": issue["number"],
-                        "title":        issue["title"],
-                        "body":         issue.get("body", ""),
-                        "url":          issue.get("url", ""),
-                    })
-                break
+    wanted = set(statuses)
+    result: dict[str, list[dict]] = {s: [] for s in statuses}
+    cursor = None
+    while True:
+        data = gh_graphql(query, {"projectId": project_id, "cursor": cursor})
+        connection = data["data"]["node"]["items"]
+        for item in connection["nodes"]:
+            status_name = None
+            for fv in item["fieldValues"]["nodes"]:
+                if fv.get("field", {}).get("id") == status_field_id:
+                    status_name = fv.get("name")
+                    break
+            if status_name not in wanted:
+                continue
+            issue = item.get("content") or {}
+            if not issue.get("number"):
+                continue
+            result[status_name].append({
+                "item_id":      item["id"],
+                "issue_number": issue["number"],
+                "title":        issue["title"],
+                "body":         issue.get("body", ""),
+                "url":          issue.get("url", ""),
+            })
+        page = connection["pageInfo"]
+        if not page.get("hasNextPage"):
+            break
+        cursor = page.get("endCursor")
     return result
+
+
+def get_items_by_status(project_id: str, status_field_id: str, status: str) -> list[dict]:
+    """Връща всички project items с даден статус (paginated)."""
+    return get_items_by_statuses(project_id, status_field_id, [status])[status]
 
 
 def move_item_status(
@@ -648,14 +669,16 @@ def main() -> None:
             )
 
     # 2. Взимам items — първо "In Review" (resume), после "Ready" (нови)
+    # Едно paginated минаване: board-ът има >100 items и first:100 иначе пропуска Ready.
     print(f"\n▸ Търся items в «{STATUS_IN_REVIEW}» и «{STATUS_READY}»…")
     try:
-        review_items = get_items_by_status(
-            meta["project_id"], meta["status_field_id"], STATUS_IN_REVIEW
+        by_status = get_items_by_statuses(
+            meta["project_id"],
+            meta["status_field_id"],
+            [STATUS_IN_REVIEW, STATUS_READY],
         )
-        ready_items = get_items_by_status(
-            meta["project_id"], meta["status_field_id"], STATUS_READY
-        )
+        review_items = by_status[STATUS_IN_REVIEW]
+        ready_items = by_status[STATUS_READY]
     except RuntimeError as e:
         sys.exit(f"\nГРЕШКА: {e}")
 
@@ -672,6 +695,8 @@ def main() -> None:
         for it in ready_items:
             print(f"    #{it['issue_number']}: {it['title']}")
 
+    all_items = review_items + ready_items
+
     if dry_run:
         issue_numbers = [it["issue_number"] for it in all_items]
         branch_name = f"feature/issues_{'_'.join(str(n) for n in issue_numbers)}"
@@ -684,7 +709,6 @@ def main() -> None:
         return
 
     # 3. Бранч — при resume ползваме текущия; при нови batch: pull main + нов бранч
-    all_items = review_items + ready_items
     print(f"\n▸ Бранч…")
     if review_items and not ready_items:
         # Само resume — оставаме на текущия feature бранч
