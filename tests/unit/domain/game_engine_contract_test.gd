@@ -90,11 +90,10 @@ func test_null_command_is_rejected_without_rng_use() -> void:
 	assert_eq(rng.get_state(), rng_before)
 
 
-func test_start_match_not_implemented_preserves_state_and_rng() -> void:
+func test_start_match_accepted_from_setup_without_rng_use() -> void:
 	var cfg := _two_player_config(11)
 	var state := GameState.create_from_match_config(cfg)
 	assert_true(state.is_setup())
-	var before := state.duplicate_state()
 	var rng := SeededRandomSource.new(cfg.rng_seed)
 	var rng_before := rng.get_state()
 	var cmd := StartMatchCommand.create_with_config(cfg)
@@ -102,12 +101,13 @@ func test_start_match_not_implemented_preserves_state_and_rng() -> void:
 
 	var result := _engine.validate_and_apply(state, cmd, rng)
 
-	assert_true(result.is_rejected())
-	assert_eq(result.error.code, CommandError.CODE_NOT_IMPLEMENTED)
-	assert_eq(result.event_count(), 0)
-	assert_eq(result.state, state)
-	assert_true(state.equals(before))
-	assert_eq(rng.get_state(), rng_before)
+	assert_true(result.accepted)
+	assert_true(result.state.is_in_progress())
+	assert_eq(result.event_count(), 2)
+	assert_eq(rng.get_state(), rng_before,
+			"§12: StartMatch не трябва да консумира RNG")
+	assert_true(state.is_setup(),
+			"входният SETUP state остава непроменен при rebuild")
 
 
 func test_start_match_rejected_when_match_already_in_progress() -> void:

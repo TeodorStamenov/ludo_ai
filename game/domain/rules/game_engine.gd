@@ -127,13 +127,54 @@ func _validate_envelope(state: GameState, command: GameCommand) -> CommandError:
 	return null
 
 
-## #84: StartMatchCommand → инициализация на GameState + MatchStarted/TurnChanged.
+## StartMatchCommand → инициализация на GameState + MatchStarted / TurnChanged.
+## config е source of truth; phase → IN_PROGRESS; първи seat → AWAITING_ROLL (YEL-003).
 func _apply_start_match(
 		state: GameState,
-		_command: StartMatchCommand,
+		command: StartMatchCommand,
 		_rng: RandomSource
 ) -> CommandResult:
-	return CommandResult.not_implemented(state, "StartMatchCommand")
+	var config: MatchConfig = command.config
+	var match_id: StringName = command.match_id
+	if match_id == &"":
+		match_id = state.match_id if state.match_id != &"" else MatchId.generate()
+
+	var next: GameState = GameState.create_from_match_config(config, match_id)
+	if next.player_count() == 0 or next.get_active_player() == null:
+		return CommandResult.rejected(
+				state,
+				CommandError.invalid_command("StartMatchCommand produced empty roster"))
+
+	var accepted_sequence: int = command.sequence
+	if accepted_sequence <= GameCommand.SEQUENCE_UNSET:
+		accepted_sequence = next.next_command_sequence()
+	# Fresh match timeline; stamped sequence may be > 1 when restarting a finished state.
+	next.command_sequence = accepted_sequence - 1
+	if not next.record_accepted_command(accepted_sequence):
+		return CommandResult.rejected(
+				state,
+				CommandError.invalid_command("StartMatchCommand sequence could not be recorded"))
+
+	next.set_phase(MatchPhase.IN_PROGRESS)
+	var first_player: PlayerState = next.get_active_player()
+	var all_in_base: bool = _player_all_pawns_in_base(first_player)
+	next.turn.begin_player_turn(1, all_in_base)
+
+	var events: Array = [
+		MatchStartedEvent.create_started(next.match_id, config, accepted_sequence),
+		TurnChangedEvent.create_from_state(
+				next, TurnChangedEvent.PLAYER_INDEX_NONE, accepted_sequence),
+	]
+	return CommandResult.ok(next, events)
+
+
+func _player_all_pawns_in_base(player: PlayerState) -> bool:
+	if player == null or player.pawns.is_empty():
+		return true
+	for entry in player.pawns:
+		if not (entry is PawnState) or not (entry as PawnState).is_in_base():
+			return false
+	return true
 
 
 ## #91 / #86: RollDiceCommand → seeded зар + фаза AWAITING_ROLL.
