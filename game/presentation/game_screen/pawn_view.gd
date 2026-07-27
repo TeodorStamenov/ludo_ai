@@ -7,8 +7,9 @@ extends Sprite2D
 ## и hit target за mouse + touch (GAP-011). Логическите in_base, path_index,
 ## shield и valid move живеят в PawnState.
 ##
-## animation_finished(kind) се емитира след еднократни move/home анимации
-## за AnimationQueue (#168 / #169). Loop cues (valid-move, selected) не го емитират.
+## animation_finished(kind) се емитира след еднократни move/home анимации.
+## AnimationFinishedGate (#169) го чака преди следващия event в опашката.
+## Loop cues (valid-move, selected) не го емитират.
 ##
 ## Colorblind marker (V1_GAME_DESIGN): форма по seat, не само цвят.
 ## Видим само при set_colorblind_mode(true); икона може да се подаде от

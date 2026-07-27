@@ -16,7 +16,7 @@ Presentation **може** да импортира от `game/application/` и `g
 |---|---|
 | `game_screen/`   | GameScreen, GamePresenter, BoardView, PawnView, DiceView, GiftView, HUD |
 | `menus/`         | Main Menu, Match Setup, Campaign, Results, Settings |
-| `common/`        | AnimationQueue, EventViewBinder, AudioFeedback, HapticFeedback |
+| `common/`        | AnimationQueue, AnimationFinishedGate, EventViewBinder, AudioFeedback, HapticFeedback |
 
 ## Ключов договор
 
@@ -30,8 +30,9 @@ MatchSession.events_published(sequence, events)
 ```
 
 Domain не чака tween. Presentation потвърждава след всяка анимация:
-`AnimationQueue.play_batch` → `EventViewBinder.present_for_playback` (последователен
-await, #168) → `all_done` → `events_presented`.
+`AnimationQueue.play_batch` → `EventViewBinder.present_for_playback` (#168) →
+`AnimationFinishedGate` чака `animation_finished(kind)` (#169) → `all_done` →
+`events_presented`.
 
 ## .tscn сцени
 

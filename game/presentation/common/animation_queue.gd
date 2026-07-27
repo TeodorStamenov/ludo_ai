@@ -4,10 +4,10 @@ extends Node
 ## (docs/V1_ARCHITECTURE.md, раздел 6.1 / §4.4).
 ##
 ## GamePresenter получава батч events от MatchSession и ги поставя тук.
-## AnimationQueue ги изпълнява един по един (#168):
+## AnimationQueue ги изпълнява един по един (#168 / #169):
 ##   1. Избира правилния view чрез EventViewBinder (#167).
 ##   2. Стартира анимацията (напр. DiceRolled → DiceView.present_dice_rolled).
-##   3. Изчаква края на анимацията (animation_finished от view — #169).
+##   3. Изчаква animation_finished(kind) чрез AnimationFinishedGate (#169).
 ##   4. Преминава към следващото събитие.
 ##   5. При изпразване емитира all_done(sequence).
 ##
@@ -31,7 +31,8 @@ func get_event_binder() -> EventViewBinder:
 
 
 ## Стартира батч за дадения command_sequence. Последователно await-ва
-## present_for_playback за всеки DomainEvent, после емитира all_done.
+## present_for_playback (вкл. animation_finished потвърждение #169) за всеки
+## DomainEvent, после емитира all_done.
 ## Повторно извикване докато is_playing() → игнорира се (session gate).
 func play_batch(sequence: int, events: Array) -> void:
 	if _playing:
@@ -52,6 +53,13 @@ func play_batch(sequence: int, events: Array) -> void:
 	_playing = false
 	_current_sequence = -1
 	all_done.emit(sequence)
+
+
+## Директно изчакване на view.animation_finished (#169) — за custom playback.
+func wait_for_animation(view: Object, kind: StringName = &"") -> void:
+	var gate := AnimationFinishedGate.new()
+	gate.arm(view, kind)
+	await gate.wait()
 
 
 func is_playing() -> bool:

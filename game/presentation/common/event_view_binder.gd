@@ -3,8 +3,9 @@ extends RefCounted
 ## Свързва DomainEvent → визуални изгледи (docs/V1_ARCHITECTURE.md §6.1 / §3).
 ##
 ## `present()` — синхронен snap (#167), за instant apply без tween.
-## `present_for_playback()` — async за AnimationQueue (#168): чака анимации
-## (DiceRolled → present_dice_rolled / animation_finished). Клетъчни pawn
+## `present_for_playback()` — async за AnimationQueue (#168): стартира
+## анимация и чака `animation_finished` чрез AnimationFinishedGate (#169).
+## DiceRolled → present_dice_rolled + gate(KIND_ROLL). Клетъчни pawn
 ## tween-и остават #172+; дотогава pawn events минават като snap.
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
@@ -73,8 +74,8 @@ func present(event: DomainEvent) -> void:
 		_present_power_up_resolved(event as PowerUpResolvedEvent)
 
 
-## Async playback за AnimationQueue (#168). Изчаква анимирани views;
-## останалите events минават през present() без yield.
+## Async playback за AnimationQueue (#168). Анимираните events чакат
+## animation_finished (#169); останалите минават през present() без yield.
 func present_for_playback(event: DomainEvent) -> void:
 	if event == null:
 		return
@@ -90,12 +91,17 @@ func _present_dice_rolled_snap(event: DiceRolledEvent) -> void:
 	_notify_hud(&"present_dice_rolled", event)
 
 
-## Toss анимация + await; при липсващ/занят зар — snap fallback (без deadlock).
+## Toss анимация; потвърждението е animation_finished(KIND_ROLL) (#169).
+## При липсващ/занят зар — snap fallback (без deadlock).
 func _present_dice_rolled_animated(event: DiceRolledEvent) -> void:
 	if event == null or not event.is_valid():
 		return
 	if _dice_view != null and is_instance_valid(_dice_view) and not _dice_view.is_rolling:
-		await _dice_view.present_dice_rolled(event)
+		await AnimationFinishedGate.await_started(
+				_dice_view,
+				DiceView.KIND_ROLL,
+				_dice_view.present_dice_rolled.bind(event)
+		)
 	elif _dice_view != null and is_instance_valid(_dice_view):
 		_dice_view.apply_dice_rolled(event)
 	_notify_hud(&"present_dice_rolled", event)

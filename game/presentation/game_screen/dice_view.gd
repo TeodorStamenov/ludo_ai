@@ -101,7 +101,7 @@ func apply_dice_rolled(event: DiceRolledEvent) -> void:
 
 
 ## Проиграва анимация от DiceRolledEvent (#161). Невалидно / null → no-op.
-## AnimationQueue / present_for_playback (#168) await-ват до animation_finished(KIND_ROLL).
+## AnimationFinishedGate (#169) чака animation_finished(KIND_ROLL) като потвърждение.
 func present_dice_rolled(event: DiceRolledEvent) -> void:
 	if event == null or not event.is_valid():
 		return
