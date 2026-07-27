@@ -15,7 +15,6 @@ var _stack_rules: StackRules
 @warning_ignore("unused_private_class_variable")
 var _capture_rules: CaptureRules
 var _turn_rules: TurnRules
-@warning_ignore("unused_private_class_variable")
 var _finish_rules: FinishRules
 
 
@@ -326,7 +325,8 @@ func _apply_move_pawn(
 	return CommandResult.ok(next, events)
 
 
-## TURN_END → advance_from_turn_end (TurnChanged / MATCH_FINISHED). Extra roll ≠ advance.
+## TURN_END → auto-rank last place → advance (TurnChanged / MATCH_FINISHED).
+## Extra roll ≠ advance. MATCH_FINISHED → FinishRules.apply_match_finished (#90).
 func _append_turn_end_advance(
 		state: GameState,
 		outcome: StringName,
@@ -335,10 +335,20 @@ func _append_turn_end_advance(
 ) -> void:
 	if outcome != TurnRules.OUTCOME_TURN_END:
 		return
+	var last_ranked: PlayerRankedEvent = _finish_rules.auto_rank_last_remaining(
+			state, command_sequence)
+	if last_ranked != null:
+		events.append(last_ranked)
 	var advance: Dictionary = _turn_rules.advance_from_turn_end(
 			state, command_sequence)
 	if advance.get("event") != null:
 		events.append(advance["event"])
+	if advance.get("outcome") != TurnRules.OUTCOME_MATCH_FINISHED:
+		return
+	var finished: MatchFinishedEvent = _finish_rules.apply_match_finished(
+			state, command_sequence)
+	if finished != null:
+		events.append(finished)
 
 
 ## Синхрон GameState.dice ↔ turn.dice_value след roll / advance.
