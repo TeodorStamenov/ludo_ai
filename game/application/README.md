@@ -3,6 +3,9 @@
 Application слой — use case оркестрация между Domain и Presentation,
 съгласно `docs/V1_ARCHITECTURE.md` (раздели 5 и 13).
 
+Walkthrough на целия мач (команди, класове, presentation gate):
+`docs/MATCH_FLOW.md`.
+
 ## Правило за зависимости
 
 Application може да импортира от `game/domain/` и `content/`.  
@@ -28,8 +31,9 @@ Presentation ──► Application ──► Domain
 | `event_queue.gd`          | FIFO буфер на DomainEvent-и; sequence acknowledge след presentation |
 | `gameplay_journal.gd`     | Append-only journal на активния мач (replay / bug report / #132) |
 | `deterministic_replay_runner.gd` | Headless replay от journal (seed + accepted commands → state hash / #137) |
+| `match_simulator.gd`      | Headless пълен мач без сцена (AI + auto presentation gate / #139) |
 | `controller/`             | PlayerController (интерфейс), Human, AI, Remote |
-| `ai/`                     | AIPolicy (интерфейс), Easy, Medium, Hard имплементации |
+| `ai/`                     | AIPolicy (интерфейс), FirstLegal, Easy, Medium, Hard имплементации |
 | `ports/`                  | Интерфейси към persistence, ads, settings, telemetry |
 
 ## MatchSession не е singleton
@@ -48,5 +52,6 @@ presentation gate → AI/human advance → MatchSummary). Външните ко�
 команди (с причина) и state hash след всяка приета команда се записват в
 journal при `receive_command` (#134–#136). `DeterministicReplayRunner` чете
 journal-а (seed + accepted commands), прилага ги през `GameEngine` без
-presentation gate и проверява state hash (#137). Останалите application
-класове се довършват в собствени roadmap задачи.
+presentation gate и проверява state hash (#137). `MatchSimulator` върти
+пълен AI мач без сцена: auto `events_presented` до `MATCH_FINISHED` (#139).
+Останалите application класове се довършват в собствени roadmap задачи.
