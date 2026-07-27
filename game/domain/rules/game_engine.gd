@@ -25,11 +25,11 @@ func _init(
 		turn_rules: TurnRules = null,
 		finish_rules: FinishRules = null
 ) -> void:
-	_move_rules = move_rules if move_rules != null else MoveRules.new()
+	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
+	_move_rules = move_rules if move_rules != null else MoveRules.new(_finish_rules)
 	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
 	_capture_rules = capture_rules if capture_rules != null else CaptureRules.new()
 	_turn_rules = turn_rules if turn_rules != null else TurnRules.new()
-	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
 
 
 ## Авторитетен вход (§3): валидира и прилага команда → CommandResult.
@@ -222,8 +222,8 @@ func _apply_roll_dice(
 
 
 ## MovePawnCommand в AWAITING_MOVE → RESOLVING_MOVE (#87/#88):
-## exit-base (YEL-030/032) или ход по маршрута (YEL-040–043).
-## Capture / stacks / finish / gifts → по-късни tasks.
+## exit-base (YEL-030/032), ход по маршрута (YEL-040–055) или прибиране (#99).
+## Capture / stacks / gifts → по-късни tasks.
 func _apply_move_pawn(
 		state: GameState,
 		command: MovePawnCommand,
@@ -295,6 +295,19 @@ func _apply_move_pawn(
 					CommandError.illegal_move("exit base could not be applied"))
 		events.append(PawnExitedBaseEvent.create_from_states(
 				before, next_pawn, accepted_sequence))
+	elif _finish_rules.can_finish_pawn(next, next_player, next_pawn, dice_value):
+		if not _finish_rules.apply_finish_pawn(
+				next, next_player, next_pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("finish pawn could not be applied"))
+		events.append(PawnMovedEvent.create_from_states(
+				before, next_pawn, accepted_sequence))
+		events.append(PawnFinishedEvent.create_from_states(
+				before, next_pawn, accepted_sequence))
+		for ranked_event in _finish_rules.resolve_ranking_progress(
+				next, next_player.player_id, accepted_sequence):
+			events.append(ranked_event)
 	else:
 		if not _move_rules.apply_board_move(
 				next, next_player, next_pawn, dice_value):

@@ -10,13 +10,19 @@ extends RefCounted
 ##   - влизане в home stretch (#97 / YEL-050) — MAIN_PATH → HOME_STRETCH, без обиколка;
 ##   - точен зар вътре в home stretch (#98 / YEL-051–055).
 ##
-## Capture / stacks / FINISHED → CaptureRules / StackRules / FinishRules.
+## Capture / stacks / FINISHED → CaptureRules / StackRules / FinishRules (#99).
 ## Gift → RESOLVING_POWER_UP.
 
 
 const EXIT_BASE_VALUE: int = DiceState.EXIT_BASE_VALUE
 ## Невалиден destination index (няма ход / overshoot).
 const DESTINATION_NONE: int = -1
+
+var _finish_rules: FinishRules
+
+
+func _init(finish_rules: FinishRules = null) -> void:
+	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
 
 
 func allows_exit_base(dice_value: int) -> bool:
@@ -53,7 +59,10 @@ func can_move_pawn(
 	if pawn.is_in_base():
 		return can_exit_base(state, player, pawn, dice_value)
 	if pawn.is_on_board():
-		return can_advance_on_board(state, player, pawn, dice_value)
+		return (
+				can_advance_on_board(state, player, pawn, dice_value)
+				or _finish_rules.can_finish_pawn(state, player, pawn, dice_value)
+		)
 	return false
 
 
@@ -233,7 +242,7 @@ func apply_exit_base(
 
 ## Премества пионка с dice_value клетки по маршрута (YEL-040 / #96, YEL-050–055 / #97–#98).
 ## MAIN_PATH дестинация → MAIN_PATH; home stretch дестинация → HOME_STRETCH (без обиколка).
-## Вътре в home stretch: само точен зар без overshoot; FINISHED → #99.
+## Вътре в home stretch: само точен зар без overshoot. Прибиране до CENTER → FinishRules (#99).
 ## Мутира pawn; връща false без промяна ако ходът е невалиден.
 func apply_board_move(
 		state: GameState,

@@ -5,7 +5,7 @@ extends TestCase
 ##
 ## Инварианти: от HOME_STRETCH ходът е валиден само при steps ≤ remaining;
 ## overshoot → reject без clamp; заета крайна клетка блокира; междинните не;
-## пионка на последната HOME клетка няма валиден ход (FINISHED → #99).
+## пионка на последната HOME: can_advance = false; finish с 1 → FinishRules (#99).
 
 
 var _rules: MoveRules
@@ -113,7 +113,8 @@ func test_yel_054_intermediate_occupied_destination_free_allowed() -> void:
 	assert_true(mover.is_in_home_stretch())
 
 
-## YEL-055: пионка на последната HOME клетка — няма валиден ход при всеки зар.
+## YEL-055: пионка на последната HOME клетка — няма advance по маршрута.
+## Finish с точен зар 1 е FinishRules (#99), не MoveRules.can_advance.
 func test_yel_055_pawn_on_last_home_cell_never_movable() -> void:
 	var state := _setup_yellow_in_home_stretch()
 	var player := state.get_active_player()
@@ -126,7 +127,7 @@ func test_yel_055_pawn_on_last_home_cell_never_movable() -> void:
 
 	for face in range(DiceState.VALUE_MIN, DiceState.VALUE_MAX + 1):
 		assert_false(_rules.can_advance_in_home_stretch(state, player, pawn, face),
-				"YEL-055: зар %d не мести пионка на последната клетка" % face)
+				"YEL-055: зар %d не мести пионка по маршрута от последната клетка" % face)
 		assert_eq(
 				_rules.resolve_destination_index(last_index, face, route.size()),
 				MoveRules.DESTINATION_NONE)
