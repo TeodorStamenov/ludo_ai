@@ -5,8 +5,9 @@ extends RefCounted
 ## `present()` — синхронен snap (#167), за instant apply без tween.
 ## `present_for_playback()` — async за AnimationQueue (#168): стартира
 ## анимация и чака `animation_finished` чрез AnimationFinishedGate (#169).
-## DiceRolled → present_dice_rolled + gate(KIND_ROLL). Клетъчни pawn
-## tween-и остават #172+; дотогава pawn events минават като snap.
+## DiceRolled → present_dice_rolled + gate(KIND_ROLL).
+## PawnMoved → hop към to_cell след приет MovePawnCommand (#171 / YEL-023).
+## Клетъчна стъпка по стъпка остава #172; exit-base / home / finish — #173+.
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -82,6 +83,8 @@ func present_for_playback(event: DomainEvent) -> void:
 		return
 	if event is DiceRolledEvent:
 		await _present_dice_rolled_animated(event as DiceRolledEvent)
+	elif event is PawnMovedEvent:
+		await _present_pawn_moved_animated(event as PawnMovedEvent)
 	else:
 		present(event)
 
@@ -142,6 +145,25 @@ func _present_pawn_moved(event: PawnMovedEvent) -> void:
 		return
 	var target: Vector2 = _local_for_pawn(pawn, event.to_cell_id)
 	pawn.present_pawn_moved(event, target)
+
+
+## Hop след приет MovePawnCommand (#171). Само PawnMoved мести визуално;
+## кликът в Presenter само праща команда. Busy pawn → snap (без deadlock).
+func _present_pawn_moved_animated(event: PawnMovedEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var pawn: PawnView = _pawn_of(event.pawn_id)
+	if pawn == null:
+		return
+	var target: Vector2 = _local_for_pawn(pawn, event.to_cell_id)
+	if not pawn.is_moving:
+		await AnimationFinishedGate.await_started(
+				pawn,
+				PawnView.KIND_MOVE,
+				pawn.present_pawn_moved_animated.bind(event, target)
+		)
+	else:
+		pawn.present_pawn_moved(event, target)
 
 
 func _present_pawn_exited_base(event: PawnExitedBaseEvent) -> void:

@@ -50,6 +50,8 @@ var pawn_id: StringName = &""
 
 var is_selectable: bool = false
 var is_selected: bool = false
+## True докато move/home tween тече — EventViewBinder ползва за snap fallback (#171).
+var is_moving: bool = false
 
 var _rest_position: Vector2 = Vector2.ZERO
 var _bob_tween: Tween
@@ -164,6 +166,17 @@ func present_pawn_moved(event: PawnMovedEvent, local_target: Vector2) -> void:
 	_apply_cell_pose(event.to_cell_id, local_target)
 
 
+## Hop към to_cell след приет MovePawnCommand (#171 / YEL-023).
+## Емитира animation_finished(KIND_MOVE); клетъчна стъпка по стъпка е #172.
+func present_pawn_moved_animated(event: PawnMovedEvent, local_target: Vector2) -> void:
+	if event == null or not event.is_valid():
+		return
+	if CellId.is_valid(event.to_cell_id):
+		grid_pos = CellId.to_vec(event.to_cell_id)
+		z_index = grid_pos.x + grid_pos.y + 1
+	await move_to_local(local_target)
+
+
 ## Instant apply от PawnExitedBaseEvent (#167). Анимация на излизане е #173.
 func present_pawn_exited_base(event: PawnExitedBaseEvent, local_target: Vector2) -> void:
 	if event == null or not event.is_valid():
@@ -208,6 +221,7 @@ func _apply_cell_pose(cell_id: StringName, local_target: Vector2) -> void:
 func move_to_local(local_target: Vector2, duration: float = 0.28) -> void:
 	_prepare_for_action()
 	_stop_action_tween()
+	is_moving = true
 	var start: Vector2 = position
 	var mid: Vector2 = (start + local_target) * 0.5
 	mid.y -= MOVE_HOP_PX
@@ -224,6 +238,7 @@ func move_to_local(local_target: Vector2, duration: float = 0.28) -> void:
 	_rest_position = local_target
 	position = local_target
 	_action_tween = null
+	is_moving = false
 	animation_finished.emit(KIND_MOVE)
 
 
@@ -231,6 +246,7 @@ func move_to_local(local_target: Vector2, duration: float = 0.28) -> void:
 func play_home_to(local_target: Vector2, duration: float = HOME_DURATION) -> void:
 	_prepare_for_action()
 	_stop_action_tween()
+	is_moving = true
 	var shrink_time: float = duration * 0.45
 	var settle_time: float = duration * 0.55
 	var mid: Vector2 = position.lerp(local_target, 0.55)
@@ -262,6 +278,7 @@ func play_home_to(local_target: Vector2, duration: float = HOME_DURATION) -> voi
 	scale = _base_scale
 	modulate = _base_modulate
 	_action_tween = null
+	is_moving = false
 	animation_finished.emit(KIND_HOME)
 
 
@@ -292,6 +309,7 @@ func _stop_action_tween() -> void:
 	if _action_tween != null and _action_tween.is_valid():
 		_action_tween.kill()
 	_action_tween = null
+	is_moving = false
 
 
 func _ensure_click_area() -> void:

@@ -10,6 +10,8 @@ extends Node
 ##   - преобразува ValidMovesChanged → PawnView.show_valid_move (#170 / YEL-020);
 ##   - преобразува awaiting_human_action → подсветяване + input gate;
 ##   - преобразува клик/tap върху пионка → MovePawnCommand през HumanController;
+##   - мести PawnView само след приет MovePawnCommand → PawnMoved (#171 / YEL-023);
+##   - при command_rejected възстановява human input (без визуален ход);
 ##   - преобразува клик върху зар → RollDiceCommand през HumanController;
 ##   - слуша match_finished → results_requested (AppFlow / GameScreen);
 ##   - излага read-only state_view от GameState.to_view() (#6.1).
@@ -52,6 +54,7 @@ func bind(session: MatchSession) -> void:
 	_session.events_published.connect(_on_events_published)
 	_session.awaiting_human_action.connect(_on_awaiting_human_action)
 	_session.match_finished.connect(_on_match_finished)
+	_session.command_rejected.connect(_on_command_rejected)
 
 
 func unbind() -> void:
@@ -214,6 +217,8 @@ func _disconnect_session_signals() -> void:
 		_session.awaiting_human_action.disconnect(_on_awaiting_human_action)
 	if _session.match_finished.is_connected(_on_match_finished):
 		_session.match_finished.disconnect(_on_match_finished)
+	if _session.command_rejected.is_connected(_on_command_rejected):
+		_session.command_rejected.disconnect(_on_command_rejected)
 
 
 func _on_events_published(sequence: int, events: Array) -> void:
@@ -279,6 +284,21 @@ func _on_match_finished(summary: Dictionary) -> void:
 		_emit_results(_pending_summary)
 
 
+## Rejected команда не произвежда DomainEvent — пионката не се мести (#171).
+## Възстановява human waiting + highlights, за да може играчът да опита пак.
+func _on_command_rejected(command: GameCommand, _reason: String) -> void:
+	if command == null or _active_human == null:
+		return
+	if not (command is MovePawnCommand or command is RollDiceCommand):
+		return
+	_active_human.notify_turn(_legal_actions)
+	_input_enabled = true
+	_can_roll = _legal_actions_allow_roll(_legal_actions)
+	_selected_pawn_id = &""
+	apply_valid_pawn_ids(_extract_valid_pawn_ids(_state_view, _legal_actions))
+	_notify_hud_state()
+
+
 func _on_dice_roll_requested() -> void:
 	if not _input_enabled or not _can_roll or _active_human == null:
 		return
@@ -301,7 +321,8 @@ func _on_pawn_clicked(pawn: PawnView) -> void:
 		return
 
 	if _selected_pawn_id == pawn_id:
-		# Втори клик → MovePawnCommand от legal_actions (YEL-023).
+		# Втори клик → само MovePawnCommand (YEL-023 / #171).
+		# Визуалният ход идва от PawnMoved след приемане, не от клика.
 		if not _active_human.submit_move(pawn_id):
 			return
 		_disable_human_input()
