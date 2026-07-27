@@ -4,8 +4,8 @@ extends Sprite2D
 ##
 ## Съдържа само presentation данни: pawn_id, визуален asset/skin,
 ## selected / valid-move / move / home (sleep) анимации, colorblind marker
-## и hit target. Логическите in_base, path_index, shield и valid move живеят
-## в PawnState.
+## и hit target за mouse + touch (GAP-011). Логическите in_base, path_index,
+## shield и valid move живеят в PawnState.
 ##
 ## animation_finished(kind) се емитира след еднократни move/home анимации
 ## за AnimationQueue (#168 / #169). Loop cues (valid-move, selected) не го емитират.
@@ -276,10 +276,23 @@ func _on_click_area_input_event(
 	event: InputEvent,
 	_shape_idx: int
 ) -> void:
-	if event is InputEventMouseButton \
-			and event.pressed \
-			and event.button_index == MOUSE_BUTTON_LEFT:
+	if _is_primary_press(event):
 		clicked.emit(self)
+
+
+## Primary press: native touch, or real mouse left-click.
+## Emulated mouse from touch (device == DEVICE_ID_EMULATION) is ignored so a
+## single finger tap does not emit clicked twice when emulate_mouse_from_touch
+## is on (Godot default).
+static func _is_primary_press(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		return (event as InputEventScreenTouch).pressed
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.device == InputEvent.DEVICE_ID_EMULATION:
+			return false
+		return mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT
+	return false
 
 
 func _ensure_colorblind_marker() -> void:
