@@ -19,7 +19,7 @@ var _awaiting_pawn_choice: bool = false
 var _move_in_progress: bool = false
 var _turn_locked: bool = false
 
-var _current_player: StringName = &"yellow"
+var _current_player: StringName = PlayerId.YELLOW
 var _last_dice: int = 0
 var _extra_roll_pending: bool = false
 var _base_attempts_left: int = BASE_ROLL_ATTEMPTS
@@ -34,7 +34,7 @@ func _ready() -> void:
 		var button: Button = debug_rolls.get_node("Roll%d" % i) as Button
 		button.pressed.connect(_on_debug_roll_pressed.bind(i))
 
-	_yellow_path = board.get_player_path(&"yellow")
+	_yellow_path = Classic15x15Board.player_route_grid_positions_for(PlayerId.YELLOW)
 	_spawn_yellow_pawns()
 	_start_yellow_turn()
 
@@ -54,14 +54,14 @@ func _spawn_yellow_pawns() -> void:
 	_selected_pawn = null
 	_awaiting_pawn_choice = false
 
-	var cells: Array[Vector2i] = board.get_base_cells(&"yellow")
+	var cells: Array[Vector2i] = Classic15x15Board.base_grid_positions_for(PlayerId.YELLOW)
 	var tile_w: float = board.get_tile_display_width()
 
 	for i in cells.size():
 		var cell: Vector2i = cells[i]
 		var pawn: Pawn = PAWN_SCENE.instantiate() as Pawn
 		pawn.name = "Pawn%d" % (i + 1)
-		pawn.player_id = &"yellow"
+		pawn.player_id = PlayerId.YELLOW
 		pawn.grid_pos = cell
 		pawn.in_base = true
 		pawn.path_index = -1
@@ -78,7 +78,7 @@ func _spawn_yellow_pawns() -> void:
 
 
 func _start_yellow_turn() -> void:
-	_current_player = &"yellow"
+	_current_player = PlayerId.YELLOW
 	_turn_locked = false
 	_extra_roll_pending = false
 	_awaiting_pawn_choice = false
@@ -103,7 +103,7 @@ func _try_roll_dice(forced_value: int = 0) -> void:
 		return
 	if _awaiting_pawn_choice:
 		return
-	if _current_player != &"yellow":
+	if _current_player != PlayerId.YELLOW:
 		return
 	_roll_allowed = false
 	if forced_value > 0:
@@ -183,7 +183,7 @@ func _can_pawn_move(pawn: Pawn, steps: int) -> bool:
 		return false
 	var dest_cell: Vector2i = _yellow_path[dest_index]
 	# Blocking only applies inside the yellow safe zone.
-	if board.is_home_stretch_cell(&"yellow", dest_cell):
+	if Classic15x15Board.is_home_stretch_cell_of(PlayerId.YELLOW, CellId.from_vec(dest_cell)):
 		var blocker := _pawn_on_cell(dest_cell)
 		if blocker != null and blocker != pawn:
 			return false
@@ -199,7 +199,7 @@ func _resolve_destination_index(from_index: int, steps: int) -> int:
 
 	var from_cell: Vector2i = _yellow_path[from_index]
 	# Inside safe zone: exact dice only (e.g. 3 left => 1/2/3 ok, 4/5/6 not).
-	if board.is_home_stretch_cell(&"yellow", from_cell):
+	if Classic15x15Board.is_home_stretch_cell_of(PlayerId.YELLOW, CellId.from_vec(from_cell)):
 		if steps > remaining:
 			return -1
 		return from_index + steps
@@ -240,7 +240,7 @@ func _confirm_pawn_action(pawn: Pawn) -> void:
 
 
 func _exit_pawn_to_spawn(pawn: Pawn) -> void:
-	var spawn_cell: Vector2i = board.get_spawn_cell(&"yellow")
+	var spawn_cell: Vector2i = Classic15x15Board.spawn_grid_position_for(PlayerId.YELLOW)
 	var yellow_root: Node2D = pawn.get_parent() as Node2D
 	var target: Vector2 = yellow_root.to_local(
 		board.to_global(board.get_cell_local_position(spawn_cell))

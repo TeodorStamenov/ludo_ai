@@ -4,16 +4,15 @@ extends Node2D
 ## Временен BoardView — пренесен от scripts/ludo_board.gd
 ## (docs/V1_ARCHITECTURE.md §6.2, Етап C).
 ##
-## Отговорности на целевия BoardView:
+## Отговорности:
 ##   - строи 15×15 геометрията (изометрични CHIP тайлове);
-##   - пази cell → Node2D / локална позиция;
-##   - НЕ пази текущ играч, зар или правила.
+##   - пази cell_id → Node2D / локална позиция;
+##   - НЕ пази текущ играч, зар, маршрути или правила.
 ##
 ## Изометричната математика е в IsometricMath (#147).
-## Временно (до #148–#152): хардкоднат layout и prototype topology API
-## (маршрути/бази/spawn) остават тук, за да работи scenes/ludo_game.tscn.
-## Не са authoritative gameplay state — Domain вече има BoardDefinition /
-## Classic15x15Board.
+## Gameplay topology (бази/spawn/маршрути/home stretch) е само в Domain
+## (Classic15x15Board) — премахната оттук (#148).
+## Хардкоднатият visual layout остава до #152 (BoardDefinition).
 
 const CHIP_RED := "res://rss/CHIP/07.png"
 const CHIP_GREEN := "res://rss/CHIP/03.png"
@@ -30,14 +29,6 @@ const CHIP_PURPLE := "res://rss/CHIP/05.png"
 @export var rebuild_board: bool = false:
 	set(_value):
 		_build_board()
-
-## Prototype topology — ще се премахне от BoardView (#148).
-var path_positions: Array[Vector2] = []
-var home_stretch_positions: Dictionary = {}
-var base_positions: Dictionary = {}
-var spawn_cells: Dictionary = {}
-var player_paths: Dictionary = {}
-var center_position: Vector2
 
 ## cell_id (CellId) → Sprite2D на тайла. Празен до първо _build_board().
 var _cell_nodes: Dictionary = {}
@@ -68,31 +59,6 @@ func get_cell_position_by_id(cell_id: StringName) -> Vector2:
 ## Sprite2D на клетката, или null ако липсва.
 func get_cell_node(cell_id: StringName) -> Node2D:
 	return _cell_nodes.get(cell_id) as Node2D
-
-
-func get_base_cells(player: StringName) -> Array[Vector2i]:
-	var cells: Array = base_positions.get(player, [])
-	var result: Array[Vector2i] = []
-	for cell in cells:
-		result.append(cell as Vector2i)
-	return result
-
-
-func get_spawn_cell(player: StringName) -> Vector2i:
-	return spawn_cells.get(player, Vector2i(-1, -1)) as Vector2i
-
-
-func get_player_path(player: StringName) -> Array[Vector2i]:
-	var raw: Array = player_paths.get(player, [])
-	var result: Array[Vector2i] = []
-	for cell in raw:
-		result.append(cell as Vector2i)
-	return result
-
-
-func is_home_stretch_cell(player: StringName, cell: Vector2i) -> bool:
-	var home: Array = home_stretch_positions.get(player, [])
-	return home.has(cell)
 
 
 func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> Sprite2D:
@@ -126,9 +92,6 @@ func _build_board() -> void:
 
 	_cell_nodes.clear()
 	_cell_positions.clear()
-	path_positions.clear()
-	home_stretch_positions.clear()
-	base_positions.clear()
 
 	# Layout: 11x11 area within 15x15 grid. Center is (7,7).
 	# NW: Green, NE: Orange, SE: Yellow, SW: Cyan
@@ -146,8 +109,6 @@ func _build_board() -> void:
 				tex = CHIP_CYAN
 			elif x == 7 and y == 7:
 				tex = CHIP_RED
-				center_position = IsometricMath.grid_to_local(
-						IsometricMath.GRID_CENTER, board_scale)
 
 			var is_north := y >= 2 and y <= 6 and x >= 6 and x <= 8
 			var is_east := x >= 8 and x <= 12 and y >= 6 and y <= 8
@@ -185,51 +146,3 @@ func _build_board() -> void:
 
 			if tex != "":
 				_add_tile(tex, Vector2i(x, y), tiles_node)
-
-	_calculate_positions()
-
-
-func _calculate_positions() -> void:
-	base_positions = {
-		&"green": [
-			Vector2i(2, 2), Vector2i(3, 2),
-			Vector2i(2, 3), Vector2i(3, 3),
-		],
-		&"orange": [
-			Vector2i(11, 2), Vector2i(12, 2),
-			Vector2i(11, 3), Vector2i(12, 3),
-		],
-		&"yellow": [
-			Vector2i(11, 11), Vector2i(12, 11),
-			Vector2i(11, 12), Vector2i(12, 12),
-		],
-		&"cyan": [
-			Vector2i(2, 11), Vector2i(3, 11),
-			Vector2i(2, 12), Vector2i(3, 12),
-		],
-	}
-	spawn_cells = {
-		&"green": Vector2i(8, 2),
-		&"orange": Vector2i(12, 8),
-		&"yellow": Vector2i(6, 12),
-		&"cyan": Vector2i(2, 6),
-	}
-	# Yellow: start → cyan side → green → orange → yellow safe zone.
-	player_paths[&"yellow"] = [
-		Vector2i(6, 12), Vector2i(6, 11), Vector2i(6, 10), Vector2i(6, 9), Vector2i(6, 8),
-		Vector2i(5, 8), Vector2i(4, 8), Vector2i(3, 8), Vector2i(2, 8),
-		Vector2i(2, 7), Vector2i(2, 6),
-		Vector2i(3, 6), Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6),
-		Vector2i(6, 5), Vector2i(6, 4), Vector2i(6, 3), Vector2i(6, 2),
-		Vector2i(7, 2), Vector2i(8, 2),
-		Vector2i(8, 3), Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6),
-		Vector2i(9, 6), Vector2i(10, 6), Vector2i(11, 6), Vector2i(12, 6),
-		Vector2i(12, 7), Vector2i(12, 8),
-		Vector2i(11, 8), Vector2i(10, 8), Vector2i(9, 8), Vector2i(8, 8),
-		Vector2i(8, 9), Vector2i(8, 10), Vector2i(8, 11), Vector2i(8, 12),
-		Vector2i(7, 12),
-		Vector2i(7, 11), Vector2i(7, 10), Vector2i(7, 9), Vector2i(7, 8),
-	]
-	home_stretch_positions[&"yellow"] = [
-		Vector2i(7, 11), Vector2i(7, 10), Vector2i(7, 9), Vector2i(7, 8),
-	]
