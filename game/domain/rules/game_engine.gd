@@ -351,7 +351,8 @@ func _apply_move_pawn(
 	return CommandResult.ok(next, events)
 
 
-## #113: кацане върху единична незащитена противникова → PawnCaptured + PawnSentHome.
+## #113/#114: кацане върху единична незащитена противникова →
+## PawnCaptured + PawnSentHome (в свободна base клетка).
 ## Преди stack formed — capture освобождава клетката от противника.
 func _append_capture_if_any(
 		state: GameState,

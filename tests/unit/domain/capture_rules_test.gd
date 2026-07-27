@@ -1,9 +1,8 @@
 extends TestCase
 ## Business-critical тестове за CaptureRules — имунитет на купчина (#111),
-## прескачане на противникови купчини (#112) и взимане на единична пионка (#113)
+## прескачане (#112), взимане (#113) и връщане в свободна база (#114)
 ## (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.1–3.2).
 ##
-## Връщане в свободна база (#114) е част от resolve_capture за playable MVP.
 ## Home stretch защита (#115) — is_capturable изисква MAIN_PATH.
 
 
@@ -462,6 +461,112 @@ func test_engine_capture_then_stack_formed_on_mixed_cell() -> void:
 	assert_true(_stacks.is_friendly_stack(result.state, dest_cell, PlayerId.YELLOW))
 	assert_true(result.state.get_player(PlayerId.GREEN).get_pawn(
 			green_pawn.pawn_id).is_in_base())
+
+
+## #114: първа свободна base клетка в каноничен ред — не „оригиналният“ слот.
+func test_send_home_uses_first_free_base_not_original_slot() -> void:
+	var state := _two_player_in_progress()
+	var green := state.get_player(PlayerId.GREEN)
+	var bases: Array = Classic15x15Board.base_cells_for(PlayerId.GREEN)
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.GREEN)
+	var pawn0 := green.get_pawn_by_index(0)
+	var pawn1 := green.get_pawn_by_index(1)
+	pawn0.set_position(PawnZone.MAIN_PATH, 0, route[0])
+	pawn1.set_position(PawnZone.MAIN_PATH, 5, route[5])
+
+	assert_eq(_capture.first_free_base_cell(state, PlayerId.GREEN), bases[0])
+	var original_slot: StringName = bases[1]
+	var from_cell: StringName = pawn1.cell_id
+	pawn1.apply_shield(3)
+
+	var sent := _capture.send_pawn_home(state, pawn1, from_cell, 4)
+
+	assert_not_null(sent)
+	assert_true(sent.is_valid())
+	assert_eq(sent.pawn_id, pawn1.pawn_id)
+	assert_eq(sent.from_cell_id, from_cell)
+	assert_eq(sent.base_cell_id, bases[0],
+			"канонично първи свободен слот, не original bases[1]")
+	assert_true(pawn1.is_in_base())
+	assert_eq(pawn1.cell_id, bases[0])
+	assert_ne(pawn1.cell_id, original_slot)
+	assert_eq(pawn1.path_index, PawnState.PATH_INDEX_IN_BASE)
+	assert_false(pawn1.has_shield(), "щитът се нулира при връщане в база")
+	assert_true(Classic15x15Board.is_base_cell_of(PlayerId.GREEN, pawn1.cell_id))
+	assert_eq(CellOccupancy.free_base_cells(state, PlayerId.GREEN, bases).size(), 1)
+	assert_eq(CellOccupancy.free_base_cells(state, PlayerId.GREEN, bases)[0], bases[1])
+
+
+## #114: втори capture заема следващия свободен слот — без двойна заетост.
+func test_resolve_capture_fills_next_free_base_after_prior_send_home() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player(PlayerId.YELLOW)
+	var player := state.get_active_player()
+	var green := state.get_player(PlayerId.GREEN)
+	var bases: Array = Classic15x15Board.base_cells_for(PlayerId.GREEN)
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var green0 := green.get_pawn_by_index(0)
+	var green1 := green.get_pawn_by_index(1)
+	green0.set_position(PawnZone.MAIN_PATH, 10, CellId.from_grid(8, 6))
+	green1.set_position(PawnZone.MAIN_PATH, 20, dest_cell)
+	# Предишен send-home: green0 вече заема bases[0] (първи свободен тогава).
+	assert_not_null(_capture.send_pawn_home(
+			state, green0, green0.cell_id, 1))
+	assert_eq(green0.cell_id, bases[0])
+	assert_eq(_capture.first_free_base_cell(state, PlayerId.GREEN), bases[1])
+
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+	assert_true(_rules.apply_board_move(state, player, mover, 3))
+	var events := _capture.resolve_capture(state, mover, 8)
+
+	assert_eq(events.size(), 2)
+	var sent := events[1] as PawnSentHomeEvent
+	assert_eq(sent.base_cell_id, bases[1],
+			"следващият свободен слот след bases[0]")
+	assert_true(green1.is_in_base())
+	assert_eq(green1.cell_id, bases[1])
+	assert_eq(green0.cell_id, bases[0])
+	assert_ne(green0.cell_id, green1.cell_id)
+	assert_eq(CellOccupancy.free_base_cells(state, PlayerId.GREEN, bases).size(), 0)
+
+
+## Engine #114: capture → жертвата в първа свободна база (не original slot).
+func test_engine_capture_sends_home_to_first_free_base_slot() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var green := state.get_player(PlayerId.GREEN)
+	var bases: Array = Classic15x15Board.base_cells_for(PlayerId.GREEN)
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var green0 := green.get_pawn_by_index(0)
+	var green1 := green.get_pawn_by_index(1)
+	green0.set_position(PawnZone.MAIN_PATH, 10, CellId.from_grid(8, 6))
+	green1.set_position(PawnZone.MAIN_PATH, 20, dest_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(99)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[2] is PawnSentHomeEvent)
+	var sent := result.events[2] as PawnSentHomeEvent
+	var after_victim := result.state.get_player(PlayerId.GREEN).get_pawn(green1.pawn_id)
+	assert_eq(sent.base_cell_id, bases[0])
+	assert_true(after_victim.is_in_base())
+	assert_eq(after_victim.cell_id, bases[0],
+			"green1 → bases[0], защото green0 още е на пътя")
+	assert_eq(after_victim.path_index, PawnState.PATH_INDEX_IN_BASE)
 
 
 func _two_player_in_progress(rng_seed: int = 42) -> GameState:

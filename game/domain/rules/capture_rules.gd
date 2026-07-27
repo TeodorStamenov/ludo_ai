@@ -111,26 +111,51 @@ func resolve_capture(
 		return events
 
 	var from_cell: StringName = captured.cell_id
-	var base_cell := _first_free_base_cell(state, captured.get_player_id())
-	if base_cell == &"":
+	var sent_event := send_pawn_home(state, captured, from_cell, command_sequence)
+	if sent_event == null:
 		return events
 
-	var sent_event := PawnSentHomeEvent.create_sent_home(
-			captured.pawn_id, from_cell, base_cell, command_sequence)
-	if not sent_event.is_valid():
-		return events
-
-	captured.place_in_base(base_cell)
 	events.append(captured_event)
 	events.append(sent_event)
 	return events
 
 
-## Първа свободна base клетка в каноничен ред (#114), или &"".
-func _first_free_base_cell(state: GameState, player_id: StringName) -> StringName:
+## Връща пионка в първата свободна BASE клетка на собственика (#114).
+## from_cell = клетката преди връщането (за PawnSentHome payload).
+## Мутира pawn (place_in_base: zone=BASE, path_index=-1, щит=0).
+## null ако няма свободна клетка / невалиден вход / невалиден event.
+func send_pawn_home(
+		state: GameState,
+		pawn: PawnState,
+		from_cell: StringName,
+		command_sequence: int = DomainEvent.COMMAND_SEQUENCE_UNSET
+) -> PawnSentHomeEvent:
+	if state == null or pawn == null or from_cell == &"":
+		return null
+	var player_id := pawn.get_player_id()
 	if player_id == &"":
+		return null
+	var base_cell := first_free_base_cell(state, player_id)
+	if base_cell == &"":
+		return null
+	if not Classic15x15Board.is_base_cell_of(player_id, base_cell):
+		return null
+	var sent_event := PawnSentHomeEvent.create_sent_home(
+			pawn.pawn_id, from_cell, base_cell, command_sequence)
+	if not sent_event.is_valid():
+		return null
+	pawn.place_in_base(base_cell)
+	return sent_event
+
+
+## Първа свободна base клетка в каноничен ред (#114), или &"".
+## Не предпочита „оригиналния“ слот на пионката — детерминиран MVP избор.
+func first_free_base_cell(state: GameState, player_id: StringName) -> StringName:
+	if state == null or player_id == &"":
 		return &""
 	var bases: Array = Classic15x15Board.base_cells_for(player_id)
+	if bases.is_empty():
+		return &""
 	var free: Array[StringName] = CellOccupancy.free_base_cells(state, player_id, bases)
 	if free.is_empty():
 		return &""
