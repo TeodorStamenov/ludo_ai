@@ -26,6 +26,7 @@ Presentation ──► Application ──► Domain
 | `match_factory.gd`        | Строи MatchSession от MatchConfig |
 | `command_bus.gd`          | Единственото входно гнездо за GameCommand-и |
 | `event_queue.gd`          | FIFO буфер на DomainEvent-и; sequence acknowledge след presentation |
+| `gameplay_journal.gd`     | Append-only journal на активния мач (replay / bug report / #132) |
 | `controller/`             | PlayerController (интерфейс), Human, AI, Remote |
 | `ai/`                     | AIPolicy (интерфейс), Easy, Medium, Hard имплементации |
 | `ports/`                  | Интерфейси към persistence, ads, settings, telemetry |
@@ -41,5 +42,6 @@ Presentation ──► Application ──► Domain
 presentation gate → AI/human advance → MatchSummary). Външните команди влизат
 само през `CommandBus.submit()` (HumanController.action_ready и AI advance).
 `EventQueue` буферира DomainEvent-и FIFO; `events_presented` прави
-`acknowledge(sequence)`. Останалите application класове се довършват в
-собствени roadmap задачи.
+`acknowledge(sequence)`. `GameplayJournal` се създава при start/restore
+(`get_journal()`); записът на header/команди/hash е в roadmap #133–#136.
+Останалите application класове се довършват в собствени roadmap задачи.

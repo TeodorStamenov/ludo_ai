@@ -16,6 +16,7 @@ extends RefCounted
 ##     сигнализира Presentation за очакван human input;
 ##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
 ##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
+##   - притежава GameplayJournal за активния мач (replay / bug report / #132);
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
@@ -45,6 +46,7 @@ var _rng: RandomSource = null
 var _controllers: Dictionary = {}
 var _event_queue: EventQueue = null
 var _command_bus: CommandBus = null
+var _journal: GameplayJournal = null
 var _pending_sequence: int = -1
 var _active: bool = false
 var _last_stable_snapshot: Dictionary = {}
@@ -69,6 +71,7 @@ func start(
 	_active = true
 	_last_stable_snapshot = {}
 	_setup_command_bus()
+	_begin_journal()
 	# GameState.rng_state е source of truth (§4.1 / §4.5 / #60).
 	# При mid-match restore: живият RNG ← snapshot; иначе snapshot ← жив RNG.
 	_sync_rng_on_start()
@@ -172,6 +175,10 @@ func get_event_queue() -> EventQueue:
 
 func get_command_bus() -> CommandBus:
 	return _command_bus
+
+
+func get_journal() -> GameplayJournal:
+	return _journal
 
 
 func get_rng() -> RandomSource:
@@ -300,6 +307,7 @@ func restore_from_snapshot(
 		_rng = _state.create_random_source_from_state()
 
 	_setup_command_bus()
+	_begin_journal()
 	if _active:
 		_advance()
 	return true
@@ -414,3 +422,12 @@ func _clear_human_action_routes() -> void:
 			var human := controller as HumanController
 			for connection in human.action_ready.get_connections():
 				human.action_ready.disconnect(connection["callable"])
+
+
+## Създава / нулира GameplayJournal за текущия match_id (#132).
+## Header / команди / hash-ове се попълват от последващи roadmap задачи (#133–#136).
+func _begin_journal() -> void:
+	if _journal == null:
+		_journal = GameplayJournal.new()
+	var id: StringName = _state.match_id if _state != null else &""
+	_journal.begin(id)

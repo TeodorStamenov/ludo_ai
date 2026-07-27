@@ -114,6 +114,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/application/event_queue_test.gd",
 	"res://tests/unit/application/ai_policy_test.gd",
 	"res://tests/unit/application/match_session_test.gd",
+	"res://tests/unit/application/gameplay_journal_test.gd",
 	# platform — само реални I/O имплементации
 	"res://tests/unit/platform/local_save_repository_test.gd",
 	"res://tests/unit/platform/local_telemetry_sink_test.gd",
