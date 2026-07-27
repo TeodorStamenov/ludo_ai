@@ -185,6 +185,7 @@ func test_engine_rejects_move_onto_full_friendly_stack() -> void:
 
 	assert_true(result.is_rejected())
 	assert_eq(result.error.code, CommandError.CODE_ILLEGAL_MOVE)
+	assert_eq(result.error.message, "cannot place third own pawn on cell")
 	assert_true(state.equals(before))
 
 

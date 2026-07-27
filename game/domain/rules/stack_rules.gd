@@ -9,6 +9,7 @@ extends RefCounted
 ##
 ## Occupancy query view: CellOccupancy (#107).
 ## MoveRules ползва can_place_own_pawn за MAIN_PATH / spawn landing (#108).
+## GameEngine reject при трета своя → #109.
 ## Имунитет / прескачане / stack events → #110–#112.
 
 

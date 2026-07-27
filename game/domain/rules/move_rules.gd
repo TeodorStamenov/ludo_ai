@@ -10,7 +10,8 @@ extends RefCounted
 ##   - влизане в home stretch (#97 / YEL-050) — MAIN_PATH → HOME_STRETCH, без обиколка;
 ##   - точен зар вътре в home stretch (#98 / YEL-051–055);
 ##   - забрана за движение на FINISHED пионка (#100) — can_move_pawn / collect;
-##   - макс. 2 свои на MAIN_PATH / spawn (#108 / GAP-004 / GAP-006).
+##   - макс. 2 свои на MAIN_PATH / spawn (#108 / GAP-004 / GAP-006);
+##   - опит за трета своя → невалиден ход (#109).
 ##
 ## Capture / stack immunity / прибиране → CaptureRules / StackRules / FinishRules.
 ## Gift → RESOLVING_POWER_UP.
@@ -51,6 +52,45 @@ func can_exit_base(
 	if spawn == &"":
 		return false
 	return _stack_rules.can_place_own_pawn(state, spawn, player.player_id, pawn.pawn_id)
+
+
+## True ако кацането (MAIN_PATH) или spawn би сложил трета своя пионка (#109).
+## Home-stretch заетост е отделно правило (YEL-053) — тук не се отчита.
+func would_place_third_own_pawn(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if state == null or player == null or pawn == null:
+		return false
+	if pawn.is_in_base():
+		if not allows_exit_base(dice_value):
+			return false
+		var spawn := resolve_spawn_cell(state, player.player_id)
+		if spawn == &"":
+			return false
+		return not _stack_rules.can_place_own_pawn(
+				state, spawn, player.player_id, pawn.pawn_id)
+	if not pawn.is_on_board():
+		return false
+	if not DiceState.is_face_value(dice_value):
+		return false
+	var route := resolve_player_route(state, player.player_id)
+	if route.is_empty():
+		return false
+	if pawn.path_index < 0 or pawn.path_index >= route.size():
+		return false
+	if route[pawn.path_index] != pawn.cell_id:
+		return false
+	var dest_index := resolve_destination_index(pawn.path_index, dice_value, route.size())
+	if dest_index == DESTINATION_NONE:
+		return false
+	var dest_cell: StringName = route[dest_index]
+	if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell):
+		return false
+	return not _stack_rules.can_place_own_pawn(
+			state, dest_cell, player.player_id, pawn.pawn_id)
 
 
 ## True ако MovePawnCommand за пионката е валидна при този зар (#95 / #100).
@@ -153,7 +193,7 @@ func resolve_traversed_cell_ids(
 ## True ако пионка на дъската може да се премести с дадения зар (YEL-040/050/052/053/055).
 ## Home stretch дестинация: само ако крайната клетка е свободна от своя пионка (YEL-053).
 ## Междинни HOME клетки не блокират (YEL-054).
-## MAIN_PATH дестинация: макс. 2 свои — трета е невалидна (#108 / GAP-004).
+## MAIN_PATH дестинация: макс. 2 свои — трета е невалидна (#108 / #109 / GAP-004).
 ## Междинни MAIN_PATH клетки (вкл. купчини) не блокират преминаване (#112).
 ## Capture landing → CaptureRules (#113+).
 func can_advance_on_board(

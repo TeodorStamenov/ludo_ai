@@ -225,7 +225,8 @@ func _apply_roll_dice(
 
 ## MovePawnCommand в AWAITING_MOVE → RESOLVING_MOVE (#87/#88):
 ## exit-base (YEL-030/032), ход по маршрута (YEL-040–055) или прибиране (#99).
-## FINISHED пионка се reject-ва (#100). Capture / stacks / gifts → по-късни tasks.
+## FINISHED пионка се reject-ва (#100). Трета своя на клетка → ILLEGAL_MOVE (#109).
+## Capture / stack events / gifts → по-късни tasks.
 func _apply_move_pawn(
 		state: GameState,
 		command: MovePawnCommand,
@@ -265,6 +266,11 @@ func _apply_move_pawn(
 
 	var dice_value: int = state.turn.dice_value
 	if not _move_rules.can_move_pawn(state, player, pawn, dice_value):
+		# #109: трета своя на MAIN_PATH / spawn — дори при tampered valid_pawn_ids.
+		if _move_rules.would_place_third_own_pawn(state, player, pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("cannot place third own pawn on cell"))
 		return CommandResult.rejected(
 				state,
 				CommandError.illegal_move("pawn is not movable for current dice"))
