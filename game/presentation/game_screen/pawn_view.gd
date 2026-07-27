@@ -3,11 +3,11 @@ extends Sprite2D
 ## Визуален представител на една пионка (docs/V1_ARCHITECTURE.md §6.3, Етап C).
 ##
 ## Съдържа само presentation данни: pawn_id, визуален asset/skin,
-## selected / valid-move / move / home (sleep) анимации, colorblind marker
+## selected / valid-move / move / stack / home (sleep) анимации, colorblind marker
 ## и hit target за mouse + touch (GAP-011). Логическите in_base, path_index,
 ## shield и valid move живеят в PawnState.
 ##
-## animation_finished(kind) се емитира след еднократни move/exit/home анимации.
+## animation_finished(kind) се емитира след еднократни move/exit/stack/home анимации.
 ## AnimationFinishedGate (#169) го чака преди следващия event в опашката.
 ## Loop cues (valid-move, selected) не го емитират.
 ##
@@ -20,6 +20,7 @@ signal animation_finished(kind: StringName)
 
 const KIND_MOVE := &"move"
 const KIND_HOME := &"home"
+const KIND_STACK := &"stack"
 
 const BOB_AMPLITUDE := 5.0
 const BOB_DURATION := 0.35
@@ -34,6 +35,10 @@ const EXIT_DURATION := 0.28
 const HOME_DURATION := 0.55
 const HOME_SCALE_MIN := 0.82
 const HOME_MODULATE := Color(0.88, 0.90, 1.0, 0.85)
+## Изометричен offset за две пионки на една клетка (#174) — arriving +, resident −.
+const STACK_OFFSET := Vector2(12.0, -7.0)
+const STACK_DURATION := 0.2
+const STACK_PULSE_SCALE := 1.08
 const SIZE_RATIO := 0.7
 
 const MARKER_NODE_NAME := &"ColorblindMarker"
@@ -54,10 +59,15 @@ var pawn_id: StringName = &""
 
 var is_selectable: bool = false
 var is_selected: bool = false
-## True докато move/exit/home tween тече — EventViewBinder ползва за snap fallback.
+## True докато move/exit/stack/home tween тече — EventViewBinder ползва за snap fallback.
 var is_moving: bool = false
+## Presentation-only: в купчина с друга пионка (#174). Domain stack е в GameState.
+var is_stacked: bool = false
+## Партньор в купчината (PawnId); празен когато не е stacked.
+var stack_partner_id: StringName = &""
 
 var _rest_position: Vector2 = Vector2.ZERO
+var _stack_offset: Vector2 = Vector2.ZERO
 var _bob_tween: Tween
 var _select_tween: Tween
 var _action_tween: Tween
@@ -110,20 +120,21 @@ func set_colorblind_icon(icon: Texture2D) -> void:
 
 func set_rest_position(pos: Vector2) -> void:
 	_rest_position = pos
-	position = pos
+	position = _posed_position()
 
 
 ## Valid-move cue: gentle vertical bob while the pawn is selectable.
 func show_valid_move() -> void:
 	is_selectable = true
 	_stop_bob_tween()
-	position = _rest_position
+	var posed: Vector2 = _posed_position()
+	position = posed
 	_bob_tween = create_tween()
 	_bob_tween.set_loops()
-	_bob_tween.tween_property(self, "position:y", _rest_position.y - BOB_AMPLITUDE, BOB_DURATION)\
+	_bob_tween.tween_property(self, "position:y", posed.y - BOB_AMPLITUDE, BOB_DURATION)\
 		.set_trans(Tween.TRANS_SINE)\
 		.set_ease(Tween.EASE_IN_OUT)
-	_bob_tween.tween_property(self, "position:y", _rest_position.y + BOB_AMPLITUDE, BOB_DURATION)\
+	_bob_tween.tween_property(self, "position:y", posed.y + BOB_AMPLITUDE, BOB_DURATION)\
 		.set_trans(Tween.TRANS_SINE)\
 		.set_ease(Tween.EASE_IN_OUT)
 
@@ -131,7 +142,7 @@ func show_valid_move() -> void:
 func hide_valid_move() -> void:
 	is_selectable = false
 	_stop_bob_tween()
-	position = _rest_position
+	position = _posed_position()
 
 
 ## Alias за жълтия прототип (scripts/ludo_game.gd).
@@ -248,14 +259,110 @@ func present_pawn_captured(_event: PawnCapturedEvent) -> void:
 	pass
 
 
-## Stack cue (#167). Пълно offset/анимация е #174.
-func present_stack_formed(_event: PawnStackFormedEvent, _is_arriving: bool) -> void:
-	pass
+## Instant stack offset от PawnStackFormedEvent (#174).
+func present_stack_formed(event: PawnStackFormedEvent, is_arriving: bool) -> void:
+	if event == null or not event.is_valid():
+		return
+	_prepare_for_action()
+	_stop_action_tween()
+	_apply_stack_membership(event, is_arriving)
+	position = _posed_position()
+
+
+## Settle към stack offset след PawnMoved/PawnExitedBase (#174).
+## Емитира animation_finished(KIND_STACK) след settle (#169).
+func present_stack_formed_animated(
+		event: PawnStackFormedEvent,
+		is_arriving: bool
+) -> void:
+	if event == null or not event.is_valid():
+		return
+	_prepare_for_action()
+	_stop_action_tween()
+	_apply_stack_membership(event, is_arriving)
+	var target: Vector2 = _posed_position()
+	is_moving = true
+	var pulse: Vector2 = _base_scale * STACK_PULSE_SCALE
+	_action_tween = create_tween()
+	_action_tween.set_parallel(true)
+	_action_tween.tween_property(self, "position", target, STACK_DURATION)\
+		.set_trans(Tween.TRANS_BACK)\
+		.set_ease(Tween.EASE_OUT)
+	_action_tween.tween_property(self, "scale", pulse, STACK_DURATION * 0.45)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_OUT)
+	_action_tween.chain()
+	_action_tween.tween_property(self, "scale", _base_scale, STACK_DURATION * 0.55)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_IN)
+	await _action_tween.finished
+	position = target
+	scale = _base_scale
+	_action_tween = null
+	is_moving = false
+	animation_finished.emit(KIND_STACK)
+
+
+## Instant clear на stack offset (#174) — оставащата пионка на центъра на клетката.
+func present_stack_dissolved() -> void:
+	_prepare_for_action()
+	_stop_action_tween()
+	_clear_stack_membership()
+	position = _posed_position()
+
+
+## Разпадане: tween към центъра на клетката (#174). KIND_STACK след settle.
+func present_stack_dissolved_animated() -> void:
+	_prepare_for_action()
+	_stop_action_tween()
+	_clear_stack_membership()
+	var target: Vector2 = _posed_position()
+	is_moving = true
+	_action_tween = create_tween()
+	_action_tween.tween_property(self, "position", target, STACK_DURATION)\
+		.set_trans(Tween.TRANS_SINE)\
+		.set_ease(Tween.EASE_IN_OUT)
+	await _action_tween.finished
+	position = target
+	_action_tween = null
+	is_moving = false
+	animation_finished.emit(KIND_STACK)
+
+
+## Напускаща пионка: маха stack membership, запазва текущата позиция за hop.
+func clear_stack_for_departure() -> void:
+	_clear_stack_membership()
+
+
+func _posed_position() -> Vector2:
+	return _rest_position + _stack_offset
+
+
+func _apply_stack_membership(event: PawnStackFormedEvent, is_arriving: bool) -> void:
+	is_stacked = true
+	if is_arriving:
+		stack_partner_id = event.resident_pawn_id
+		_stack_offset = STACK_OFFSET
+	else:
+		stack_partner_id = event.arriving_pawn_id
+		_stack_offset = -STACK_OFFSET
+	if CellId.is_valid(event.cell_id):
+		grid_pos = CellId.to_vec(event.cell_id)
+	var base_z: int = grid_pos.x + grid_pos.y + 1
+	z_index = base_z + (1 if is_arriving else 0)
+
+
+func _clear_stack_membership() -> void:
+	is_stacked = false
+	stack_partner_id = &""
+	_stack_offset = Vector2.ZERO
+	z_index = grid_pos.x + grid_pos.y + 1
 
 
 func _apply_cell_pose(cell_id: StringName, local_target: Vector2) -> void:
 	_prepare_for_action()
 	_stop_action_tween()
+	_clear_stack_membership()
 	if CellId.is_valid(cell_id):
 		grid_pos = CellId.to_vec(cell_id)
 		z_index = grid_pos.x + grid_pos.y + 1

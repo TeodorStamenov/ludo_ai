@@ -47,6 +47,12 @@ Domain не чака tween. Presentation потвърждава след вся�
 `PawnExitedBase` (#173 / YEL-030): hop от базовата клетка към spawn след
 приет `MovePawnCommand` при 6; `KIND_MOVE` след кацане. Busy pawn → snap.
 
+`PawnStackFormed` (#174): след кацане върху своя, двете пионки settle-ват
+към изометрични offsets (имунна купчина от 2). `KIND_STACK` от arriving и
+resident (паралелно). Разпадане: преди `PawnMoved` / exit на stacked пионка
+партньорът се връща в центъра на клетката (`KIND_STACK`); напускащата тръгва
+от текущия offset.
+
 ## .tscn сцени
 
 Сцените (`.tscn` файлове) се създават в Godot Editor.  

@@ -7,8 +7,9 @@ extends RefCounted
 ## анимация и чака `animation_finished` чрез AnimationFinishedGate (#169).
 ## DiceRolled → present_dice_rolled + gate(KIND_ROLL).
 ## PawnMoved → hop клетка по клетка по маршрута (#172 / YEL-040) след приет
-## MovePawnCommand (#171 / YEL-023).
-## PawnExitedBase → hop база → spawn (#173 / YEL-030). Home / finish — #175+.
+## MovePawnCommand (#171 / YEL-023); разпадане на купчина преди hop (#174).
+## PawnExitedBase → hop база → spawn (#173 / YEL-030).
+## PawnStackFormed → offset settle на двете пионки (#174). Home / finish — #175+.
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -88,6 +89,8 @@ func present_for_playback(event: DomainEvent) -> void:
 		await _present_pawn_moved_animated(event as PawnMovedEvent)
 	elif event is PawnExitedBaseEvent:
 		await _present_pawn_exited_base_animated(event as PawnExitedBaseEvent)
+	elif event is PawnStackFormedEvent:
+		await _present_pawn_stack_formed_animated(event as PawnStackFormedEvent)
 	else:
 		present(event)
 
@@ -146,19 +149,21 @@ func _present_pawn_moved(event: PawnMovedEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
+	_dissolve_stack_snap(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.to_cell_id)
 	pawn.present_pawn_moved(event, target)
 
 
 ## Hop клетка по клетка след приет MovePawnCommand (#172 / YEL-040).
-## Само PawnMoved мести визуално; кликът в Presenter само праща команда.
-## Busy pawn → snap към to_cell (без deadlock). KIND_MOVE едва след последната стъпка.
+## Разпадане на купчина преди hop (#174). Busy pawn → snap към to_cell.
+## KIND_MOVE едва след последната стъпка.
 func _present_pawn_moved_animated(event: PawnMovedEvent) -> void:
 	if event == null or not event.is_valid():
 		return
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
+	await _dissolve_stack_before_departure(pawn)
 	var step_cell_ids: Array[StringName] = _resolve_move_step_cell_ids(event)
 	var step_locals: Array[Vector2] = []
 	for cell_id in step_cell_ids:
@@ -214,6 +219,7 @@ func _present_pawn_exited_base(event: PawnExitedBaseEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
+	_dissolve_stack_snap(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.spawn_cell_id)
 	pawn.present_pawn_exited_base(event, target)
 
@@ -226,6 +232,7 @@ func _present_pawn_exited_base_animated(event: PawnExitedBaseEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
+	await _dissolve_stack_before_departure(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.spawn_cell_id)
 	if not pawn.is_moving:
 		await AnimationFinishedGate.await_started(
@@ -243,6 +250,7 @@ func _present_pawn_sent_home(event: PawnSentHomeEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
+	_dissolve_stack_snap(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.base_cell_id)
 	pawn.present_pawn_sent_home(event, target)
 
@@ -253,6 +261,7 @@ func _present_pawn_finished(event: PawnFinishedEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
+	_dissolve_stack_snap(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.center_cell_id)
 	pawn.present_pawn_finished(event, target)
 
@@ -276,6 +285,61 @@ func _present_pawn_stack_formed(event: PawnStackFormedEvent) -> void:
 		arriving.present_stack_formed(event, true)
 	if resident != null:
 		resident.present_stack_formed(event, false)
+
+
+## Паралелен settle към stack offsets (#174). Busy → snap. KIND_STACK от двете.
+func _present_pawn_stack_formed_animated(event: PawnStackFormedEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var arriving: PawnView = _pawn_of(event.arriving_pawn_id)
+	var resident: PawnView = _pawn_of(event.resident_pawn_id)
+	var arriving_busy: bool = arriving != null and arriving.is_moving
+	var resident_busy: bool = resident != null and resident.is_moving
+	if arriving_busy or resident_busy:
+		_present_pawn_stack_formed(event)
+		return
+	var gate_arriving := AnimationFinishedGate.new()
+	var gate_resident := AnimationFinishedGate.new()
+	if arriving != null:
+		gate_arriving.arm(arriving, PawnView.KIND_STACK)
+		arriving.present_stack_formed_animated(event, true)
+	else:
+		gate_arriving.arm(null, PawnView.KIND_STACK)
+	if resident != null:
+		gate_resident.arm(resident, PawnView.KIND_STACK)
+		resident.present_stack_formed_animated(event, false)
+	else:
+		gate_resident.arm(null, PawnView.KIND_STACK)
+	await gate_arriving.wait()
+	await gate_resident.wait()
+
+
+## Snap разпадане: напускащата маха membership; партньорът се връща в центъра.
+func _dissolve_stack_snap(pawn: PawnView) -> void:
+	if pawn == null or not pawn.is_stacked:
+		return
+	var partner: PawnView = _pawn_of(pawn.stack_partner_id)
+	pawn.clear_stack_for_departure()
+	if partner != null and partner.is_stacked:
+		partner.present_stack_dissolved()
+
+
+## Анимирано разпадане преди hop (#174): партньорът settle-ва; напускащата тръгва от offset.
+func _dissolve_stack_before_departure(pawn: PawnView) -> void:
+	if pawn == null or not pawn.is_stacked:
+		return
+	var partner: PawnView = _pawn_of(pawn.stack_partner_id)
+	pawn.clear_stack_for_departure()
+	if partner == null or not partner.is_stacked:
+		return
+	if partner.is_moving:
+		partner.present_stack_dissolved()
+		return
+	await AnimationFinishedGate.await_started(
+			partner,
+			PawnView.KIND_STACK,
+			partner.present_stack_dissolved_animated
+	)
 
 
 func _present_turn_changed(event: TurnChangedEvent) -> void:
