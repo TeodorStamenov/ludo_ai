@@ -1,20 +1,24 @@
 extends TestCase
-## Business-critical тестове за купчини (#108 / #110 / docs/V1_GAME_DESIGN.md §3.2;
-## docs/V1_ARCHITECTURE.md §4.4 / §12; GAP-004 / GAP-006).
+## Business-critical тестове за купчини (Task #116 /
+## docs/V1_GAME_DESIGN.md §3.2; docs/V1_ARCHITECTURE.md §4.4 / §12 / §14;
+## GAP-004 / GAP-006).
 ##
-## Max-2 / reject трета → #108–#109. Образуване (PawnStackFormed) и разпадане
-## при напускане → #110. Имунитет при кацане → #111 (capture_rules_test).
-## Прескачане → #112.
+## Правилата са в StackRules / MoveRules / GameEngine (#108–#111). Тук: макс. 2
+## свои; образуване (PawnStackFormed); разпадане при напускане → оставащата е
+## уязвима; трета своя → невалиден ход; купчина от 2 е имунна срещу кацане.
+## Прескачане → #117. Пълно взимане → #118.
 
 
 var _rules: MoveRules
 var _stacks: StackRules
+var _capture: CaptureRules
 var _engine: GameEngine
 
 
 func before_each() -> void:
 	_stacks = StackRules.new()
-	_rules = MoveRules.new(null, _stacks, CaptureRules.new(_stacks))
+	_capture = CaptureRules.new(_stacks)
+	_rules = MoveRules.new(null, _stacks, _capture)
 	_engine = GameEngine.new()
 	MatchId._reset_counter_for_tests()
 
@@ -59,6 +63,38 @@ func test_friendly_stack_blocks_third_own_pawn() -> void:
 			state, cell, PlayerId.YELLOW, PawnId.for_player(PlayerId.YELLOW, 2)))
 	assert_true(_stacks.can_place_own_pawn(
 			state, cell, PlayerId.YELLOW, PawnId.for_player(PlayerId.YELLOW, 0)))
+
+
+## Една своя + една противникова → не е купчина (§3.2: купчина = 2 от един играч).
+func test_mixed_own_and_enemy_is_not_a_stack() -> void:
+	var state := _two_player_in_progress()
+	var cell: StringName = CellId.from_grid(6, 8)
+	state.get_player(PlayerId.YELLOW).get_pawn_by_index(0).set_position(
+			PawnZone.MAIN_PATH, 4, cell)
+	state.get_player(PlayerId.GREEN).get_pawn_by_index(0).set_position(
+			PawnZone.MAIN_PATH, 20, cell)
+
+	assert_false(_stacks.is_friendly_stack(state, cell, PlayerId.YELLOW))
+	assert_false(_stacks.is_enemy_stack(state, cell, PlayerId.YELLOW))
+	assert_false(_stacks.is_friendly_stack(state, cell, PlayerId.GREEN))
+	assert_false(_stacks.is_enemy_stack(state, cell, PlayerId.GREEN))
+	assert_true(_stacks.can_place_own_pawn(state, cell, PlayerId.YELLOW))
+	assert_true(_stacks.can_place_own_pawn(state, cell, PlayerId.GREEN))
+
+
+## Купчина от 2 е имунна: противник вижда enemy stack и не може да кацне (#111).
+func test_friendly_stack_is_immune_enemy_stack_for_opponent() -> void:
+	var state := _two_player_in_progress()
+	var cell: StringName = CellId.from_grid(6, 8)
+	var yellow := state.get_player(PlayerId.YELLOW)
+	yellow.get_pawn_by_index(0).set_position(PawnZone.MAIN_PATH, 4, cell)
+	yellow.get_pawn_by_index(1).set_position(PawnZone.MAIN_PATH, 4, cell)
+
+	assert_true(_stacks.is_friendly_stack(state, cell, PlayerId.YELLOW))
+	assert_true(_stacks.is_enemy_stack(state, cell, PlayerId.GREEN))
+	assert_true(_capture.is_immune_stack(state, cell, PlayerId.GREEN))
+	assert_true(_capture.blocks_landing(state, cell, PlayerId.GREEN))
+	assert_null(_capture.find_capturable_at(state, cell, PlayerId.GREEN))
 
 
 ## Кацане върху една своя на MAIN_PATH е валиден ход (образува купчина от 2).
@@ -349,6 +385,64 @@ func test_engine_leaving_stack_dissolves_without_formed_event() -> void:
 				"разпадането не емитира PawnStackFormed")
 
 
+## §3.2: след разпадане оставащата пионка е отново уязвима (не е immune stack).
+func test_after_dissolve_remaining_pawn_is_vulnerable_again() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var stack_index := 2
+	var stack_cell: StringName = route[stack_index]
+	var resident := player.get_pawn_by_index(1)
+	resident.set_position(PawnZone.MAIN_PATH, stack_index, stack_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, stack_index, stack_cell)
+	assert_true(_capture.is_immune_stack(state, stack_cell, PlayerId.GREEN))
+	assert_null(_capture.find_capturable_at(state, stack_cell, PlayerId.GREEN))
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(42)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_false(_stacks.is_friendly_stack(
+			result.state, stack_cell, PlayerId.YELLOW))
+	assert_false(_stacks.is_enemy_stack(
+			result.state, stack_cell, PlayerId.GREEN))
+	assert_false(_capture.is_immune_stack(
+			result.state, stack_cell, PlayerId.GREEN))
+	assert_false(_capture.blocks_landing(
+			result.state, stack_cell, PlayerId.GREEN))
+	var vulnerable := _capture.find_capturable_at(
+			result.state, stack_cell, PlayerId.GREEN)
+	assert_not_null(vulnerable)
+	assert_eq(vulnerable.pawn_id, resident.pawn_id)
+	assert_true(_capture.is_capturable(vulnerable))
+
+
+## Всички seats могат да образуват купчина от 2 на MAIN_PATH (§12 инвариант).
+func test_all_seats_can_form_friendly_stack_of_two() -> void:
+	var state := _four_player_in_progress()
+	for player_id in PlayerId.ALL:
+		var player := state.get_player(player_id)
+		var route := Classic15x15Board.player_route_cell_ids_for(player_id)
+		var cell: StringName = route[3]
+		player.get_pawn_by_index(0).set_position(PawnZone.MAIN_PATH, 3, cell)
+		player.get_pawn_by_index(1).set_position(PawnZone.MAIN_PATH, 3, cell)
+		assert_true(_stacks.is_friendly_stack(state, cell, player_id),
+				"%s трябва да има friendly stack" % player_id)
+		assert_false(_stacks.can_place_own_pawn(state, cell, player_id),
+				"%s: трета своя е забранена" % player_id)
+		assert_eq(
+				_stacks.occupancy_of(state).count_of_player_at(cell, player_id),
+				2,
+				"%s: точно 2 свои на клетката" % player_id)
+
+
 ## Engine #110: напускане на купчина + кацане върху друга своя → само нова Formed.
 func test_engine_break_and_form_emits_only_new_stack_formed() -> void:
 	var state := _two_player_in_progress()
@@ -403,4 +497,23 @@ func _two_player_in_progress(rng_seed: int = 42) -> GameState:
 	var state := GameState.create_from_match_config(cfg)
 	state.set_phase(MatchPhase.IN_PROGRESS)
 	state.turn.begin_player_turn(1, true)
+	return state
+
+
+func _four_player_in_progress(rng_seed: int = 42) -> GameState:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = rng_seed
+	cfg.set_active_seats(MatchConfig.DEFAULT_SEATS_4P)
+	var animals: Array[StringName] = [
+		AnimalId.PIG, AnimalId.RABBIT, AnimalId.DOG, AnimalId.COW,
+	]
+	for i in cfg.seats.size():
+		var seat: MatchConfig.SeatConfig = cfg.seats[i]
+		var ctrl: int = (
+				MatchConfig.ControllerType.HUMAN if i == 0
+				else MatchConfig.ControllerType.AI)
+		seat.configure(ctrl, animals[i], AIDifficulty.EASY)
+	var state := GameState.create_from_match_config(cfg)
+	state.set_phase(MatchPhase.IN_PROGRESS)
+	state.turn.begin_player_turn(0, true)
 	return state
