@@ -212,11 +212,8 @@ func _apply_roll_dice(
 	if outcome == TurnRules.OUTCOME_AWAITING_MOVE:
 		events.append(ValidMovesChangedEvent.create_from_turn(
 				command.player_id, next.turn, accepted_sequence))
-	elif outcome == TurnRules.OUTCOME_TURN_END:
-		var advance: Dictionary = _turn_rules.advance_from_turn_end(
-				next, accepted_sequence)
-		if advance.get("event") != null:
-			events.append(advance["event"])
+	else:
+		_append_turn_end_advance(next, outcome, accepted_sequence, events)
 
 	_sync_dice_from_turn(next, command.player_id)
 	next.capture_rng(rng)
@@ -322,15 +319,26 @@ func _apply_move_pawn(
 				before, next_pawn, accepted_sequence))
 
 	var outcome: StringName = _turn_rules.resolve_after_move(next.turn, false)
-	if outcome == TurnRules.OUTCOME_TURN_END:
-		var advance: Dictionary = _turn_rules.advance_from_turn_end(
-				next, accepted_sequence)
-		if advance.get("event") != null:
-			events.append(advance["event"])
+	_append_turn_end_advance(next, outcome, accepted_sequence, events)
 
 	_sync_dice_from_turn(next, command.player_id)
 	next.capture_rng(rng)
 	return CommandResult.ok(next, events)
+
+
+## TURN_END → advance_from_turn_end (TurnChanged / MATCH_FINISHED). Extra roll ≠ advance.
+func _append_turn_end_advance(
+		state: GameState,
+		outcome: StringName,
+		command_sequence: int,
+		events: Array
+) -> void:
+	if outcome != TurnRules.OUTCOME_TURN_END:
+		return
+	var advance: Dictionary = _turn_rules.advance_from_turn_end(
+			state, command_sequence)
+	if advance.get("event") != null:
+		events.append(advance["event"])
 
 
 ## Синхрон GameState.dice ↔ turn.dice_value след roll / advance.

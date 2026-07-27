@@ -7,7 +7,8 @@ extends RefCounted
 ##   - валидни преходи между TurnPhase;
 ##   - следващ активен играч (прескача класирани);
 ##   - опити в база и допълнително хвърляне при 6;
-##   - after-roll / after-move / after-power-up изход към следваща фаза.
+##   - after-roll / after-move / after-power-up изход към следваща фаза;
+##   - TURN_END → advance (TurnChanged) + tick на щитове на входящия играч.
 ##
 ## GameEngine вика тези методи; изчисляването на валидни пионки е в MoveRules (#95).
 ## MatchPhase.FINISHED се задава от FinishRules (#90) при OUTCOME_MATCH_FINISHED.
@@ -120,6 +121,15 @@ func begin_player_turn(
 	return true
 
 
+## Щитът важи до началото на следващия ход на притежателя (V1_GAME_DESIGN §4.3).
+func _tick_owner_shields(player: PlayerState) -> void:
+	if player == null:
+		return
+	for entry in player.pawns:
+		if entry is PawnState:
+			(entry as PawnState).tick_shield()
+
+
 ## След известен зар + валидни пионки (YEL-010–013 / YEL-042–045).
 ## Мутира turn; връща outcome StringName.
 func resolve_after_roll(
@@ -216,6 +226,9 @@ func advance_from_turn_end(
 	if next_index == GameState.ACTIVE_PLAYER_NONE:
 		state.turn.enter_match_finished()
 		return finished
+
+	# Щитът изтича в началото на хода на притежателя — преди AWAITING_ROLL.
+	_tick_owner_shields(state.get_player_by_index(next_index))
 
 	var next_turn_number: int = maxi(state.turn.turn_number + 1, 1)
 	if not begin_player_turn(state, next_index, next_turn_number):

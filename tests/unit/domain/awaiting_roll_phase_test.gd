@@ -126,7 +126,7 @@ func test_roll_with_pawn_on_board_uses_single_attempt_yel_004() -> void:
 	var result := _engine.validate_and_apply(state, cmd, rng)
 
 	assert_true(result.accepted)
-	# #95 още не валидира ходове по дъската → няма валидни пионки → TURN_END → next.
+	# Няма валиден ход (YEL-045 / overshoot) → TURN_END → следващ играч.
 	assert_true(result.state.turn.is_awaiting_roll())
 	assert_eq(result.state.active_player_index, 1)
 	assert_true(result.events[0] is DiceRolledEvent)

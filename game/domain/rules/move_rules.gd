@@ -8,7 +8,8 @@ extends RefCounted
 ##   - изчисляване на валидни пионки след зар;
 ##   - движение по общото трасе / home stretch (точен зар — без GAP-008 clamp).
 ##
-## Capture / stacks / FINISHED → отделни rules (#89+). Gift → RESOLVING_POWER_UP.
+## Capture / stacks / FINISHED → CaptureRules / StackRules / FinishRules.
+## Gift → RESOLVING_POWER_UP.
 
 
 const EXIT_BASE_VALUE: int = DiceState.EXIT_BASE_VALUE
