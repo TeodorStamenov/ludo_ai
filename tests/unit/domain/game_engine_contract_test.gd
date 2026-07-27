@@ -7,7 +7,7 @@ extends TestCase
 ##   - validate_and_apply → CommandResult; apply_command → Dictionary адаптер.
 ##   - §12: невалидна / отхвърлена команда не променя state или RNG.
 ##   - Envelope reject: wrong player, match finished, sequence mismatch.
-##   - Известни команди без handler → not_implemented (без RNG).
+##   - MovePawn без handler → not_implemented (без RNG).
 
 
 var _engine: GameEngine
@@ -127,7 +127,7 @@ func test_start_match_rejected_when_match_already_in_progress() -> void:
 	assert_eq(rng.get_state(), rng_before)
 
 
-func test_roll_dice_not_implemented_when_match_in_progress() -> void:
+func test_roll_dice_accepted_in_awaiting_roll() -> void:
 	var state := _setup_in_progress()
 	var before := state.duplicate_state()
 	var rng := SeededRandomSource.new(state.get_rng_seed())
@@ -137,10 +137,10 @@ func test_roll_dice_not_implemented_when_match_in_progress() -> void:
 
 	var result := _engine.validate_and_apply(state, cmd, rng)
 
-	assert_true(result.is_rejected())
-	assert_eq(result.error.code, CommandError.CODE_NOT_IMPLEMENTED)
-	assert_true(state.equals(before))
-	assert_eq(rng.get_state(), rng_before)
+	assert_true(result.accepted)
+	assert_true(result.events[0] is DiceRolledEvent)
+	assert_true(state.equals(before), "входният state не се мутира")
+	assert_false(rng.get_state() == rng_before, "приетият roll консумира RNG")
 
 
 func test_move_pawn_not_implemented_when_match_in_progress() -> void:

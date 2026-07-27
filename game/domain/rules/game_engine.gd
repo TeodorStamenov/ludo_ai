@@ -9,7 +9,6 @@ extends RefCounted
 ## FinishRules. Конкретните handlers се попълват от #84–#95.
 
 
-@warning_ignore("unused_private_class_variable")
 var _move_rules: MoveRules
 @warning_ignore("unused_private_class_variable")
 var _stack_rules: StackRules
@@ -168,13 +167,60 @@ func _apply_start_match(
 	return CommandResult.ok(next, events)
 
 
-## #91 / #86: RollDiceCommand → seeded зар + фаза AWAITING_ROLL.
+## RollDiceCommand в AWAITING_ROLL → seeded зар + TurnRules.resolve_after_roll
+## (YEL-010–013 / YEL-045). При TURN_END → advance към следващия играч.
 func _apply_roll_dice(
 		state: GameState,
-		_command: RollDiceCommand,
-		_rng: RandomSource
+		command: RollDiceCommand,
+		rng: RandomSource
 ) -> CommandResult:
-	return CommandResult.not_implemented(state, "RollDiceCommand")
+	if state.turn == null or not state.turn.allows_roll_dice():
+		return CommandResult.rejected(
+				state,
+				CommandError.wrong_phase(
+						"RollDiceCommand requires AWAITING_ROLL with roll_dice"))
+
+	var next: GameState = state.duplicate_state()
+	var player := next.get_active_player()
+	if player == null:
+		return CommandResult.rejected(
+				state,
+				CommandError.invalid_command("no active player for RollDiceCommand"))
+
+	var accepted_sequence: int = command.sequence
+	if accepted_sequence <= GameCommand.SEQUENCE_UNSET:
+		accepted_sequence = next.next_command_sequence()
+	if not next.record_accepted_command(accepted_sequence):
+		return CommandResult.rejected(
+				state,
+				CommandError.create(
+						CommandError.CODE_SEQUENCE_MISMATCH,
+						"RollDiceCommand sequence could not be recorded"))
+
+	var dice_value: int = rng.next_int(DiceState.VALUE_MIN, DiceState.VALUE_MAX)
+	var all_in_base: bool = _turn_rules.all_pawns_in_base(player)
+	var valid_pawns: Array = _move_rules.collect_valid_pawn_ids(
+			next, player, dice_value)
+	var outcome: StringName = _turn_rules.resolve_after_roll(
+			next.turn, dice_value, all_in_base, valid_pawns)
+
+	var events: Array = [
+		DiceRolledEvent.create_rolled(
+				command.player_id, dice_value, accepted_sequence),
+	]
+
+	if outcome == TurnRules.OUTCOME_AWAITING_MOVE:
+		events.append(ValidMovesChangedEvent.create_from_turn(
+				command.player_id, next.turn, accepted_sequence))
+	elif outcome == TurnRules.OUTCOME_TURN_END:
+		var advance: Dictionary = _turn_rules.advance_from_turn_end(
+				next, accepted_sequence)
+		if advance.get("event") != null:
+			events.append(advance["event"])
+
+	_sync_dice_from_turn(next, command.player_id)
+	next.capture_rng(rng)
+	return CommandResult.ok(next, events)
 
 
 ## #87 / #88: MovePawnCommand → движение / capture / stacks / finish.
@@ -184,6 +230,16 @@ func _apply_move_pawn(
 		_rng: RandomSource
 ) -> CommandResult:
 	return CommandResult.not_implemented(state, "MovePawnCommand")
+
+
+## Синхрон GameState.dice ↔ turn.dice_value след roll / advance.
+func _sync_dice_from_turn(state: GameState, player_id: StringName) -> void:
+	if state.dice == null:
+		state.dice = DiceState.create_none()
+	if state.turn != null and state.turn.has_dice_result():
+		state.dice.set_roll(player_id, state.turn.dice_value)
+	else:
+		state.dice.clear()
 
 
 static func _to_apply_dict(result: CommandResult) -> Dictionary:
