@@ -192,12 +192,108 @@ func test_session_active_before_match_finished() -> void:
 
 
 func test_snapshot_contains_required_keys() -> void:
-	var parts := _make_parts()
-	var session := _start(parts)
+	var session := _start_with_real_state()
 	var snap := session.to_snapshot()
-	assert_true("command_sequence" in snap, "snapshot must have command_sequence")
-	assert_true("rng_state" in snap, "snapshot must have rng_state")
-	assert_true("state" in snap, "snapshot must have state")
+	assert_true(snap.has(MatchSession.SNAPSHOT_KEY_SCHEMA_VERSION),
+			"snapshot must have schema_version")
+	assert_true(snap.has(MatchSession.SNAPSHOT_KEY_MATCH_ID),
+			"snapshot must have match_id")
+	assert_true(snap.has(MatchSession.SNAPSHOT_KEY_STATE),
+			"snapshot must have state")
+	assert_true(snap.has(MatchSession.SNAPSHOT_KEY_RNG_STATE),
+			"snapshot must have rng_state")
+	assert_true(snap.has(MatchSession.SNAPSHOT_KEY_COMMAND_SEQUENCE),
+			"snapshot must have command_sequence")
+	assert_true(snap.has(MatchSession.SNAPSHOT_KEY_STATE_HASH),
+			"snapshot must have state_hash")
+	assert_eq(int(snap[MatchSession.SNAPSHOT_KEY_SCHEMA_VERSION]),
+			MatchSession.SNAPSHOT_SCHEMA_VERSION)
+
+
+func test_snapshot_state_round_trip_preserves_hash() -> void:
+	## Критичен инвариант за resume (#130): state в snapshot → from_dict без загуба.
+	var session := _start_with_real_state()
+	var snap := session.to_snapshot()
+	assert_true(MatchSession.is_snapshot_valid(snap),
+			"fresh to_snapshot() must be valid")
+	var restored := GameState.from_dict(snap[MatchSession.SNAPSHOT_KEY_STATE])
+	assert_true(session.get_state().equals(restored),
+			"snapshot state must round-trip without loss")
+	assert_eq(session.get_state().compute_hash(),
+			int(snap[MatchSession.SNAPSHOT_KEY_STATE_HASH]),
+			"state_hash must match live GameState")
+	assert_eq(session.get_state().command_sequence,
+			int(snap[MatchSession.SNAPSHOT_KEY_COMMAND_SEQUENCE]))
+	assert_eq(String(session.get_state().match_id),
+			str(snap[MatchSession.SNAPSHOT_KEY_MATCH_ID]))
+
+
+func test_snapshot_rng_matches_live_rng() -> void:
+	var session := _start_with_real_state()
+	var snap := session.to_snapshot()
+	var live_rng := session.get_rng().get_state()
+	var snap_rng: Dictionary = snap[MatchSession.SNAPSHOT_KEY_RNG_STATE]
+	assert_eq(str(snap_rng.get("seed", "")), str(live_rng.get("seed", "")),
+			"snapshot rng seed must match live RNG")
+	assert_eq(str(snap_rng.get("state", "")), str(live_rng.get("state", "")),
+			"snapshot rng state must match live RNG")
+
+
+func test_last_stable_snapshot_updated_after_events_presented() -> void:
+	var session := _start_with_real_state()
+	assert_true(session.get_last_stable_snapshot().is_empty(),
+			"no stable snapshot while presentation is pending")
+	session.events_presented(session.get_pending_sequence())
+	var stable := session.get_last_stable_snapshot()
+	assert_false(stable.is_empty(),
+			"events_presented must capture last stable snapshot")
+	assert_true(MatchSession.is_snapshot_valid(stable),
+			"stable snapshot must be valid payload")
+	assert_eq(int(stable[MatchSession.SNAPSHOT_KEY_COMMAND_SEQUENCE]),
+			session.get_state().command_sequence)
+
+
+func test_is_snapshot_valid_rejects_incomplete_payload() -> void:
+	assert_false(MatchSession.is_snapshot_valid({}),
+			"empty dict is invalid")
+	assert_false(MatchSession.is_snapshot_valid({
+		MatchSession.SNAPSHOT_KEY_SCHEMA_VERSION: MatchSession.SNAPSHOT_SCHEMA_VERSION,
+		MatchSession.SNAPSHOT_KEY_STATE: {},
+	}), "empty nested state is invalid")
+	var session := _start_with_real_state()
+	var snap := session.to_snapshot()
+	snap[MatchSession.SNAPSHOT_KEY_COMMAND_SEQUENCE] = (
+			int(snap[MatchSession.SNAPSHOT_KEY_COMMAND_SEQUENCE]) + 99)
+	assert_false(MatchSession.is_snapshot_valid(snap),
+			"diverged command_sequence must invalidate snapshot")
+
+
+func _start_with_real_state() -> MatchSession:
+	MatchId._reset_counter_for_tests()
+	var config := _make_valid_two_player_config()
+	var state := GameState.create_from_match_config(config)
+	var rng := SeededRandomSource.new(config.rng_seed)
+	var engine := StubEngine.new()
+	engine.set_next_events([])
+	var p1: StringName = config.seats[0].player_id
+	var p2: StringName = config.seats[1].player_id
+	var controllers: Dictionary = {
+		p1: HumanController.new(p1),
+		p2: AIController.new(p2, EasyAIPolicy.new()),
+	}
+	var session := MatchSession.new()
+	session.start(config, state, engine, rng, controllers, EventQueue.new())
+	return session
+
+
+func _make_valid_two_player_config() -> MatchConfig:
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 42
+	cfg.set_active_seats(MatchConfig.DEFAULT_SEATS_2P)
+	cfg.seats[0].configure(MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
+	cfg.seats[1].configure(
+			MatchConfig.ControllerType.AI, AnimalId.RABBIT, AIDifficulty.EASY)
+	return cfg
 
 
 func test_event_queue_populated_after_command() -> void:

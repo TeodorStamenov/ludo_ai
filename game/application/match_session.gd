@@ -14,13 +14,28 @@ extends RefCounted
 ##     events_presented(sequence) — без да прехвърля правилата към анимацията;
 ##   - след потвърждение прогресира автоматично: задейства AI или
 ##     сигнализира Presentation за очакван human input;
-##   - прави snapshot след стабилна фаза (за save/restore);
+##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
+##
+## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
+## is_snapshot_valid(), get_last_stable_snapshot() — payload за active_match.json.
+## Възстановяване от snapshot е отделна задача (#130).
 
 signal events_published(sequence: int, events: Array)
 signal match_finished(summary: Dictionary)
 signal awaiting_human_action(player_id: StringName, state_view: Dictionary, legal_actions: Array)
 signal command_rejected(command: GameCommand, reason: String)
+
+## Snapshot payload за SaveRepository.active_match (§5.2 / §9 / §11).
+## LocalSaveRepository обвива с envelope {schema_version, saved_at, payload}.
+const SNAPSHOT_SCHEMA_VERSION := 1
+
+const SNAPSHOT_KEY_SCHEMA_VERSION := "schema_version"
+const SNAPSHOT_KEY_MATCH_ID := "match_id"
+const SNAPSHOT_KEY_STATE := "state"
+const SNAPSHOT_KEY_RNG_STATE := "rng_state"
+const SNAPSHOT_KEY_COMMAND_SEQUENCE := "command_sequence"
+const SNAPSHOT_KEY_STATE_HASH := "state_hash"
 
 var _config: MatchConfig = null
 var _state: GameState = null
@@ -178,21 +193,85 @@ func get_last_stable_snapshot() -> Dictionary:
 	return _last_stable_snapshot.duplicate(true)
 
 
+## JSON-safe snapshot на текущия мач за save / resume / divergence (§5.2 / §9).
+## Синхронизира GameState.rng_state ← жив RNG преди export, за да няма drift.
+## Не пише във файлова система — потребителят подава към SaveRepository.
 func to_snapshot() -> Dictionary:
-	# rng_state / command_sequence идват от GameState (source of truth).
+	if _state != null and _rng != null:
+		_state.capture_rng(_rng)
+
+	var state_dict: Dictionary = {}
+	var match_id_str := ""
+	var sequence := GameState.COMMAND_SEQUENCE_START
 	var snap_rng: Dictionary = {}
+	var state_hash := 0
 	if _state != null:
+		state_dict = _state.to_dict()
+		match_id_str = String(_state.match_id)
+		sequence = _state.command_sequence
 		snap_rng = _state.rng_state.duplicate(true)
+		state_hash = _state.compute_hash()
 	elif _rng != null:
 		snap_rng = _rng.get_state()
+
 	return {
-		"schema_version": 1,
-		"state": _state.to_dict() if _state != null else {},
-		"rng_state": snap_rng,
-		"command_sequence": (
-				_state.command_sequence if _state != null
-				else GameState.COMMAND_SEQUENCE_START),
+		SNAPSHOT_KEY_SCHEMA_VERSION: SNAPSHOT_SCHEMA_VERSION,
+		SNAPSHOT_KEY_MATCH_ID: match_id_str,
+		SNAPSHOT_KEY_STATE: state_dict,
+		SNAPSHOT_KEY_RNG_STATE: snap_rng,
+		SNAPSHOT_KEY_COMMAND_SEQUENCE: sequence,
+		SNAPSHOT_KEY_STATE_HASH: state_hash,
 	}
+
+
+## Компактен JSON низ на to_snapshot() за persistence / bug report.
+func to_snapshot_json() -> String:
+	return JSON.stringify(to_snapshot())
+
+
+## True ако payload-ът има договорните ключове и вложеният GameState е валиден
+## и съгласуван с top-level match_id / command_sequence / state_hash.
+## Restore (#130) ползва това преди GameState.from_dict.
+static func is_snapshot_valid(snapshot: Dictionary) -> bool:
+	if snapshot.is_empty():
+		return false
+	if int(snapshot.get(SNAPSHOT_KEY_SCHEMA_VERSION, 0)) != SNAPSHOT_SCHEMA_VERSION:
+		return false
+	var state_data: Variant = snapshot.get(SNAPSHOT_KEY_STATE, null)
+	if not (state_data is Dictionary) or (state_data as Dictionary).is_empty():
+		return false
+	var state := GameState.from_dict(state_data as Dictionary)
+	if state == null or not state.is_valid():
+		return false
+	if snapshot.has(SNAPSHOT_KEY_MATCH_ID):
+		if StringName(str(snapshot[SNAPSHOT_KEY_MATCH_ID])) != state.match_id:
+			return false
+	if snapshot.has(SNAPSHOT_KEY_COMMAND_SEQUENCE):
+		if int(snapshot[SNAPSHOT_KEY_COMMAND_SEQUENCE]) != state.command_sequence:
+			return false
+	if snapshot.has(SNAPSHOT_KEY_RNG_STATE):
+		var top_rng: Variant = snapshot[SNAPSHOT_KEY_RNG_STATE]
+		if not (top_rng is Dictionary):
+			return false
+		if not _rng_dicts_equal(state.rng_state, top_rng as Dictionary):
+			return false
+	if snapshot.has(SNAPSHOT_KEY_STATE_HASH):
+		if int(snapshot[SNAPSHOT_KEY_STATE_HASH]) != state.compute_hash():
+			return false
+	return true
+
+
+static func _rng_dicts_equal(a: Dictionary, b: Dictionary) -> bool:
+	if a.is_empty() and b.is_empty():
+		return true
+	if a.size() != b.size():
+		return false
+	for key in a:
+		if not b.has(key):
+			return false
+		if str(a[key]) != str(b[key]):
+			return false
+	return true
 
 
 func _get_active_player_id() -> StringName:
