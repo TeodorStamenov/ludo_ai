@@ -6,7 +6,7 @@ extends RefCounted
 ## При reject state и RNG остават непроменени (§12).
 ##
 ## Делегира правилата на MoveRules / StackRules / CaptureRules / TurnRules /
-## FinishRules. Конкретните handlers се попълват от #84–#95.
+## FinishRules. RollDice ползва само инжектирания RandomSource (#91 / §4.5).
 
 
 var _move_rules: MoveRules
@@ -166,8 +166,9 @@ func _apply_start_match(
 	return CommandResult.ok(next, events)
 
 
-## RollDiceCommand в AWAITING_ROLL → seeded зар + TurnRules.resolve_after_roll
-## (YEL-010–013 / YEL-045). При TURN_END → advance към следващия играч.
+## RollDiceCommand (#91): намерение без dice value; лицето идва от инжектирания
+## SeededRandomSource (§4.3 / §4.5). TurnRules.resolve_after_roll (YEL-010–013 /
+## YEL-045); при TURN_END → advance. Reject не консумира RNG (§12).
 func _apply_roll_dice(
 		state: GameState,
 		command: RollDiceCommand,
@@ -196,6 +197,7 @@ func _apply_roll_dice(
 						CommandError.CODE_SEQUENCE_MISMATCH,
 						"RollDiceCommand sequence could not be recorded"))
 
+	# Клиентът не изпраща лице — авторитетният RNG генерира 1–6.
 	var dice_value: int = rng.next_int(DiceState.VALUE_MIN, DiceState.VALUE_MAX)
 	var all_in_base: bool = _turn_rules.all_pawns_in_base(player)
 	var valid_pawns: Array = _move_rules.collect_valid_pawn_ids(
