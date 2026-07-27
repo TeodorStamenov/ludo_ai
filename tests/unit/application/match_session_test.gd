@@ -219,8 +219,8 @@ func test_snapshot_state_round_trip_preserves_hash() -> void:
 	var restored := GameState.from_dict(snap[MatchSession.SNAPSHOT_KEY_STATE])
 	assert_true(session.get_state().equals(restored),
 			"snapshot state must round-trip without loss")
-	assert_eq(session.get_state().compute_hash(),
-			int(snap[MatchSession.SNAPSHOT_KEY_STATE_HASH]),
+	assert_eq(str(session.get_state().compute_hash()),
+			str(snap[MatchSession.SNAPSHOT_KEY_STATE_HASH]),
 			"state_hash must match live GameState")
 	assert_eq(session.get_state().command_sequence,
 			int(snap[MatchSession.SNAPSHOT_KEY_COMMAND_SEQUENCE]))
@@ -266,6 +266,92 @@ func test_is_snapshot_valid_rejects_incomplete_payload() -> void:
 			int(snap[MatchSession.SNAPSHOT_KEY_COMMAND_SEQUENCE]) + 99)
 	assert_false(MatchSession.is_snapshot_valid(snap),
 			"diverged command_sequence must invalidate snapshot")
+
+
+func test_restore_from_snapshot_preserves_state_hash_and_rng() -> void:
+	## Критичен инвариант (#130 / §9 / §16.2): snapshot → restore без загуба.
+	var live := _start_real_match_stable()
+	var snap := live.to_snapshot()
+	var hash_before := live.get_state().compute_hash()
+	var seq_before := live.get_state().command_sequence
+	var rng_before: Dictionary = live.get_rng().get_state().duplicate(true)
+	var match_id_before := live.get_state().match_id
+
+	var restored := MatchFactory.new().create_from_snapshot(snap)
+	assert_not_null(restored, "create_from_snapshot must accept valid payload")
+	assert_true(restored.is_active(), "IN_PROGRESS match stays active after restore")
+	assert_false(restored.is_presentation_pending(),
+			"restore lands in stable phase")
+	assert_true(live.get_state().equals(restored.get_state()),
+			"restored GameState must equal live state")
+	assert_eq(hash_before, restored.get_state().compute_hash())
+	assert_eq(seq_before, restored.get_state().command_sequence)
+	assert_eq(match_id_before, restored.get_state().match_id)
+	var rng_after: Dictionary = restored.get_rng().get_state()
+	assert_eq(str(rng_before.get("seed", "")), str(rng_after.get("seed", "")))
+	assert_eq(str(rng_before.get("state", "")), str(rng_after.get("state", "")))
+	assert_true(MatchSession.is_snapshot_valid(restored.get_last_stable_snapshot()),
+			"restore must seed last_stable_snapshot")
+
+
+func test_restore_from_snapshot_rejects_invalid_without_mutation() -> void:
+	var session := MatchSession.new()
+	assert_false(session.restore_from_snapshot({}),
+			"empty snapshot must be rejected")
+	assert_false(session.is_active())
+	assert_true(session.get_state() == null,
+			"failed restore must not bind GameState")
+	assert_true(MatchFactory.new().create_from_snapshot({}) == null,
+			"factory must return null for invalid snapshot")
+
+
+func test_restore_from_snapshot_continues_accepting_commands() -> void:
+	## Resume: следващата команда се приема със същия sequence timeline.
+	var live := _start_real_match_stable()
+	var snap := live.to_snapshot()
+	var restored := MatchFactory.new().create_from_snapshot(snap)
+	assert_not_null(restored)
+	var seq_before := restored.get_state().command_sequence
+	var active_id := restored.get_state().get_active_player_id()
+	assert_false(active_id.is_empty())
+
+	restored.receive_command(RollDiceCommand.new(active_id))
+	assert_true(restored.is_presentation_pending(),
+			"roll after restore must be accepted")
+	assert_eq(restored.get_state().command_sequence, seq_before + 1,
+			"command_sequence must advance from restored baseline")
+
+
+func test_restore_from_snapshot_json_round_trip() -> void:
+	var live := _start_real_match_stable()
+	var json_text := live.to_snapshot_json()
+	var parsed: Variant = JSON.parse_string(json_text)
+	assert_true(parsed is Dictionary)
+	assert_true(MatchSession.is_snapshot_valid(parsed as Dictionary),
+			"JSON round-trip must keep snapshot valid (string state_hash)")
+
+	var blank := MatchSession.new()
+	assert_false(blank.restore_from_snapshot_json("{"),
+			"malformed JSON must fail")
+	assert_false(blank.restore_from_snapshot_json("{}"),
+			"empty JSON object must fail validation")
+
+	var restored := MatchFactory.new().create_from_snapshot(parsed as Dictionary)
+	assert_not_null(restored)
+	assert_true(live.get_state().equals(restored.get_state()))
+	assert_eq(
+			str(live.get_state().compute_hash()),
+			str(restored.to_snapshot()[MatchSession.SNAPSHOT_KEY_STATE_HASH]))
+
+
+func _start_real_match_stable() -> MatchSession:
+	MatchId._reset_counter_for_tests()
+	var session := MatchFactory.new().create(_make_valid_two_player_config())
+	assert_true(session.is_presentation_pending())
+	session.events_presented(session.get_pending_sequence())
+	assert_false(session.is_presentation_pending())
+	assert_true(session.is_active())
+	return session
 
 
 func _start_with_real_state() -> MatchSession:

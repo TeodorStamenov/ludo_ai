@@ -15,11 +15,12 @@ extends RefCounted
 ##   - след потвърждение прогресира автоматично: задейства AI или
 ##     сигнализира Presentation за очакван human input;
 ##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
+##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
-## is_snapshot_valid(), get_last_stable_snapshot() — payload за active_match.json.
-## Възстановяване от snapshot е отделна задача (#130).
+## is_snapshot_valid(), get_last_stable_snapshot(), restore_from_snapshot(),
+## restore_from_snapshot_json() — payload за active_match.json / resume.
 
 signal events_published(sequence: int, events: Array)
 signal match_finished(summary: Dictionary)
@@ -220,7 +221,8 @@ func to_snapshot() -> Dictionary:
 		SNAPSHOT_KEY_STATE: state_dict,
 		SNAPSHOT_KEY_RNG_STATE: snap_rng,
 		SNAPSHOT_KEY_COMMAND_SEQUENCE: sequence,
-		SNAPSHOT_KEY_STATE_HASH: state_hash,
+		# String — JSON number губи int64 precision (IEEE-754).
+		SNAPSHOT_KEY_STATE_HASH: str(state_hash),
 	}
 
 
@@ -231,7 +233,7 @@ func to_snapshot_json() -> String:
 
 ## True ако payload-ът има договорните ключове и вложеният GameState е валиден
 ## и съгласуван с top-level match_id / command_sequence / state_hash.
-## Restore (#130) ползва това преди GameState.from_dict.
+## restore_from_snapshot() ползва това преди GameState.from_dict.
 static func is_snapshot_valid(snapshot: Dictionary) -> bool:
 	if snapshot.is_empty():
 		return false
@@ -242,6 +244,8 @@ static func is_snapshot_valid(snapshot: Dictionary) -> bool:
 		return false
 	var state := GameState.from_dict(state_data as Dictionary)
 	if state == null or not state.is_valid():
+		return false
+	if state.match_config == null or not state.match_config.is_valid():
 		return false
 	if snapshot.has(SNAPSHOT_KEY_MATCH_ID):
 		if StringName(str(snapshot[SNAPSHOT_KEY_MATCH_ID])) != state.match_id:
@@ -256,9 +260,64 @@ static func is_snapshot_valid(snapshot: Dictionary) -> bool:
 		if not _rng_dicts_equal(state.rng_state, top_rng as Dictionary):
 			return false
 	if snapshot.has(SNAPSHOT_KEY_STATE_HASH):
-		if int(snapshot[SNAPSHOT_KEY_STATE_HASH]) != state.compute_hash():
+		if str(snapshot[SNAPSHOT_KEY_STATE_HASH]) != str(state.compute_hash()):
 			return false
 	return true
+
+
+## Възстановява MatchSession от snapshot payload (§5.2 / §9 / #130).
+## Без StartMatchCommand — запазва GameState, RNG и command_sequence.
+## При невалиден snapshot връща false и не мутира session (§12).
+## След успех: стабилна фаза (без presentation pending); при IN_PROGRESS вика _advance().
+func restore_from_snapshot(
+		snapshot: Dictionary,
+		engine: GameEngine = null,
+		rng: RandomSource = null,
+		controllers: Dictionary = {},
+		event_queue: EventQueue = null
+) -> bool:
+	if not is_snapshot_valid(snapshot):
+		return false
+	var state := GameState.from_dict(snapshot[SNAPSHOT_KEY_STATE] as Dictionary)
+	if state == null or state.match_config == null or not state.match_config.is_valid():
+		return false
+
+	_config = state.match_config.duplicate_config()
+	_state = state
+	_engine = engine if engine != null else GameEngine.new()
+	_controllers = controllers
+	_event_queue = event_queue if event_queue != null else EventQueue.new()
+	_pending_sequence = -1
+	_active = _state.is_in_progress()
+	_last_stable_snapshot = snapshot.duplicate(true)
+
+	if rng != null:
+		_rng = rng
+		if not _state.restore_rng(_rng):
+			push_warning("MatchSession: restore_from_snapshot rng sync failed")
+			_rng = _state.create_random_source_from_state()
+	else:
+		_rng = _state.create_random_source_from_state()
+
+	_setup_command_bus()
+	if _active:
+		_advance()
+	return true
+
+
+## JSON текст → restore_from_snapshot. Невалиден JSON / payload → false.
+func restore_from_snapshot_json(
+		text: String,
+		engine: GameEngine = null,
+		rng: RandomSource = null,
+		controllers: Dictionary = {},
+		event_queue: EventQueue = null
+) -> bool:
+	var parsed: Variant = JSON.parse_string(text)
+	if not (parsed is Dictionary):
+		return false
+	return restore_from_snapshot(
+			parsed as Dictionary, engine, rng, controllers, event_queue)
 
 
 static func _rng_dicts_equal(a: Dictionary, b: Dictionary) -> bool:
