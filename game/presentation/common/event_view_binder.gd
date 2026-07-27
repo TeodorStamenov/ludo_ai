@@ -6,8 +6,8 @@ extends RefCounted
 ## `present_for_playback()` — async за AnimationQueue (#168): стартира
 ## анимация и чака `animation_finished` чрез AnimationFinishedGate (#169).
 ## DiceRolled → present_dice_rolled + gate(KIND_ROLL).
-## PawnMoved → hop към to_cell след приет MovePawnCommand (#171 / YEL-023).
-## Клетъчна стъпка по стъпка остава #172; exit-base / home / finish — #173+.
+## PawnMoved → hop клетка по клетка по маршрута (#172 / YEL-040) след приет
+## MovePawnCommand (#171 / YEL-023). Exit-base / home / finish tween — #173+.
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -147,23 +147,62 @@ func _present_pawn_moved(event: PawnMovedEvent) -> void:
 	pawn.present_pawn_moved(event, target)
 
 
-## Hop след приет MovePawnCommand (#171). Само PawnMoved мести визуално;
-## кликът в Presenter само праща команда. Busy pawn → snap (без deadlock).
+## Hop клетка по клетка след приет MovePawnCommand (#172 / YEL-040).
+## Само PawnMoved мести визуално; кликът в Presenter само праща команда.
+## Busy pawn → snap към to_cell (без deadlock). KIND_MOVE едва след последната стъпка.
 func _present_pawn_moved_animated(event: PawnMovedEvent) -> void:
 	if event == null or not event.is_valid():
 		return
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
-	var target: Vector2 = _local_for_pawn(pawn, event.to_cell_id)
+	var step_cell_ids: Array[StringName] = _resolve_move_step_cell_ids(event)
+	var step_locals: Array[Vector2] = []
+	for cell_id in step_cell_ids:
+		step_locals.append(_local_for_pawn(pawn, cell_id))
+	if step_cell_ids.is_empty() or step_locals.is_empty():
+		return
 	if not pawn.is_moving:
 		await AnimationFinishedGate.await_started(
 				pawn,
 				PawnView.KIND_MOVE,
-				pawn.present_pawn_moved_animated.bind(event, target)
+				pawn.present_pawn_moved_animated.bind(event, step_cell_ids, step_locals)
 		)
 	else:
-		pawn.present_pawn_moved(event, target)
+		pawn.present_pawn_moved(event, step_locals[step_locals.size() - 1])
+
+
+## Exclusive-from → inclusive-to по player route (board геометрия, не MoveRules).
+## Finish към CENTER: остатъкът от маршрута + център. Непоследователен скок → само to_cell.
+func _resolve_move_step_cell_ids(event: PawnMovedEvent) -> Array[StringName]:
+	var cells: Array[StringName] = []
+	if event == null:
+		return cells
+	var route: Array[StringName] = _player_route_for(event.get_player_id())
+	var from_idx: int = route.find(event.from_cell_id)
+	if CellId.is_center(event.to_cell_id) or event.zone == PawnZone.FINISHED:
+		if from_idx >= 0:
+			for i in range(from_idx + 1, route.size()):
+				cells.append(route[i])
+		cells.append(CellId.CENTER)
+		return cells
+	var to_idx: int = route.find(event.to_cell_id)
+	if from_idx < 0 or to_idx < 0 or to_idx <= from_idx:
+		cells.append(event.to_cell_id)
+		return cells
+	for i in range(from_idx + 1, to_idx + 1):
+		cells.append(route[i])
+	return cells
+
+
+func _player_route_for(player_id: StringName) -> Array[StringName]:
+	if _board_view != null and is_instance_valid(_board_view):
+		var definition: BoardDefinition = _board_view.get_board_definition()
+		if definition != null:
+			var route: Array[StringName] = definition.build_player_route(player_id)
+			if not route.is_empty():
+				return route
+	return Classic15x15Board.player_route_cell_ids_for(player_id)
 
 
 func _present_pawn_exited_base(event: PawnExitedBaseEvent) -> void:

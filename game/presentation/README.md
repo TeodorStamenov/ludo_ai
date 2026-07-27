@@ -38,10 +38,11 @@ Domain не чака tween. Presentation потвърждава след вся�
 `PawnView.show_valid_move()` само за `valid_pawn_ids` (human seats); празен
 списък изчиства bob-а. Невалидните пионки не подскачат.
 
-`PawnMoved` (#171 / YEL-023): кликът праща само `MovePawnCommand`; визуалният
-hop към `to_cell_id` тръгва едва след приет команда → `PawnMovedEvent`.
+`PawnMoved` (#171 / YEL-023): кликът праща само `MovePawnCommand`; визуалното
+движение тръгва едва след приет команда → `PawnMovedEvent`.
 Отхвърлена команда → `command_rejected` → input се възстановява, пионката
-стои. Клетъчна анимация стъпка по стъпка е #172.
+стои. Hop клетка по клетка по маршрута (#172 / YEL-040); `KIND_MOVE` едва
+след последната клетка.
 
 ## .tscn сцени
 

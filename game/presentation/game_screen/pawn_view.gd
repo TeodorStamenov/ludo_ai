@@ -27,6 +27,8 @@ const SELECTED_SCALE := 1.12
 const SELECTED_PULSE_DURATION := 0.45
 const SELECTED_MODULATE := Color(1.45, 1.35, 0.75, 1.0)
 const MOVE_HOP_PX := 10.0
+## Продължителност на един hop между съседни клетки (YEL-040 / yellow prototype).
+const STEP_DURATION := 0.18
 const HOME_DURATION := 0.55
 const HOME_SCALE_MIN := 0.82
 const HOME_MODULATE := Color(0.88, 0.90, 1.0, 0.85)
@@ -166,15 +168,34 @@ func present_pawn_moved(event: PawnMovedEvent, local_target: Vector2) -> void:
 	_apply_cell_pose(event.to_cell_id, local_target)
 
 
-## Hop към to_cell след приет MovePawnCommand (#171 / YEL-023).
-## Емитира animation_finished(KIND_MOVE); клетъчна стъпка по стъпка е #172.
-func present_pawn_moved_animated(event: PawnMovedEvent, local_target: Vector2) -> void:
+## Hop клетка по клетка след приет MovePawnCommand (#172 / YEL-040).
+## step_cell_ids / step_locals са exclusive-from → inclusive-to по маршрута.
+## Емитира animation_finished(KIND_MOVE) веднъж след последната клетка (#169).
+func present_pawn_moved_animated(
+		event: PawnMovedEvent,
+		step_cell_ids: Array[StringName],
+		step_locals: Array[Vector2]
+) -> void:
 	if event == null or not event.is_valid():
 		return
-	if CellId.is_valid(event.to_cell_id):
-		grid_pos = CellId.to_vec(event.to_cell_id)
-		z_index = grid_pos.x + grid_pos.y + 1
-	await move_to_local(local_target)
+	var count: int = mini(step_cell_ids.size(), step_locals.size())
+	if count <= 0:
+		return
+	_prepare_for_action()
+	_stop_action_tween()
+	is_moving = true
+	for i in count:
+		var cell_id: StringName = step_cell_ids[i]
+		if CellId.is_valid(cell_id):
+			grid_pos = CellId.to_vec(cell_id)
+			z_index = grid_pos.x + grid_pos.y + 1
+		await _tween_hop_to(step_locals[i], STEP_DURATION)
+	var final_local: Vector2 = step_locals[count - 1]
+	_rest_position = final_local
+	position = final_local
+	_action_tween = null
+	is_moving = false
+	animation_finished.emit(KIND_MOVE)
 
 
 ## Instant apply от PawnExitedBaseEvent (#167). Анимация на излизане е #173.
@@ -217,11 +238,22 @@ func _apply_cell_pose(cell_id: StringName, local_target: Vector2) -> void:
 	set_rest_position(local_target)
 
 
-## Ход по дъската: лек hop към local_target, после rest + animation_finished.
+## Единичен hop към local_target, после rest + animation_finished.
+## За клетъчна поредица ползвай present_pawn_moved_animated (#172).
 func move_to_local(local_target: Vector2, duration: float = 0.28) -> void:
 	_prepare_for_action()
 	_stop_action_tween()
 	is_moving = true
+	await _tween_hop_to(local_target, duration)
+	_rest_position = local_target
+	position = local_target
+	_action_tween = null
+	is_moving = false
+	animation_finished.emit(KIND_MOVE)
+
+
+## Един hop tween без emit — междинна стъпка или сграден блок за move_to_local.
+func _tween_hop_to(local_target: Vector2, duration: float) -> void:
 	var start: Vector2 = position
 	var mid: Vector2 = (start + local_target) * 0.5
 	mid.y -= MOVE_HOP_PX
@@ -235,11 +267,6 @@ func move_to_local(local_target: Vector2, duration: float = 0.28) -> void:
 		.set_trans(Tween.TRANS_QUAD)\
 		.set_ease(Tween.EASE_IN)
 	await _action_tween.finished
-	_rest_position = local_target
-	position = local_target
-	_action_tween = null
-	is_moving = false
-	animation_finished.emit(KIND_MOVE)
 
 
 ## Меко „прибиране вкъщи да подремне“ (PawnSentHome) — shrink + settle в базата.
