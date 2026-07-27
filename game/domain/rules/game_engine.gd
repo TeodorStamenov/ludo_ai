@@ -223,13 +223,88 @@ func _apply_roll_dice(
 	return CommandResult.ok(next, events)
 
 
-## #87 / #88: MovePawnCommand → движение / capture / stacks / finish.
+## MovePawnCommand в AWAITING_MOVE (#87): валидация + exit-base MVP (YEL-030/032).
+## Path / capture / stacks / finish → #88 / #95.
 func _apply_move_pawn(
 		state: GameState,
-		_command: MovePawnCommand,
-		_rng: RandomSource
+		command: MovePawnCommand,
+		rng: RandomSource
 ) -> CommandResult:
-	return CommandResult.not_implemented(state, "MovePawnCommand")
+	if state.turn == null or not state.turn.allows_move_pawn():
+		return CommandResult.rejected(
+				state,
+				CommandError.wrong_phase(
+						"MovePawnCommand requires AWAITING_MOVE with move_pawn"))
+
+	if not state.turn.has_valid_pawn(command.pawn_id):
+		return CommandResult.rejected(
+				state,
+				CommandError.illegal_move(
+						"pawn_id is not in turn.valid_pawn_ids"))
+
+	var player := state.get_active_player()
+	if player == null:
+		return CommandResult.rejected(
+				state,
+				CommandError.invalid_command("no active player for MovePawnCommand"))
+
+	var pawn := player.get_pawn(command.pawn_id)
+	if pawn == null:
+		return CommandResult.rejected(
+				state,
+				CommandError.create(
+						CommandError.CODE_UNKNOWN_PAWN,
+						"pawn_id not found on active player"))
+
+	# #87 MVP: само излизане от база. Ходове по дъската → #88 / #95.
+	if not pawn.is_in_base():
+		return CommandResult.not_implemented(
+				state, "MovePawnCommand board path (#88/#95)")
+
+	var next: GameState = state.duplicate_state()
+	var next_player := next.get_active_player()
+	var next_pawn := next_player.get_pawn(command.pawn_id)
+	if next_player == null or next_pawn == null:
+		return CommandResult.rejected(
+				state,
+				CommandError.invalid_command("MovePawnCommand lost pawn after duplicate"))
+
+	var accepted_sequence: int = command.sequence
+	if accepted_sequence <= GameCommand.SEQUENCE_UNSET:
+		accepted_sequence = next.next_command_sequence()
+	if not next.record_accepted_command(accepted_sequence):
+		return CommandResult.rejected(
+				state,
+				CommandError.create(
+						CommandError.CODE_SEQUENCE_MISMATCH,
+						"MovePawnCommand sequence could not be recorded"))
+
+	if not _turn_rules.begin_resolving_move(next.turn):
+		return CommandResult.rejected(
+				state,
+				CommandError.wrong_phase("could not enter RESOLVING_MOVE"))
+
+	var before := next_pawn.duplicate_state()
+	if not _move_rules.apply_exit_base(
+			next, next_player, next_pawn, next.turn.dice_value):
+		return CommandResult.rejected(
+				state,
+				CommandError.illegal_move("exit base could not be applied"))
+
+	var events: Array = [
+		PawnExitedBaseEvent.create_from_states(before, next_pawn, accepted_sequence),
+	]
+
+	var outcome: StringName = _turn_rules.resolve_after_move(next.turn, false)
+	if outcome == TurnRules.OUTCOME_TURN_END:
+		var advance: Dictionary = _turn_rules.advance_from_turn_end(
+				next, accepted_sequence)
+		if advance.get("event") != null:
+			events.append(advance["event"])
+
+	_sync_dice_from_turn(next, command.player_id)
+	next.capture_rng(rng)
+	return CommandResult.ok(next, events)
 
 
 ## Синхрон GameState.dice ↔ turn.dice_value след roll / advance.

@@ -40,6 +40,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/game_engine_contract_test.gd",
 	"res://tests/unit/domain/start_match_handling_test.gd",
 	"res://tests/unit/domain/awaiting_roll_phase_test.gd",
+	"res://tests/unit/domain/awaiting_move_phase_test.gd",
 	"res://tests/unit/domain/game_command_test.gd",
 	"res://tests/unit/domain/start_match_command_test.gd",
 	"res://tests/unit/domain/roll_dice_command_test.gd",

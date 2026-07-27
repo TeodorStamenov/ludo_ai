@@ -7,7 +7,7 @@ extends TestCase
 ##   - validate_and_apply → CommandResult; apply_command → Dictionary адаптер.
 ##   - §12: невалидна / отхвърлена команда не променя state или RNG.
 ##   - Envelope reject: wrong player, match finished, sequence mismatch.
-##   - MovePawn без handler → not_implemented (без RNG).
+##   - MovePawn извън AWAITING_MOVE → wrong_phase (без RNG).
 
 
 var _engine: GameEngine
@@ -143,7 +143,7 @@ func test_roll_dice_accepted_in_awaiting_roll() -> void:
 	assert_false(rng.get_state() == rng_before, "приетият roll консумира RNG")
 
 
-func test_move_pawn_not_implemented_when_match_in_progress() -> void:
+func test_move_pawn_wrong_phase_when_awaiting_roll() -> void:
 	var state := _setup_in_progress()
 	var active := state.get_active_player()
 	var pawn_id: StringName = (active.pawns[0] as PawnState).pawn_id
@@ -156,7 +156,7 @@ func test_move_pawn_not_implemented_when_match_in_progress() -> void:
 	var result := _engine.validate_and_apply(state, cmd, rng)
 
 	assert_true(result.is_rejected())
-	assert_eq(result.error.code, CommandError.CODE_NOT_IMPLEMENTED)
+	assert_eq(result.error.code, CommandError.CODE_WRONG_PHASE)
 	assert_true(state.equals(before))
 	assert_eq(rng.get_state(), rng_before)
 
