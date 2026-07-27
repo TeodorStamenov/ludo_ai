@@ -160,6 +160,61 @@ func test_create_with_rank_order_assigns_ranks() -> void:
 	assert_true(result.is_valid())
 
 
+func test_create_from_game_state_reads_ranking_and_player_fields() -> void:
+	MatchId._reset_counter_for_tests()
+	var cfg := MatchConfig.create_two_player_opposite()
+	cfg.rng_seed = 42
+	cfg.configure_seat(
+			PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.HEN)
+	cfg.configure_seat(
+			PlayerId.YELLOW, MatchConfig.ControllerType.AI, AnimalId.DOG)
+	var state := GameState.create_from_match_config(cfg)
+	state.set_phase(MatchPhase.FINISHED)
+	state.rank_player(PlayerId.YELLOW)
+	state.rank_player(PlayerId.GREEN)
+	var yellow := state.get_player(PlayerId.YELLOW)
+	for i in PlayerState.PAWNS_PER_PLAYER:
+		var pawn := yellow.get_pawn_by_index(i)
+		pawn.mark_finished(
+				Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW).size())
+	var result := MatchResult.create_from_game_state(state)
+	assert_true(result.is_valid())
+	assert_eq(result.match_id, state.match_id)
+	assert_eq(result.mode, MatchConfig.Mode.FREE_PLAY)
+	assert_eq(result.get_winner_id(), PlayerId.YELLOW)
+	var winner := result.get_standing(PlayerId.YELLOW)
+	assert_eq(winner.animal_id, AnimalId.DOG)
+	assert_eq(winner.controller_type, MatchConfig.ControllerType.AI)
+	assert_eq(winner.pawns_finished, PlayerState.PAWNS_PER_PLAYER)
+	assert_eq(result.get_standing(PlayerId.GREEN).rank, 2)
+	assert_eq(result.get_standing(PlayerId.GREEN).animal_id, AnimalId.HEN)
+	assert_eq(
+			result.get_standing(PlayerId.GREEN).controller_type,
+			MatchConfig.ControllerType.HUMAN)
+
+
+func test_create_from_game_state_null_returns_empty_invalid() -> void:
+	var result := MatchResult.create_from_game_state(null)
+	assert_false(result.is_valid())
+	assert_eq(result.ranking.size(), 0)
+
+
+func test_create_from_game_state_copies_campaign_mode() -> void:
+	MatchId._reset_counter_for_tests()
+	var cfg := MatchConfig.create_two_player_opposite()
+	cfg.mode = MatchConfig.Mode.CAMPAIGN
+	cfg.campaign_level_id = &"jungle_01"
+	cfg.rng_seed = 7
+	var state := GameState.create_from_match_config(cfg)
+	state.rank_player(PlayerId.GREEN)
+	state.rank_player(PlayerId.YELLOW)
+	var result := MatchResult.create_from_game_state(state)
+	assert_true(result.is_valid())
+	assert_true(result.is_campaign())
+	assert_eq(result.campaign_level_id, &"jungle_01")
+	assert_eq(result.get_winner_id(), PlayerId.GREEN)
+
+
 func test_create_campaign_result() -> void:
 	MatchId._reset_counter_for_tests()
 	var result := MatchResult.create_with_rank_order(

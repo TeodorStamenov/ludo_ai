@@ -190,6 +190,37 @@ static func create_with_rank_order(
 	return create(p_match_id, standings, p_mode, p_campaign_level_id)
 
 
+## Фабрика от завършен/класиран GameState за MatchSession MatchSummary (§5.2).
+## mode/campaign_level_id идват от match_config; standings — от ranking[] + PlayerState.
+## gifts_collected / pawns_captured остават 0 докато domain не ги агрегира на играч.
+static func create_from_game_state(state: GameState) -> MatchResult:
+	if state == null:
+		return MatchResult.new()
+	var mode: int = MatchConfig.Mode.FREE_PLAY
+	var campaign_level_id: StringName = &""
+	if state.match_config != null:
+		mode = state.match_config.mode
+		campaign_level_id = state.match_config.campaign_level_id
+	var standings: Array = []
+	var ranked_ids: Array[StringName] = state.get_ranked_player_ids()
+	for i in ranked_ids.size():
+		var player_id: StringName = ranked_ids[i]
+		var rank: int = i + PlayerState.RANK_FIRST
+		var player: PlayerState = state.get_player(player_id)
+		if player != null:
+			standings.append(PlayerStanding.create(
+					player_id,
+					rank,
+					player.animal_id,
+					player.controller_type,
+					0,
+					0,
+					player.count_finished_pawns()))
+		else:
+			standings.append(PlayerStanding.create(player_id, rank))
+	return create(state.match_id, standings, mode, campaign_level_id)
+
+
 func is_free_play() -> bool:
 	return mode == MatchConfig.Mode.FREE_PLAY
 

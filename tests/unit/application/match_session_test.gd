@@ -154,14 +154,20 @@ func test_match_finished_signal_on_match_finished_event() -> void:
 	var finish_event := DomainEvent.new()
 	finish_event.event_type = &"MatchFinished"
 	var session := MatchSession.new()
-	var captured := {"finished": false}
-	session.match_finished.connect(func(_summary): captured.finished = true)
+	var captured := {"finished": false, "summary": {}}
+	session.match_finished.connect(func(summary):
+		captured.finished = true
+		captured.summary = summary
+	)
 	(parts["engine"] as StubEngine).set_next_events([finish_event])
 	session.start(_make_config(), parts["state"], parts["engine"], parts["rng"],
 			parts["controllers"], parts["event_queue"])
 
 	assert_true(captured.finished, "match_finished signal must fire when MatchFinished event is present")
 	assert_false(session.is_active(), "session must be inactive after MatchFinished")
+	assert_true(captured.summary.has("ranking"), "MatchSummary must include ranking")
+	assert_true(captured.summary.has("match_id"), "MatchSummary must include match_id")
+	assert_true(captured.summary.has("schema_version"), "MatchSummary must include schema_version")
 
 
 func test_session_active_before_match_finished() -> void:

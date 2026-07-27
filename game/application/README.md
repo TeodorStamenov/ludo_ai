@@ -35,7 +35,8 @@ Presentation ──► Application ──► Domain
 Създава се за конкретен мач от `MatchFactory` и се освобождава след Results.  
 `AppFlow` (в `app/`) управлява жизнения му цикъл.
 
-## Файловете са scaffold
+## Статус
 
-Отделните класове се имплементират в собствени задачи от roadmap-а
-(issues #20–#131 и #181–#195).
+`MatchSession` оркестрира мача според §5.2 (команди → GameEngine → events →
+presentation gate → AI/human advance → MatchSummary). Останалите application
+класове се довършват в собствени roadmap задачи.

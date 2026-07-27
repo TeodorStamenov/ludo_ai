@@ -20,6 +20,7 @@ extends RefCounted
 signal events_published(sequence: int, events: Array)
 signal match_finished(summary: Dictionary)
 signal awaiting_human_action(player_id: StringName, state_view: Dictionary, legal_actions: Array)
+signal command_rejected(command: GameCommand, reason: String)
 
 var _config: MatchConfig = null
 var _state: GameState = null
@@ -29,17 +30,27 @@ var _controllers: Dictionary = {}
 var _event_queue: EventQueue = null
 var _pending_sequence: int = -1
 var _active: bool = false
+var _last_stable_snapshot: Dictionary = {}
 
 
-func start(config: MatchConfig, state: GameState, engine: GameEngine, rng: RandomSource,
-		controllers: Dictionary, event_queue: EventQueue) -> void:
+func start(
+		config: MatchConfig,
+		state: GameState = null,
+		engine: GameEngine = null,
+		rng: RandomSource = null,
+		controllers: Dictionary = {},
+		event_queue: EventQueue = null
+) -> void:
+	assert(config != null, "MatchSession.start: config не може да е null")
 	_config = config
-	_state = state
-	_engine = engine
-	_rng = rng
+	_state = state if state != null else GameState.create_from_match_config(config)
+	_engine = engine if engine != null else GameEngine.new()
+	_rng = rng if rng != null else config.create_random_source()
 	_controllers = controllers
-	_event_queue = event_queue
+	_event_queue = event_queue if event_queue != null else EventQueue.new()
+	_pending_sequence = -1
 	_active = true
+	_last_stable_snapshot = {}
 	# GameState.rng_state е source of truth (§4.1 / §4.5 / #60).
 	# При mid-match restore: живият RNG ← snapshot; иначе snapshot ← жив RNG.
 	_sync_rng_on_start()
@@ -49,10 +60,15 @@ func start(config: MatchConfig, state: GameState, engine: GameEngine, rng: Rando
 func receive_command(command: GameCommand) -> void:
 	if not _active:
 		return
-	if _pending_sequence >= 0:
-		push_warning("MatchSession: command dropped — presentation pending sequence %d" % _pending_sequence)
+	if command == null:
+		push_error("MatchSession: null command")
 		return
-	if not _engine:
+	if _pending_sequence >= 0:
+		push_warning(
+				"MatchSession: command dropped — presentation pending sequence %d"
+				% _pending_sequence)
+		return
+	if _engine == null:
 		push_error("MatchSession: no GameEngine bound")
 		return
 	if _state == null:
@@ -65,20 +81,22 @@ func receive_command(command: GameCommand) -> void:
 
 	if not result.get("accepted", false):
 		# §12: отхвърлена команда не променя state или RNG — без capture_rng.
+		command_rejected.emit(command, str(result.get("error", "rejected")))
 		return
 
 	_state = result.get("state", _state)
 	# GameEngine може вече да е записал sequence; иначе го записваме тук.
 	if _state.command_sequence != command.sequence:
 		if not _state.record_accepted_command(command.sequence):
-			push_error("MatchSession: command_sequence divergence (state=%d, command=%d)" % [
-				_state.command_sequence, command.sequence])
+			push_error(
+					"MatchSession: command_sequence divergence (state=%d, command=%d)"
+					% [_state.command_sequence, command.sequence])
 			return
 	# Синхронизира GameState.rng_state след приета команда (дори ако RNG не е
 	# ползван — snapshot трябва да съвпада с живия RandomSource).
 	_state.capture_rng(_rng)
-	_stamp_events(result.get("events", []), command.sequence)
 	var events: Array = result.get("events", [])
+	_stamp_events(events, command.sequence)
 	_event_queue.enqueue(events)
 	_pending_sequence = _state.command_sequence
 	events_published.emit(_pending_sequence, events)
@@ -87,10 +105,12 @@ func receive_command(command: GameCommand) -> void:
 		_active = false
 		match_finished.emit(_build_summary())
 
+
 func events_presented(sequence: int) -> void:
 	if sequence != _pending_sequence:
 		return
 	_pending_sequence = -1
+	_last_stable_snapshot = to_snapshot()
 	if _active:
 		_advance()
 
@@ -100,17 +120,19 @@ func _advance() -> void:
 	if active_id.is_empty():
 		return
 	var controller: PlayerController = _controllers.get(active_id)
-	if not controller:
+	if controller == null:
 		push_error("MatchSession: no controller for player '%s'" % active_id)
 		return
 	var state_view := _build_state_view()
 	var legal := _build_legal_actions()
 	if controller.is_autonomous():
 		var cmd: GameCommand = controller.get_action(state_view, legal)
-		if cmd:
+		if cmd != null:
 			cmd.player_id = active_id
 			receive_command(cmd)
 	else:
+		if controller is HumanController:
+			(controller as HumanController).notify_turn(legal)
 		awaiting_human_action.emit(active_id, state_view, legal)
 
 
@@ -118,12 +140,32 @@ func get_state() -> GameState:
 	return _state
 
 
+func get_config() -> MatchConfig:
+	return _config
+
+
 func get_event_queue() -> EventQueue:
 	return _event_queue
 
 
+func get_rng() -> RandomSource:
+	return _rng
+
+
 func is_active() -> bool:
 	return _active
+
+
+func is_presentation_pending() -> bool:
+	return _pending_sequence >= 0
+
+
+func get_pending_sequence() -> int:
+	return _pending_sequence
+
+
+func get_last_stable_snapshot() -> Dictionary:
+	return _last_stable_snapshot.duplicate(true)
 
 
 func to_snapshot() -> Dictionary:
@@ -135,47 +177,53 @@ func to_snapshot() -> Dictionary:
 		snap_rng = _rng.get_state()
 	return {
 		"schema_version": 1,
-		"state": _state.to_dict() if _state and _state.has_method("to_dict") else {},
+		"state": _state.to_dict() if _state != null else {},
 		"rng_state": snap_rng,
-		"command_sequence": _state.command_sequence if _state else GameState.COMMAND_SEQUENCE_START,
+		"command_sequence": (
+				_state.command_sequence if _state != null
+				else GameState.COMMAND_SEQUENCE_START),
 	}
 
 
 func _get_active_player_id() -> StringName:
-	if _state and _state.has_method("get_active_player_id"):
-		return _state.get_active_player_id()
-	return &""
+	if _state == null:
+		return &""
+	return _state.get_active_player_id()
 
 
 func _build_state_view() -> Dictionary:
-	if _state and _state.has_method("to_view"):
-		return _state.to_view()
-	return {}
+	if _state == null:
+		return {}
+	return _state.to_view()
 
 
 func _build_legal_actions() -> Array:
-	if _state and _state.has_method("get_legal_actions"):
-		return _state.get_legal_actions()
-	return []
+	if _state == null:
+		return []
+	return _state.get_legal_actions()
 
 
 func _is_match_over(events: Array) -> bool:
+	if _state != null and _state.is_finished():
+		return true
 	for event in events:
-		if event is DomainEvent and event.event_type == &"MatchFinished":
+		if event is MatchFinishedEvent:
+			return true
+		if (
+				event is DomainEvent
+				and (event as DomainEvent).event_type == DomainEvent.TYPE_MATCH_FINISHED
+		):
 			return true
 	return false
 
 
+## MatchSummary = MatchResult.to_dict() (§5.2); command_sequence е session метаданни.
 func _build_summary() -> Dictionary:
-	var summary: Dictionary = {
-		"command_sequence": (
-				_state.command_sequence if _state else GameState.COMMAND_SEQUENCE_START),
-	}
-	if _state:
-		if _state.has_method("get_match_id"):
-			summary["match_id"] = _state.get_match_id()
-		if "ranking" in _state:
-			summary["ranking"] = _state.ranking
+	var result := MatchResult.create_from_game_state(_state)
+	var summary: Dictionary = result.to_dict()
+	summary["command_sequence"] = (
+			_state.command_sequence if _state != null
+			else GameState.COMMAND_SEQUENCE_START)
 	return summary
 
 
