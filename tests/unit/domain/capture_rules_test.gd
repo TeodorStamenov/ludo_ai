@@ -1,6 +1,7 @@
 extends TestCase
-## Business-critical тестове за CaptureRules — имунитет на купчина (#111) и
-## инварианти за взимане (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.2).
+## Business-critical тестове за CaptureRules — имунитет на купчина (#111),
+## прескачане на противникови купчини (#112) и инварианти за взимане
+## (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.2).
 ##
 ## Пълно взимане на единична пионка → #113–#115.
 
@@ -174,6 +175,97 @@ func test_engine_rejects_exit_base_onto_enemy_stack_without_mutation() -> void:
 	assert_true(state.equals(before))
 	assert_eq(rng.get_state(), rng_before)
 	assert_true(state.get_active_player().get_pawn(in_base.pawn_id).is_in_base())
+
+
+## #112: имунна купчина не блокира преминаване — само кацане (#111).
+func test_enemy_stack_does_not_block_passage() -> void:
+	var state := _two_player_in_progress()
+	var cell: StringName = CellId.from_grid(6, 8)
+	var green := state.get_player(PlayerId.GREEN)
+	green.get_pawn_by_index(0).set_position(PawnZone.MAIN_PATH, 20, cell)
+	green.get_pawn_by_index(1).set_position(PawnZone.MAIN_PATH, 20, cell)
+
+	assert_true(_capture.is_immune_stack(state, cell, PlayerId.YELLOW))
+	assert_true(_capture.blocks_landing(state, cell, PlayerId.YELLOW))
+	assert_false(_capture.blocks_passage(state, cell, PlayerId.YELLOW))
+
+
+## #112: междинна противникова купчина не блокира ход; дестинацията се достига.
+func test_intermediate_enemy_stack_does_not_block_passage() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player(PlayerId.YELLOW)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var mid_index := 2
+	var mid_cell: StringName = route[mid_index]
+	var green := state.get_player(PlayerId.GREEN)
+	green.get_pawn_by_index(0).set_position(PawnZone.MAIN_PATH, 20, mid_cell)
+	green.get_pawn_by_index(1).set_position(PawnZone.MAIN_PATH, 20, mid_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 0, route[0])
+
+	assert_true(_stacks.is_enemy_stack(state, mid_cell, PlayerId.YELLOW))
+	assert_false(_rules.would_be_blocked_en_route(state, player, mover, 4))
+	assert_false(_rules.would_land_on_enemy_stack(state, player, mover, 4))
+	assert_true(_rules.can_advance_on_board(state, player, mover, 4))
+	assert_true(_rules.can_move_pawn(state, player, mover, 4))
+	assert_true(_rules.collect_valid_pawn_ids(state, player, 4).has(mover.pawn_id))
+	assert_true(_rules.apply_board_move(state, player, mover, 4))
+	assert_eq(mover.cell_id, route[4])
+	assert_true(_stacks.is_enemy_stack(state, mid_cell, PlayerId.YELLOW))
+
+
+## #112: единична противникова на междинна клетка също не блокира преминаване.
+func test_intermediate_single_enemy_does_not_block_passage() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player(PlayerId.YELLOW)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var mid_index := 3
+	state.get_player(PlayerId.GREEN).get_pawn_by_index(0).set_position(
+			PawnZone.MAIN_PATH, 20, route[mid_index])
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+
+	assert_false(_rules.would_be_blocked_en_route(state, player, mover, 3))
+	assert_true(_rules.can_advance_on_board(state, player, mover, 3))
+	assert_true(_rules.apply_board_move(state, player, mover, 3))
+	assert_eq(mover.cell_id, route[4])
+
+
+## Engine #112: MovePawn прескача противникова купчина и каца след нея.
+func test_engine_accepts_jump_over_enemy_stack() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	assert_eq(state.get_active_player_id(), PlayerId.YELLOW)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var mid_index := 2
+	var mid_cell: StringName = route[mid_index]
+	var dest_index := 4
+	var green := state.get_player(PlayerId.GREEN)
+	green.get_pawn_by_index(0).set_position(PawnZone.MAIN_PATH, 20, mid_cell)
+	green.get_pawn_by_index(1).set_position(PawnZone.MAIN_PATH, 20, mid_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 0, route[0])
+	state.turn.enter_awaiting_move(4, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 4)
+	var rng := SeededRandomSource.new(99)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnMovedEvent)
+	var after := result.state.get_player(PlayerId.YELLOW).get_pawn(mover.pawn_id)
+	assert_eq(after.cell_id, route[dest_index])
+	assert_eq(after.path_index, dest_index)
+	assert_true(_stacks.is_enemy_stack(result.state, mid_cell, PlayerId.YELLOW))
+	for entry in result.events:
+		assert_false(entry is PawnCapturedEvent,
+				"прескачането не взима купчината")
 
 
 func _two_player_in_progress(rng_seed: int = 42) -> GameState:

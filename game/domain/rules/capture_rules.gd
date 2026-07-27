@@ -7,6 +7,7 @@ extends RefCounted
 ## Взетата пионка се връща в свободна позиция в базата на своя играч (#114).
 ## Пионки в home stretch / BASE / FINISHED са защитени от взимане.
 ## Купчина от 2 е имунизирана — противник не може да стъпи на клетката (#111).
+## Купчината не е стена — противниците могат да я прескачат при движение (#112).
 ##
 ## Occupancy query: CellOccupancy (#107). Stack detection: StackRules / CellOccupancy.
 ## Прилагане на взимане + PawnCapturedEvent → #113–#115.
@@ -37,3 +38,13 @@ func blocks_landing(
 		landing_player_id: StringName
 ) -> bool:
 	return is_immune_stack(state, cell_id, landing_player_id)
+
+
+## True ако клетката блокира преминаване (не кацане).
+## V1: купчините не са стена — само защита при кацане (#112 / V1_GAME_DESIGN §3.2).
+func blocks_passage(
+		_state: GameState,
+		_cell_id: StringName,
+		_moving_player_id: StringName
+) -> bool:
+	return false

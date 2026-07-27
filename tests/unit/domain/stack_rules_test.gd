@@ -103,7 +103,7 @@ func test_landing_on_two_own_pawns_is_invalid() -> void:
 	assert_false(_rules.collect_valid_pawn_ids(state, player, 3).has(mover.pawn_id))
 
 
-## Междинна купчина не блокира преминаване — само крайната клетка (#108 / #112).
+## Междинна своя купчина не блокира преминаване — само крайната клетка (#108 / #112).
 func test_intermediate_friendly_stack_does_not_block_passage() -> void:
 	var state := _two_player_in_progress()
 	state.set_active_player(PlayerId.YELLOW)
@@ -118,6 +118,7 @@ func test_intermediate_friendly_stack_does_not_block_passage() -> void:
 	mover.set_position(PawnZone.MAIN_PATH, 0, route[0])
 
 	assert_true(_stacks.is_friendly_stack(state, route[mid_index], PlayerId.YELLOW))
+	assert_false(_rules.would_be_blocked_en_route(state, player, mover, 4))
 	assert_true(_rules.can_advance_on_board(state, player, mover, 4))
 	assert_true(_rules.apply_board_move(state, player, mover, 4))
 	assert_eq(mover.cell_id, route[4])

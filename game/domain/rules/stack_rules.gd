@@ -4,7 +4,7 @@ extends RefCounted
 ##
 ## Максимум CellOccupancy.MAX_OWN_PAWNS_PER_CELL собствени пионки на обща клетка.
 ## Купчина от 2 е имунизирана срещу взимане.
-## Противниците могат да прескачат купчина (тя не е стена).
+## Противниците могат да прескачат купчина (тя не е стена) — CaptureRules.blocks_passage (#112).
 ## Опит за трета своя пионка → невалидна команда.
 ## Образуване → PawnStackFormedEvent (#110). Разпадане: ход на едната пионка
 ## оставя другата уязвима (няма отделно domain събитие — §4.4).
@@ -13,7 +13,7 @@ extends RefCounted
 ## MoveRules ползва can_place_own_pawn за MAIN_PATH / spawn landing (#108).
 ## GameEngine reject при трета своя → #109.
 ## Имунитет при кацане (MoveRules + CaptureRules.blocks_landing) → #111.
-## Прескачане на междинни купчини → #112.
+## Прескачане: CaptureRules.blocks_passage + MoveRules en-route (#112).
 
 
 const MAX_OWN_PAWNS_PER_CELL: int = CellOccupancy.MAX_OWN_PAWNS_PER_CELL

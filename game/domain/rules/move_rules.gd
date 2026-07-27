@@ -12,7 +12,8 @@ extends RefCounted
 ##   - забрана за движение на FINISHED пионка (#100) — can_move_pawn / collect;
 ##   - макс. 2 свои на MAIN_PATH / spawn (#108 / GAP-004 / GAP-006);
 ##   - опит за трета своя → невалиден ход (#109);
-##   - кацане върху противникова купчина от 2 → невалиден ход (#111).
+##   - кацане върху противникова купчина от 2 → невалиден ход (#111);
+##   - прескачане на междинни купчини (не са стена) (#112).
 ##
 ## Capture / stack immunity / прибиране → CaptureRules / StackRules / FinishRules.
 ## Stack formation events → GameEngine + StackRules.resolve_stack_formed (#110).
@@ -108,7 +109,7 @@ func would_place_third_own_pawn(
 
 
 ## True ако ходът би кацнал върху имунна противникова купчина от 2 (#111).
-## Междинни клетки не се проверяват — прескачането е позволено (#112).
+## Междинни клетки не се проверяват тук — прескачането е would_be_blocked_en_route (#112).
 func would_land_on_enemy_stack(
 		state: GameState,
 		player: PlayerState,
@@ -142,6 +143,37 @@ func would_land_on_enemy_stack(
 	if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell):
 		return false
 	return _capture_rules.blocks_landing(state, dest_cell, player.player_id)
+
+
+## True ако междинна клетка по хода блокира преминаване (#112).
+## Дестинацията не влиза — кацането е #111 / max-own. Купчините никога не блокират.
+func would_be_blocked_en_route(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if state == null or player == null or pawn == null:
+		return false
+	if not pawn.is_on_board():
+		return false
+	if not DiceState.is_face_value(dice_value):
+		return false
+	var route := resolve_player_route(state, player.player_id)
+	if route.is_empty():
+		return false
+	if pawn.path_index < 0 or pawn.path_index >= route.size():
+		return false
+	if route[pawn.path_index] != pawn.cell_id:
+		return false
+	var traversed := resolve_traversed_cell_ids(pawn.path_index, dice_value, route)
+	if traversed.size() <= 1:
+		return false
+	for i in range(traversed.size() - 1):
+		var cell: StringName = traversed[i]
+		if _capture_rules.blocks_passage(state, cell, player.player_id):
+			return true
+	return false
 
 
 ## True ако MovePawnCommand за пионката е валидна при този зар (#95 / #100).
@@ -246,7 +278,7 @@ func resolve_traversed_cell_ids(
 ## Междинни HOME клетки не блокират (YEL-054).
 ## MAIN_PATH дестинация: макс. 2 свои — трета е невалидна (#108 / #109 / GAP-004).
 ## MAIN_PATH дестинация с противникова купчина от 2 → невалидна (#111).
-## Междинни MAIN_PATH клетки (вкл. купчини) не блокират преминаване (#112).
+## Междинни MAIN_PATH клетки (вкл. противникови купчини) не блокират (#112).
 ## Capture на единична противникова → CaptureRules (#113+).
 func can_advance_on_board(
 		state: GameState,
@@ -269,6 +301,8 @@ func can_advance_on_board(
 		return false
 	var dest_index := resolve_destination_index(pawn.path_index, dice_value, route.size())
 	if dest_index == DESTINATION_NONE:
+		return false
+	if would_be_blocked_en_route(state, player, pawn, dice_value):
 		return false
 	var dest_cell: StringName = route[dest_index]
 	if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell):
