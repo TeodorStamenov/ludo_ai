@@ -38,5 +38,6 @@ Presentation ──► Application ──► Domain
 ## Статус
 
 `MatchSession` оркестрира мача според §5.2 (команди → GameEngine → events →
-presentation gate → AI/human advance → MatchSummary). Останалите application
-класове се довършват в собствени roadmap задачи.
+presentation gate → AI/human advance → MatchSummary). Външните команди влизат
+само през `CommandBus.submit()` (HumanController.action_ready и AI advance).
+Останалите application класове се довършват в собствени roadmap задачи.

@@ -40,6 +40,16 @@ class StubEngine extends GameEngine:
 		}
 
 
+class RejectEngine extends GameEngine:
+	func apply_command(state: GameState, command: GameCommand, _rng: RandomSource) -> Dictionary:
+		return {
+			"accepted": false,
+			"state": state,
+			"events": [],
+			"error": "illegal_move",
+		}
+
+
 func _make_parts() -> Dictionary:
 	var state := StubState.new()
 	var engine := StubEngine.new()
@@ -192,3 +202,58 @@ func test_event_queue_populated_after_command() -> void:
 	var session := _start(parts, [e])
 	var queue: EventQueue = session.get_event_queue()
 	assert_false(queue.is_empty(), "EventQueue must contain events after command")
+
+
+func test_command_bus_bound_and_forwards_submit() -> void:
+	var parts := _make_parts()
+	var session := _start(parts)
+	var bus: CommandBus = session.get_command_bus()
+	assert_not_null(bus, "MatchSession must expose CommandBus")
+	assert_true(bus.is_bound(), "CommandBus must be bound after start")
+
+	session.events_presented(1)
+	var engine: StubEngine = parts["engine"]
+	engine.set_next_events([])
+	var count_before := engine.call_count
+
+	assert_true(bus.submit(RollDiceCommand.new(&"p1")),
+			"CommandBus.submit must forward when session accepts commands")
+	assert_eq(engine.call_count, count_before + 1,
+			"submit must reach GameEngine through MatchSession")
+
+
+func test_human_action_ready_routes_through_command_bus() -> void:
+	var parts := _make_parts()
+	var session := _start(parts)
+	session.events_presented(1)
+
+	var engine: StubEngine = parts["engine"]
+	engine.set_next_events([])
+	var count_before := engine.call_count
+	var human: HumanController = parts["human"]
+	human.notify_turn([RollDiceCommand.new(&"p1")])
+	human.submit_roll()
+
+	assert_eq(engine.call_count, count_before + 1,
+			"HumanController.action_ready must reach engine via CommandBus")
+	assert_true(engine.last_command is RollDiceCommand,
+			"Last command must be RollDiceCommand from human submit_roll")
+
+
+func test_command_bus_forwards_rejection() -> void:
+	var parts := _make_parts()
+	var reject_engine := RejectEngine.new()
+	var session := MatchSession.new()
+	session.start(_make_config(), parts["state"], reject_engine, parts["rng"],
+			parts["controllers"], parts["event_queue"])
+	var bus: CommandBus = session.get_command_bus()
+	var captured := {"cmd": null, "reason": ""}
+	bus.command_rejected.connect(func(cmd, reason):
+		captured.cmd = cmd
+		captured.reason = reason
+	)
+	bus.submit(RollDiceCommand.new(&"p1"))
+
+	assert_not_null(captured.cmd, "CommandBus must forward command_rejected")
+	assert_eq(str(captured.reason), "illegal_move",
+			"Rejection reason must be forwarded unchanged")

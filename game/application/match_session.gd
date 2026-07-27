@@ -7,8 +7,8 @@ extends RefCounted
 ## мач от MatchFactory и се освобождава след Results екрана.
 ##
 ## Отговорности:
-##   - притежава GameState, GameEngine и RandomSource;
-##   - приема GameCommand-и от PlayerController-ите чрез receive_command();
+##   - притежава GameState, GameEngine, RandomSource и CommandBus;
+##   - външни GameCommand-и влизат само през CommandBus.submit();
 ##   - публикува DomainEvent-и след приета команда (events_published сигнал);
 ##   - блокира следваща команда, докато Presentation потвърди
 ##     events_presented(sequence) — без да прехвърля правилата към анимацията;
@@ -28,6 +28,7 @@ var _engine: GameEngine = null
 var _rng: RandomSource = null
 var _controllers: Dictionary = {}
 var _event_queue: EventQueue = null
+var _command_bus: CommandBus = null
 var _pending_sequence: int = -1
 var _active: bool = false
 var _last_stable_snapshot: Dictionary = {}
@@ -51,6 +52,7 @@ func start(
 	_pending_sequence = -1
 	_active = true
 	_last_stable_snapshot = {}
+	_setup_command_bus()
 	# GameState.rng_state е source of truth (§4.1 / §4.5 / #60).
 	# При mid-match restore: живият RNG ← snapshot; иначе snapshot ← жив RNG.
 	_sync_rng_on_start()
@@ -129,7 +131,7 @@ func _advance() -> void:
 		var cmd: GameCommand = controller.get_action(state_view, legal)
 		if cmd != null:
 			cmd.player_id = active_id
-			receive_command(cmd)
+			_command_bus.submit(cmd)
 	else:
 		if controller is HumanController:
 			(controller as HumanController).notify_turn(legal)
@@ -146,6 +148,10 @@ func get_config() -> MatchConfig:
 
 func get_event_queue() -> EventQueue:
 	return _event_queue
+
+
+func get_command_bus() -> CommandBus:
+	return _command_bus
 
 
 func get_rng() -> RandomSource:
@@ -245,3 +251,23 @@ func _sync_rng_on_start() -> void:
 			_state.capture_rng(_rng)
 	else:
 		_state.capture_rng(_rng)
+
+
+## Създава CommandBus и свързва HumanController.action_ready → submit.
+func _setup_command_bus() -> void:
+	_clear_human_action_routes()
+	if _command_bus != null:
+		_command_bus.unbind()
+	_command_bus = CommandBus.new()
+	_command_bus.bind(self)
+	for controller in _controllers.values():
+		if controller is HumanController:
+			(controller as HumanController).action_ready.connect(_command_bus.submit)
+
+
+func _clear_human_action_routes() -> void:
+	for controller in _controllers.values():
+		if controller is HumanController:
+			var human := controller as HumanController
+			for connection in human.action_ready.get_connections():
+				human.action_ready.disconnect(connection["callable"])
