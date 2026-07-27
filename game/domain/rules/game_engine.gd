@@ -328,7 +328,8 @@ func _apply_move_pawn(
 
 
 ## TURN_END → auto-rank last place → advance (TurnChanged / MATCH_FINISHED).
-## Extra roll ≠ advance. MATCH_FINISHED → FinishRules.apply_match_finished (#90).
+## Extra roll при 6 (#93) ≠ advance — остава същият играч в AWAITING_ROLL.
+## MATCH_FINISHED → FinishRules.apply_match_finished (#90).
 func _append_turn_end_advance(
 		state: GameState,
 		outcome: StringName,

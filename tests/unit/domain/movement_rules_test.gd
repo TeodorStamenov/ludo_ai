@@ -2,8 +2,8 @@ extends TestCase
 ## Unit тестове за MoveRules — правилата за движение по маршрута.
 ##
 ## Критични инварианти (docs/V1_ARCHITECTURE.md, раздел 12 / Task #92):
-##   - Пионка излиза от базата само при хвърлено 6 (виж и exit_base_rule_test).
-##   - Хвърлено 6 дава право на допълнителен ход (#93).
+##   - Пионка излиза от базата само при хвърлено 6 (виж exit_base_rule_test).
+##   - Хвърлено 6 дава право на допълнителен ход (виж extra_roll_on_six_test / #93).
 ##   - Три опита при всички пионки в база (#94).
 ##   - Движение по общото трасе и влизане в home stretch.
 ##   - Точен зар за завършване в края на home stretch.
@@ -41,13 +41,6 @@ func test_exit_base_requires_six() -> void:
 	for face in [1, 2, 3, 4, 5]:
 		assert_false(rules.allows_exit_base(face),
 				"зар %d не позволява излизане от база" % face)
-
-
-## Документиран инвариант: хвърлено 6 дава допълнителен ход.
-func test_extra_turn_on_six_invariant_documented() -> void:
-	var roll_giving_extra_turn := 6
-	assert_eq(roll_giving_extra_turn, 6,
-			"Само стойност 6 дава допълнителен ход")
 
 
 ## Документиран инвариант: три опита при всички пионки в база.
