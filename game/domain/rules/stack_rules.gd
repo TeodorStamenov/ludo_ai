@@ -8,7 +8,8 @@ extends RefCounted
 ## Опит за трета своя пионка → невалидна команда.
 ##
 ## Occupancy query view: CellOccupancy (#107).
-## Пълното прилагане в MoveRules / GameEngine е обхванато от #108–#112.
+## MoveRules ползва can_place_own_pawn за MAIN_PATH / spawn landing (#108).
+## Имунитет / прескачане / stack events → #110–#112.
 
 
 const MAX_OWN_PAWNS_PER_CELL: int = CellOccupancy.MAX_OWN_PAWNS_PER_CELL

@@ -4,7 +4,7 @@ extends TestCase
 ## GAP-004 / GAP-006).
 ##
 ## Derived index от GameState — не отделен source of truth.
-## Stack / capture enforcement в MoveRules → #108+.
+## MoveRules прилага max-2 на MAIN_PATH / spawn (#108).
 
 
 func before_each() -> void:

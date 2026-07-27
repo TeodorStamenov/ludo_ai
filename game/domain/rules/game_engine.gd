@@ -10,7 +10,6 @@ extends RefCounted
 
 
 var _move_rules: MoveRules
-@warning_ignore("unused_private_class_variable")
 var _stack_rules: StackRules
 @warning_ignore("unused_private_class_variable")
 var _capture_rules: CaptureRules
@@ -26,8 +25,11 @@ func _init(
 		finish_rules: FinishRules = null
 ) -> void:
 	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
-	_move_rules = move_rules if move_rules != null else MoveRules.new(_finish_rules)
 	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
+	_move_rules = (
+			move_rules if move_rules != null
+			else MoveRules.new(_finish_rules, _stack_rules)
+	)
 	_capture_rules = capture_rules if capture_rules != null else CaptureRules.new()
 	_turn_rules = turn_rules if turn_rules != null else TurnRules.new()
 
