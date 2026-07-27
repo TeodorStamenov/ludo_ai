@@ -19,6 +19,8 @@ extends RefCounted
 ##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#137);
 ##   - след приета команда проверява §12 инварианти (#142); при нарушение
 ##     записва TelemetrySink → локален BugReportBundle (#143) и спира мача;
+##   - при край на мача (finish / invariant halt) архивира journal в
+##     DebugMatchBuffer (#144), ако е инжектиран (debug builds);
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
@@ -51,6 +53,7 @@ var _event_queue: EventQueue = null
 var _command_bus: CommandBus = null
 var _journal: GameplayJournal = null
 var _telemetry: TelemetrySink = null
+var _debug_match_buffer: DebugMatchBuffer = null
 var _pending_sequence: int = -1
 var _active: bool = false
 var _last_stable_snapshot: Dictionary = {}
@@ -91,6 +94,16 @@ func set_telemetry_sink(sink: TelemetrySink) -> void:
 
 func get_telemetry_sink() -> TelemetrySink:
 	return _telemetry
+
+
+## Инжектира ограничен circular buffer за последните debug мачове (#144).
+## Обикновено само в debug builds; null = без архивиране.
+func set_debug_match_buffer(buffer: DebugMatchBuffer) -> void:
+	_debug_match_buffer = buffer
+
+
+func get_debug_match_buffer() -> DebugMatchBuffer:
+	return _debug_match_buffer
 
 
 ## True ако мачът е спрян заради нарушен §12 инвариант (#142).
@@ -159,7 +172,9 @@ func receive_command(command: GameCommand) -> void:
 
 	if _is_match_over(events):
 		_active = false
-		match_finished.emit(_build_summary())
+		var summary := _build_summary()
+		_archive_debug_match(summary)
+		match_finished.emit(summary)
 
 
 func events_presented(sequence: int) -> void:
@@ -492,5 +507,13 @@ func _assert_invariants_or_halt() -> bool:
 	_invariant_halted = true
 	_active = false
 	_pending_sequence = -1
+	_archive_debug_match({})
 	invariant_violated.emit(description, snapshot)
 	return false
+
+
+## Архивира активния journal в DebugMatchBuffer (#144). No-op без буфер/journal.
+func _archive_debug_match(summary: Dictionary) -> void:
+	if _debug_match_buffer == null or _journal == null:
+		return
+	_debug_match_buffer.push_journal(_journal, summary)

@@ -200,6 +200,27 @@ func test_match_finished_signal_on_match_finished_event() -> void:
 	assert_true(captured.summary.has("schema_version"), "MatchSummary must include schema_version")
 
 
+func test_match_finished_archives_journal_into_debug_match_buffer() -> void:
+	var parts := _make_parts()
+	var finish_event := DomainEvent.new()
+	finish_event.event_type = &"MatchFinished"
+	var session := MatchSession.new()
+	var buffer := DebugMatchBuffer.new(3)
+	session.set_debug_match_buffer(buffer)
+	(parts["engine"] as StubEngine).set_next_events([finish_event])
+	session.start(_make_config(), parts["state"], parts["engine"], parts["rng"],
+			parts["controllers"], parts["event_queue"])
+
+	assert_eq(buffer.size(), 1, "finished match must archive one debug entry")
+	var entry := buffer.get_latest()
+	assert_true(DebugMatchBuffer.is_valid_entry(entry))
+	var journal_dict: Dictionary = entry.get(DebugMatchBuffer.KEY_JOURNAL, {})
+	assert_true(journal_dict.has(GameplayJournal.KEY_ENTRIES),
+			"archived journal must include entries")
+	assert_false(entry.get(DebugMatchBuffer.KEY_SUMMARY, {}).is_empty(),
+			"archived entry should include MatchSummary")
+
+
 func test_session_active_before_match_finished() -> void:
 	var parts := _make_parts()
 	var session := _start(parts)
