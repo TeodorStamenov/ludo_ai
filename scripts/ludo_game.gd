@@ -12,9 +12,9 @@ const BASE_ROLL_ATTEMPTS := 3
 @onready var debug_rolls: HBoxContainer = $UI/DebugRolls
 @onready var turn_label: Label = $UI/TurnLabel
 
-var _yellow_pawns: Array[Pawn] = []
+var _yellow_pawns: Array[PawnView] = []
 var _yellow_path: Array[Vector2i] = []
-var _selected_pawn: Pawn = null
+var _selected_pawn: PawnView = null
 var _awaiting_pawn_choice: bool = false
 var _move_in_progress: bool = false
 var _turn_locked: bool = false
@@ -59,7 +59,7 @@ func _spawn_yellow_pawns() -> void:
 
 	for i in cells.size():
 		var cell: Vector2i = cells[i]
-		var pawn: Pawn = PAWN_SCENE.instantiate() as Pawn
+		var pawn: PawnView = PAWN_SCENE.instantiate() as PawnView
 		pawn.name = "Pawn%d" % (i + 1)
 		pawn.player_id = PlayerId.YELLOW
 		pawn.grid_pos = cell
@@ -160,8 +160,8 @@ func _offer_moves_for_roll(value: int) -> void:
 		pawn.start_bob()
 
 
-func _get_movable_pawns(value: int) -> Array[Pawn]:
-	var result: Array[Pawn] = []
+func _get_movable_pawns(value: int) -> Array[PawnView]:
+	var result: Array[PawnView] = []
 	for pawn in _yellow_pawns:
 		if not is_instance_valid(pawn):
 			continue
@@ -177,7 +177,7 @@ func _can_exit_to_spawn() -> bool:
 	return true
 
 
-func _can_pawn_move(pawn: Pawn, steps: int) -> bool:
+func _can_pawn_move(pawn: PawnView, steps: int) -> bool:
 	var dest_index := _resolve_destination_index(pawn.path_index, steps)
 	if dest_index < 0:
 		return false
@@ -209,7 +209,7 @@ func _resolve_destination_index(from_index: int, steps: int) -> int:
 	return from_index + advance
 
 
-func _on_pawn_clicked(pawn: Pawn) -> void:
+func _on_pawn_clicked(pawn: PawnView) -> void:
 	if _move_in_progress or not _awaiting_pawn_choice:
 		return
 	if not pawn.is_selectable:
@@ -224,7 +224,7 @@ func _on_pawn_clicked(pawn: Pawn) -> void:
 	pawn.set_selected(true)
 
 
-func _confirm_pawn_action(pawn: Pawn) -> void:
+func _confirm_pawn_action(pawn: PawnView) -> void:
 	_move_in_progress = true
 	_awaiting_pawn_choice = false
 	_stop_all_bobbing()
@@ -239,7 +239,7 @@ func _confirm_pawn_action(pawn: Pawn) -> void:
 	_finish_action_after_roll()
 
 
-func _exit_pawn_to_spawn(pawn: Pawn) -> void:
+func _exit_pawn_to_spawn(pawn: PawnView) -> void:
 	var spawn_cell: Vector2i = Classic15x15Board.spawn_grid_position_for(PlayerId.YELLOW)
 	var yellow_root: Node2D = pawn.get_parent() as Node2D
 	var target: Vector2 = yellow_root.to_local(
@@ -252,7 +252,7 @@ func _exit_pawn_to_spawn(pawn: Pawn) -> void:
 	await pawn.move_to_local(target)
 
 
-func _move_pawn_steps(pawn: Pawn, steps: int) -> void:
+func _move_pawn_steps(pawn: PawnView, steps: int) -> void:
 	var dest_index := _resolve_destination_index(pawn.path_index, steps)
 	if dest_index < 0:
 		return
@@ -300,15 +300,15 @@ func _all_pawns_in_base() -> bool:
 	return true
 
 
-func _get_base_pawns() -> Array[Pawn]:
-	var result: Array[Pawn] = []
+func _get_base_pawns() -> Array[PawnView]:
+	var result: Array[PawnView] = []
 	for pawn in _yellow_pawns:
 		if is_instance_valid(pawn) and pawn.in_base:
 			result.append(pawn)
 	return result
 
 
-func _pawn_on_cell(cell: Vector2i) -> Pawn:
+func _pawn_on_cell(cell: Vector2i) -> PawnView:
 	for pawn in _yellow_pawns:
 		if is_instance_valid(pawn) and not pawn.in_base and pawn.grid_pos == cell:
 			return pawn
