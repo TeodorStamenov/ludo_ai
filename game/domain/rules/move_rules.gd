@@ -14,6 +14,7 @@ extends RefCounted
 ##   - опит за трета своя → невалиден ход (#109).
 ##
 ## Capture / stack immunity / прибиране → CaptureRules / StackRules / FinishRules.
+## Stack formation events → GameEngine + StackRules.resolve_stack_formed (#110).
 ## Gift → RESOLVING_POWER_UP.
 
 

@@ -1,9 +1,9 @@
 extends TestCase
-## Business-critical тестове за максимум 2 свои пионки на обща клетка (#108 /
-## docs/V1_GAME_DESIGN.md §3.2; docs/V1_ARCHITECTURE.md §12; GAP-004 / GAP-006).
+## Business-critical тестове за купчини (#108 / #110 / docs/V1_GAME_DESIGN.md §3.2;
+## docs/V1_ARCHITECTURE.md §4.4 / §12; GAP-004 / GAP-006).
 ##
-## MoveRules прилага StackRules.can_place_own_pawn при MAIN_PATH landing и spawn.
-## Имунитет / stack events / прескачане → #110–#112.
+## Max-2 / reject трета → #108–#109. Образуване (PawnStackFormed) и разпадане
+## при напускане → #110. Имунитет / прескачане → #111–#112.
 
 
 var _rules: MoveRules
@@ -187,6 +187,204 @@ func test_engine_rejects_move_onto_full_friendly_stack() -> void:
 	assert_eq(result.error.code, CommandError.CODE_ILLEGAL_MOVE)
 	assert_eq(result.error.message, "cannot place third own pawn on cell")
 	assert_true(state.equals(before))
+
+
+## #110: кацане върху една своя → resolve_stack_formed връща валиден event.
+func test_resolve_stack_formed_after_landing_on_single_own() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player(PlayerId.YELLOW)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var resident := player.get_pawn_by_index(1)
+	resident.set_position(PawnZone.MAIN_PATH, dest_index, dest_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+
+	assert_true(_rules.apply_board_move(state, player, mover, 3))
+	var event := _stacks.resolve_stack_formed(state, mover, 7)
+	assert_not_null(event)
+	assert_true(event.is_valid())
+	assert_eq(event.cell_id, dest_cell)
+	assert_eq(event.arriving_pawn_id, mover.pawn_id)
+	assert_eq(event.resident_pawn_id, resident.pawn_id)
+	assert_eq(event.command_sequence, 7)
+
+
+## #110: кацане на празна клетка → няма PawnStackFormed.
+func test_resolve_stack_formed_null_on_empty_landing() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player(PlayerId.YELLOW)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+
+	assert_true(_rules.apply_board_move(state, player, mover, 3))
+	assert_eq(_stacks.resolve_stack_formed(state, mover, 1), null)
+
+
+## #110: would_break когато пионка е в купчина от 2; false при единична.
+func test_would_break_friendly_stack_detects_leaving_partner() -> void:
+	var state := _two_player_in_progress()
+	var cell: StringName = CellId.from_grid(6, 8)
+	var yellow := state.get_player(PlayerId.YELLOW)
+	var a := yellow.get_pawn_by_index(0)
+	var b := yellow.get_pawn_by_index(1)
+	a.set_position(PawnZone.MAIN_PATH, 4, cell)
+	assert_false(_stacks.would_break_friendly_stack(
+			state, cell, PlayerId.YELLOW, a.pawn_id))
+	b.set_position(PawnZone.MAIN_PATH, 4, cell)
+	assert_true(_stacks.would_break_friendly_stack(
+			state, cell, PlayerId.YELLOW, a.pawn_id))
+	assert_true(_stacks.would_break_friendly_stack(
+			state, cell, PlayerId.YELLOW, b.pawn_id))
+	assert_false(_stacks.would_break_friendly_stack(
+			state, cell, PlayerId.YELLOW, yellow.get_pawn_by_index(2).pawn_id))
+
+
+## Engine #110: ход върху една своя → PawnMoved + PawnStackFormed.
+func test_engine_landing_on_own_emits_stack_formed() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var dest_index := 4
+	var dest_cell: StringName = route[dest_index]
+	var resident := player.get_pawn_by_index(1)
+	resident.set_position(PawnZone.MAIN_PATH, dest_index, dest_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, 1, route[1])
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(99)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnMovedEvent)
+	assert_true(result.events[1] is PawnStackFormedEvent)
+	var formed := result.events[1] as PawnStackFormedEvent
+	assert_true(formed.is_valid())
+	assert_eq(formed.cell_id, dest_cell)
+	assert_eq(formed.arriving_pawn_id, mover.pawn_id)
+	assert_eq(formed.resident_pawn_id, resident.pawn_id)
+	assert_true(_stacks.is_friendly_stack(
+			result.state, dest_cell, PlayerId.YELLOW))
+
+
+## Engine #110: exit-base върху spawn с 1 своя → PawnExitedBase + PawnStackFormed.
+func test_engine_exit_base_onto_own_emits_stack_formed() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var spawn := Classic15x15Board.spawn_cell_for(PlayerId.YELLOW)
+	var resident := player.get_pawn_by_index(0)
+	resident.exit_base_to_spawn(spawn)
+	var in_base := player.get_pawn_by_index(1)
+	state.turn.enter_awaiting_move(DiceState.EXIT_BASE_VALUE, [in_base.pawn_id])
+	state.dice.set_roll(player.player_id, DiceState.EXIT_BASE_VALUE)
+	var rng := SeededRandomSource.new(11)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, in_base.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnExitedBaseEvent)
+	assert_true(result.events[1] is PawnStackFormedEvent)
+	var formed := result.events[1] as PawnStackFormedEvent
+	assert_eq(formed.cell_id, spawn)
+	assert_eq(formed.arriving_pawn_id, in_base.pawn_id)
+	assert_eq(formed.resident_pawn_id, resident.pawn_id)
+	assert_true(_stacks.is_friendly_stack(result.state, spawn, PlayerId.YELLOW))
+
+
+## Engine #110: напускане на купчина → разпадане; без PawnStackFormed на старата клетка.
+func test_engine_leaving_stack_dissolves_without_formed_event() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var stack_index := 2
+	var stack_cell: StringName = route[stack_index]
+	var resident := player.get_pawn_by_index(1)
+	resident.set_position(PawnZone.MAIN_PATH, stack_index, stack_cell)
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, stack_index, stack_cell)
+	assert_true(_stacks.is_friendly_stack(state, stack_cell, PlayerId.YELLOW))
+	assert_true(_stacks.would_break_friendly_stack(
+			state, stack_cell, PlayerId.YELLOW, mover.pawn_id))
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(42)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	var after := result.state.get_player(PlayerId.YELLOW)
+	var after_mover := after.get_pawn(mover.pawn_id)
+	var after_resident := after.get_pawn(resident.pawn_id)
+	assert_eq(after_mover.cell_id, route[5])
+	assert_eq(after_resident.cell_id, stack_cell)
+	assert_false(_stacks.is_friendly_stack(
+			result.state, stack_cell, PlayerId.YELLOW))
+	assert_eq(
+			_stacks.occupancy_of(result.state).count_of_player_at(
+					stack_cell, PlayerId.YELLOW),
+			1)
+	assert_true(result.events[0] is PawnMovedEvent)
+	for entry in result.events:
+		assert_false(entry is PawnStackFormedEvent,
+				"разпадането не емитира PawnStackFormed")
+
+
+## Engine #110: напускане на купчина + кацане върху друга своя → само нова Formed.
+func test_engine_break_and_form_emits_only_new_stack_formed() -> void:
+	var state := _two_player_in_progress()
+	state.set_active_player_index(1)
+	state.turn.begin_player_turn(1, false)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var stack_index := 1
+	var dest_index := 4
+	player.get_pawn_by_index(1).set_position(
+			PawnZone.MAIN_PATH, stack_index, route[stack_index])
+	player.get_pawn_by_index(2).set_position(
+			PawnZone.MAIN_PATH, dest_index, route[dest_index])
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, stack_index, route[stack_index])
+	assert_true(_stacks.is_friendly_stack(
+			state, route[stack_index], PlayerId.YELLOW))
+	state.turn.enter_awaiting_move(3, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 3)
+	var rng := SeededRandomSource.new(7)
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	assert_false(_stacks.is_friendly_stack(
+			result.state, route[stack_index], PlayerId.YELLOW))
+	assert_true(_stacks.is_friendly_stack(
+			result.state, route[dest_index], PlayerId.YELLOW))
+	var formed_count := 0
+	for entry in result.events:
+		if entry is PawnStackFormedEvent:
+			formed_count += 1
+			var formed := entry as PawnStackFormedEvent
+			assert_eq(formed.cell_id, route[dest_index])
+			assert_eq(formed.arriving_pawn_id, mover.pawn_id)
+	assert_eq(formed_count, 1)
 
 
 func _two_player_in_progress(rng_seed: int = 42) -> GameState:

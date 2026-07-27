@@ -6,11 +6,13 @@ extends RefCounted
 ## Купчина от 2 е имунизирана срещу взимане.
 ## Противниците могат да прескачат купчина (тя не е стена).
 ## Опит за трета своя пионка → невалидна команда.
+## Образуване → PawnStackFormedEvent (#110). Разпадане: ход на едната пионка
+## оставя другата уязвима (няма отделно domain събитие — §4.4).
 ##
 ## Occupancy query view: CellOccupancy (#107).
 ## MoveRules ползва can_place_own_pawn за MAIN_PATH / spawn landing (#108).
 ## GameEngine reject при трета своя → #109.
-## Имунитет / прескачане / stack events → #110–#112.
+## Имунитет / прескачане → #111–#112.
 
 
 const MAX_OWN_PAWNS_PER_CELL: int = CellOccupancy.MAX_OWN_PAWNS_PER_CELL
@@ -43,3 +45,66 @@ func can_place_own_pawn(
 		exclude_pawn_id: StringName = &""
 ) -> bool:
 	return occupancy_of(state).can_accept_own_pawn(cell_id, player_id, exclude_pawn_id)
+
+
+## True ако leaving_pawn е една от двете в friendly stack на cell — ходът ѝ разваля купчината (#110).
+func would_break_friendly_stack(
+		state: GameState,
+		cell_id: StringName,
+		player_id: StringName,
+		leaving_pawn_id: StringName
+) -> bool:
+	if state == null or cell_id == &"" or player_id == &"" or leaving_pawn_id == &"":
+		return false
+	if not is_friendly_stack(state, cell_id, player_id):
+		return false
+	for entry in occupancy_of(state).get_pawns_of_player_at(cell_id, player_id):
+		var pawn := entry as PawnState
+		if pawn != null and pawn.pawn_id == leaving_pawn_id:
+			return true
+	return false
+
+
+## След кацане на MAIN_PATH: ако има точно 2 свои → PawnStackFormedEvent; иначе null (#110).
+func resolve_stack_formed(
+		state: GameState,
+		arriving: PawnState,
+		command_sequence: int = DomainEvent.COMMAND_SEQUENCE_UNSET
+) -> PawnStackFormedEvent:
+	if state == null or arriving == null:
+		return null
+	if not arriving.is_on_main_path() or arriving.cell_id == &"":
+		return null
+	var player_id := arriving.get_player_id()
+	if player_id == &"":
+		return null
+	if not is_friendly_stack(state, arriving.cell_id, player_id):
+		return null
+	var resident := _find_stack_partner(state, arriving.cell_id, player_id, arriving.pawn_id)
+	if resident == null:
+		return null
+	var event := PawnStackFormedEvent.create_from_states(
+			arriving, resident, command_sequence)
+	if not event.is_valid():
+		return null
+	return event
+
+
+## Другата собствена MAIN_PATH пионка на клетката, или null.
+func _find_stack_partner(
+		state: GameState,
+		cell_id: StringName,
+		player_id: StringName,
+		arriving_pawn_id: StringName
+) -> PawnState:
+	var partner: PawnState = null
+	for entry in occupancy_of(state).get_pawns_of_player_at(cell_id, player_id):
+		var pawn := entry as PawnState
+		if pawn == null or pawn.pawn_id == arriving_pawn_id:
+			continue
+		if not pawn.is_on_main_path():
+			continue
+		if partner != null:
+			return null
+		partner = pawn
+	return partner
