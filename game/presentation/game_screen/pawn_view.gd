@@ -2,14 +2,9 @@ class_name PawnView
 extends Sprite2D
 ## Визуален представител на една пионка (docs/V1_ARCHITECTURE.md §6.3, Етап C).
 ##
-## Пренесен от scripts/pawn.gd. Съдържа:
-##   - визуален asset / skin;
-##   - idle (bob), selected, move анимации;
-##   - hit target за mouse/touch input.
-##
-## Целевият PawnView държи само presentation данни. Логическите in_base,
-## path_index, shield и valid_move са в PawnState (#154). Стабилен pawn_id
-## се добавя в #155. Дотогава полетата по-долу остават за scenes/ludo_game.tscn.
+## Съдържа само presentation данни: визуален asset/skin, idle/selected/move
+## анимации и hit target за input. Логическите in_base, path_index, shield и
+## valid move живеят в PawnState — не тук.
 
 signal clicked(pawn: PawnView)
 
@@ -20,10 +15,6 @@ const SIZE_RATIO := 0.7
 @export var player_id: StringName = &"yellow"
 @export var grid_pos: Vector2i = Vector2i.ZERO
 
-## Временно (#154): -1 while in base; otherwise index into that player's path.
-var path_index: int = -1
-## Временно (#154): authoritative zone живее в PawnState.
-var in_base: bool = true
 var is_selectable: bool = false
 var is_selected: bool = false
 
