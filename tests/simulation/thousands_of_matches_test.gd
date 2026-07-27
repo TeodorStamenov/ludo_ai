@@ -83,7 +83,7 @@ func test_rejects_invalid_batch_parameters() -> void:
 	assert_false(bad_mixed[MatchBatchSimulator.KEY_OK])
 
 
-func test_hit_max_steps_is_reported_in_failures() -> void:
+func test_hit_max_commands_is_reported_in_failures() -> void:
 	var batch := MatchBatchSimulator.new().run(1, 7, 2, 2)
 	assert_false(batch[MatchBatchSimulator.KEY_OK])
 	assert_eq(int(batch[MatchBatchSimulator.KEY_FAILED_COUNT]), 1)
@@ -91,4 +91,6 @@ func test_hit_max_steps_is_reported_in_failures() -> void:
 	assert_eq(failures.size(), 1)
 	var first: Dictionary = failures[0]
 	assert_true(bool(first[MatchBatchSimulator.FAILURE_HIT_LIMIT]))
-	assert_true(str(first[MatchBatchSimulator.FAILURE_ERROR]).contains("max_steps"))
+	var err := str(first[MatchBatchSimulator.FAILURE_ERROR])
+	assert_true(err.contains("max_commands"), err)
+	assert_true(err.contains("stuck"), err)

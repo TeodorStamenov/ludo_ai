@@ -1,7 +1,7 @@
 class_name MatchSimulator
 extends RefCounted
 ## Headless симулация на пълен мач без Presentation / сцена
-## (docs/V1_ARCHITECTURE.md §12 / §16.1; roadmap #139).
+## (docs/V1_ARCHITECTURE.md §12 / §16.1; roadmap #139 / #141).
 ##
 ## Създава MatchSession с AI контролери, автоматично потвърждава
 ## presentation gate (events_presented) и върти до MATCH_FINISHED.
@@ -9,8 +9,7 @@ extends RefCounted
 ## делегира на MatchSession → GameEngine.
 ##
 ## Подразбираща се политика: FirstLegalAIPolicy (детерминистична).
-## Soft max_steps предпазва от безкрайни цикли; откриването на
-## блокирали мачове като отделен инвариант е roadmap #141.
+## DEFAULT_MAX_COMMANDS спира блокирали / безкрайни мачове (#141).
 
 
 const KEY_OK := "ok"
@@ -23,9 +22,11 @@ const KEY_STEPS := "steps"
 const KEY_HIT_LIMIT := "hit_limit"
 const KEY_ERROR := "error"
 
-## Soft safety — достатъчно за нормален 2–4p мач; #141 ще стегне лимита.
-## След всяка приета команда (през events_presented) проверява §12 инварианти (#142).
-const DEFAULT_MAX_STEPS := 100_000
+## Max приети команди преди stuck (#141). Нормален 2–4p FirstLegal
+## завършва под ~1k; запас за по-дълги AI / бъдещи power-ups.
+const DEFAULT_MAX_COMMANDS := 10_000
+## Alias — по-рано soft step cap; сега = command limit.
+const DEFAULT_MAX_STEPS := DEFAULT_MAX_COMMANDS
 
 var _engine: GameEngine = null
 var _policy: AIPolicy = null
@@ -36,20 +37,20 @@ func _init(engine: GameEngine = null, policy: AIPolicy = null) -> void:
 	_policy = policy
 
 
-## Симулира мач до край (или max_steps). config трябва да е валиден.
+## Симулира мач до край (или max_commands). config трябва да е валиден.
 ## Всички seats получават AI контролери (human/remote се заменят за headless).
 ## match_id: празен → детерминистичен &"m_sim_{rng_seed}" (еднакъв seed → еднакъв hash).
 func run(
 		config: MatchConfig,
-		max_steps: int = DEFAULT_MAX_STEPS,
+		max_commands: int = DEFAULT_MAX_COMMANDS,
 		match_id: StringName = &""
 ) -> Dictionary:
 	if config == null:
 		return _failure("config is null")
 	if not config.is_valid():
 		return _failure("config failed is_valid()")
-	if max_steps <= 0:
-		return _failure("max_steps must be positive")
+	if max_commands <= 0:
+		return _failure("max_commands must be positive")
 
 	var policy: AIPolicy = _policy if _policy != null else FirstLegalAIPolicy.new()
 	var controllers := _build_controllers(config, policy)
@@ -80,7 +81,8 @@ func run(
 					summary_box["summary"],
 					steps,
 					false)
-		if steps >= max_steps:
+		var command_count := _session_command_count(session)
+		if command_count >= max_commands:
 			hit_limit = true
 			break
 		if session.is_presentation_pending():
@@ -120,9 +122,7 @@ func run(
 		summary = MatchResult.create_from_game_state(session.get_state()).to_dict()
 
 	var journal := session.get_journal()
-	var command_count := 0
-	if journal != null:
-		command_count = journal.get_accepted_commands().size()
+	var final_command_count := _session_command_count(session)
 
 	if hit_limit:
 		return {
@@ -131,10 +131,12 @@ func run(
 			KEY_SUMMARY: summary,
 			KEY_STATE: session.get_state(),
 			KEY_JOURNAL: journal,
-			KEY_COMMAND_COUNT: command_count,
+			KEY_COMMAND_COUNT: final_command_count,
 			KEY_STEPS: steps,
 			KEY_HIT_LIMIT: true,
-			KEY_ERROR: "hit max_steps (%d) before match finished" % max_steps,
+			KEY_ERROR: (
+					"hit max_commands (%d) before match finished — possible stuck match"
+					% max_commands),
 		}
 
 	if not finished:
@@ -151,7 +153,7 @@ func run(
 		KEY_SUMMARY: summary,
 		KEY_STATE: session.get_state(),
 		KEY_JOURNAL: journal,
-		KEY_COMMAND_COUNT: command_count,
+		KEY_COMMAND_COUNT: final_command_count,
 		KEY_STEPS: steps,
 		KEY_HIT_LIMIT: false,
 		KEY_ERROR: "",
@@ -182,6 +184,18 @@ func _build_controllers(config: MatchConfig, policy: AIPolicy) -> Dictionary:
 	return controllers
 
 
+func _session_command_count(session: MatchSession) -> int:
+	if session == null:
+		return 0
+	var journal: GameplayJournal = session.get_journal()
+	if journal != null:
+		return journal.get_accepted_commands().size()
+	var live_state: GameState = session.get_state()
+	if live_state != null:
+		return live_state.command_sequence
+	return 0
+
+
 func _failure(message: String) -> Dictionary:
 	return {
 		KEY_OK: false,
@@ -209,8 +223,7 @@ func _failure_session(
 	if session != null:
 		journal = session.get_journal()
 		state = session.get_state()
-		if journal != null:
-			command_count = journal.get_accepted_commands().size()
+		command_count = _session_command_count(session)
 	return {
 		KEY_OK: false,
 		KEY_FINISHED: state != null and state.is_finished(),

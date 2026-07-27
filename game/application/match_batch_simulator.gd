@@ -5,8 +5,8 @@ extends RefCounted
 ##
 ## Обвива MatchSimulator: различни seed-ове, агрегирана статистика и
 ## крайни инварианти (finished + GameState.is_valid + стабилен ranking).
-## Mid-match runtime checks: MatchSession / MatchSimulator (#142);
-## stuck command limit → #141.
+## Mid-match runtime checks: MatchSession / MatchSimulator (#142).
+## Stuck detection: MatchSimulator.DEFAULT_MAX_COMMANDS (#141).
 ##
 ## STRESS_MATCH_COUNT = 1000 е офлайн цел. CI тестовете ползват по-малък
 ## брой заради suite timeout.
@@ -48,7 +48,7 @@ func run(
 		match_count: int,
 		base_seed: int = 1,
 		seat_count: int = 2,
-		max_steps_per_match: int = MatchSimulator.DEFAULT_MAX_STEPS,
+		max_commands_per_match: int = MatchSimulator.DEFAULT_MAX_COMMANDS,
 		seed_stride: int = DEFAULT_SEED_STRIDE,
 		difficulty: int = AIDifficulty.EASY
 ) -> Dictionary:
@@ -59,11 +59,11 @@ func run(
 				MatchConfig.MIN_SEATS, MatchConfig.MAX_SEATS])
 	if seed_stride == 0:
 		return _failure("seed_stride must be non-zero")
-	if max_steps_per_match <= 0:
-		return _failure("max_steps_per_match must be positive")
+	if max_commands_per_match <= 0:
+		return _failure("max_commands_per_match must be positive")
 
 	var counts: Dictionary = {seat_count: match_count}
-	return run_mixed(counts, base_seed, max_steps_per_match, seed_stride, difficulty)
+	return run_mixed(counts, base_seed, max_commands_per_match, seed_stride, difficulty)
 
 
 ## Пуска смесен batch: counts_by_seats = {2: N2, 3: N3, 4: N4}.
@@ -71,7 +71,7 @@ func run(
 func run_mixed(
 		counts_by_seats: Dictionary,
 		base_seed: int = 1,
-		max_steps_per_match: int = MatchSimulator.DEFAULT_MAX_STEPS,
+		max_commands_per_match: int = MatchSimulator.DEFAULT_MAX_COMMANDS,
 		seed_stride: int = DEFAULT_SEED_STRIDE,
 		difficulty: int = AIDifficulty.EASY
 ) -> Dictionary:
@@ -79,8 +79,8 @@ func run_mixed(
 		return _failure("counts_by_seats is empty")
 	if seed_stride == 0:
 		return _failure("seed_stride must be non-zero")
-	if max_steps_per_match <= 0:
-		return _failure("max_steps_per_match must be positive")
+	if max_commands_per_match <= 0:
+		return _failure("max_commands_per_match must be positive")
 
 	var ordered_seats: Array[int] = []
 	var planned_total := 0
@@ -114,7 +114,7 @@ func run_mixed(
 			var rng_seed: int = base_seed + match_index * seed_stride
 			match_index += 1
 			var config := MatchSimulator.make_ai_config(rng_seed, seats, difficulty)
-			var result: Dictionary = simulator.run(config, max_steps_per_match)
+			var result: Dictionary = simulator.run(config, max_commands_per_match)
 			total_commands += int(result.get(MatchSimulator.KEY_COMMAND_COUNT, 0))
 			total_steps += int(result.get(MatchSimulator.KEY_STEPS, 0))
 

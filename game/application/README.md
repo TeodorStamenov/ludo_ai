@@ -31,7 +31,7 @@ Presentation ──► Application ──► Domain
 | `event_queue.gd`          | FIFO буфер на DomainEvent-и; sequence acknowledge след presentation |
 | `gameplay_journal.gd`     | Append-only journal на активния мач (replay / bug report / #132) |
 | `deterministic_replay_runner.gd` | Headless replay от journal (seed + accepted commands → state hash / #137) |
-| `match_simulator.gd`      | Headless пълен мач без сцена (AI + auto presentation gate / #139) |
+| `match_simulator.gd`      | Headless пълен мач без сцена (AI + auto presentation gate / #139); max command stuck limit (#141) |
 | `match_batch_simulator.gd`| Batch от хиляди AI мачове + крайни инварианти (§12 / #140) |
 | `controller/`             | PlayerController (интерфейс), Human, AI, Remote |
 | `ai/`                     | AIPolicy (интерфейс), FirstLegal, Easy, Medium, Hard имплементации |
@@ -54,7 +54,8 @@ presentation gate → AI/human advance → MatchSummary). Външните ко�
 journal при `receive_command` (#134–#136). `DeterministicReplayRunner` чете
 journal-а (seed + accepted commands), прилага ги през `GameEngine` без
 presentation gate и проверява state hash (#137). `MatchSimulator` върти
-пълен AI мач без сцена: auto `events_presented` до `MATCH_FINISHED` (#139).
+пълен AI мач без сцена: auto `events_presented` до `MATCH_FINISHED` (#139);
+спира при `DEFAULT_MAX_COMMANDS` като stuck detection (#141).
 `MatchBatchSimulator` пуска N AI мача с различни seed-ове и проверява крайни
 инварианти (finished / `GameState.is_valid` / ranking / MatchSummary) (#140).
 `GameStateInvariantChecker` + mid-match checks в `MatchSession` /
