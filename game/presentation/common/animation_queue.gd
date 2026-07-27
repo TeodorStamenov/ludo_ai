@@ -14,5 +14,28 @@ extends Node
 ## GamePresenter слуша all_done и извиква session.events_presented(sequence).
 ## Domain не чака tween — само Presentation го прави.
 ##
-## Пълната имплементация е обхваната от задача
-## "Създаване на AnimationQueue за последователно проиграване на събития".
+## MVP (#165): play_batch завършва синхронно (instant gate) — същият договор
+## като MatchSimulator. Последователните анимации са задача #168 / #169.
+
+signal all_done(sequence: int)
+
+var _playing: bool = false
+var _current_sequence: int = -1
+
+
+## Стартира батч за дадения command_sequence. MVP: незабавно all_done.
+## Пълното последователно проиграване е #168.
+func play_batch(sequence: int, _events: Array) -> void:
+	_playing = true
+	_current_sequence = sequence
+	_playing = false
+	_current_sequence = -1
+	all_done.emit(sequence)
+
+
+func is_playing() -> bool:
+	return _playing
+
+
+func get_current_sequence() -> int:
+	return _current_sequence

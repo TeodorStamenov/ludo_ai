@@ -229,6 +229,12 @@ func get_command_bus() -> CommandBus:
 	return _command_bus
 
 
+## PlayerController за seat, или null ако няма такъв player_id.
+## GamePresenter ползва това за HumanController.submit_roll / submit_move.
+func get_controller(player_id: StringName) -> PlayerController:
+	return _controllers.get(player_id) as PlayerController
+
+
 func get_journal() -> GameplayJournal:
 	return _journal
 
