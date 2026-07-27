@@ -4,7 +4,7 @@ const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 const YELLOW_PAWN_TEXTURE := "res://rss/pawns/User05.png"
 const BASE_ROLL_ATTEMPTS := 3
 
-@onready var board: LudoBoard = $Board
+@onready var board: BoardView = $Board
 @onready var pawns_root: Node2D = $Pawns
 @onready var dice: Node3D = $UI/DiceViewportContainer/SubViewport/DiceWorld/Dice
 @onready var dice_result: Label = $UI/DiceResult
@@ -12,14 +12,16 @@ const BASE_ROLL_ATTEMPTS := 3
 @onready var debug_rolls: HBoxContainer = $UI/DebugRolls
 @onready var turn_label: Label = $UI/TurnLabel
 
-var _yellow_pawns: Array[Pawn] = []
+## Visual pawns; logical zone/path_index live in parallel PawnState (#154).
+var _yellow_pawns: Array[PawnView] = []
+var _yellow_pawn_states: Array[PawnState] = []
 var _yellow_path: Array[Vector2i] = []
-var _selected_pawn: Pawn = null
+var _selected_pawn: PawnView = null
 var _awaiting_pawn_choice: bool = false
 var _move_in_progress: bool = false
 var _turn_locked: bool = false
 
-var _current_player: StringName = &"yellow"
+var _current_player: StringName = PlayerId.YELLOW
 var _last_dice: int = 0
 var _extra_roll_pending: bool = false
 var _base_attempts_left: int = BASE_ROLL_ATTEMPTS
@@ -34,7 +36,7 @@ func _ready() -> void:
 		var button: Button = debug_rolls.get_node("Roll%d" % i) as Button
 		button.pressed.connect(_on_debug_roll_pressed.bind(i))
 
-	_yellow_path = board.get_player_path(&"yellow")
+	_yellow_path = Classic15x15Board.player_route_grid_positions_for(PlayerId.YELLOW)
 	_spawn_yellow_pawns()
 	_start_yellow_turn()
 
@@ -51,20 +53,24 @@ func _spawn_yellow_pawns() -> void:
 		child.free()
 
 	_yellow_pawns.clear()
+	_yellow_pawn_states.clear()
 	_selected_pawn = null
 	_awaiting_pawn_choice = false
 
-	var cells: Array[Vector2i] = board.get_base_cells(&"yellow")
+	var cells: Array[Vector2i] = Classic15x15Board.base_grid_positions_for(PlayerId.YELLOW)
 	var tile_w: float = board.get_tile_display_width()
 
 	for i in cells.size():
 		var cell: Vector2i = cells[i]
-		var pawn: Pawn = PAWN_SCENE.instantiate() as Pawn
+		var cell_id: StringName = CellId.from_vec(cell)
+		var logic: PawnState = PawnState.create_in_base(
+				PawnId.for_player(PlayerId.YELLOW, i), cell_id)
+
+		var pawn: PawnView = PAWN_SCENE.instantiate() as PawnView
 		pawn.name = "Pawn%d" % (i + 1)
-		pawn.player_id = &"yellow"
+		pawn.pawn_id = logic.pawn_id
+		pawn.player_id = PlayerId.YELLOW
 		pawn.grid_pos = cell
-		pawn.in_base = true
-		pawn.path_index = -1
 		pawn.setup(YELLOW_PAWN_TEXTURE, tile_w)
 		pawn.z_index = cell.x + cell.y + 1
 		yellow_root.add_child(pawn)
@@ -75,10 +81,19 @@ func _spawn_yellow_pawns() -> void:
 		pawn.set_rest_position(local_pos)
 		pawn.clicked.connect(_on_pawn_clicked)
 		_yellow_pawns.append(pawn)
+		_yellow_pawn_states.append(logic)
+
+
+func _logic_of(pawn: PawnView) -> PawnState:
+	for logic in _yellow_pawn_states:
+		if logic.pawn_id == pawn.pawn_id:
+			return logic
+	assert(false, "no PawnState for pawn_id=%s" % String(pawn.pawn_id))
+	return null
 
 
 func _start_yellow_turn() -> void:
-	_current_player = &"yellow"
+	_current_player = PlayerId.YELLOW
 	_turn_locked = false
 	_extra_roll_pending = false
 	_awaiting_pawn_choice = false
@@ -103,7 +118,7 @@ func _try_roll_dice(forced_value: int = 0) -> void:
 		return
 	if _awaiting_pawn_choice:
 		return
-	if _current_player != &"yellow":
+	if _current_player != PlayerId.YELLOW:
 		return
 	_roll_allowed = false
 	if forced_value > 0:
@@ -160,15 +175,17 @@ func _offer_moves_for_roll(value: int) -> void:
 		pawn.start_bob()
 
 
-func _get_movable_pawns(value: int) -> Array[Pawn]:
-	var result: Array[Pawn] = []
-	for pawn in _yellow_pawns:
+func _get_movable_pawns(value: int) -> Array[PawnView]:
+	var result: Array[PawnView] = []
+	for i in _yellow_pawns.size():
+		var pawn: PawnView = _yellow_pawns[i]
 		if not is_instance_valid(pawn):
 			continue
-		if pawn.in_base:
+		var logic: PawnState = _yellow_pawn_states[i]
+		if logic.is_in_base():
 			if value == 6 and _can_exit_to_spawn():
 				result.append(pawn)
-		elif _can_pawn_move(pawn, value):
+		elif _can_pawn_move(logic, value):
 			result.append(pawn)
 	return result
 
@@ -177,16 +194,18 @@ func _can_exit_to_spawn() -> bool:
 	return true
 
 
-func _can_pawn_move(pawn: Pawn, steps: int) -> bool:
-	var dest_index := _resolve_destination_index(pawn.path_index, steps)
+func _can_pawn_move(logic: PawnState, steps: int) -> bool:
+	var dest_index := _resolve_destination_index(logic.path_index, steps)
 	if dest_index < 0:
 		return false
 	var dest_cell: Vector2i = _yellow_path[dest_index]
 	# Blocking only applies inside the yellow safe zone.
-	if board.is_home_stretch_cell(&"yellow", dest_cell):
+	if Classic15x15Board.is_home_stretch_cell_of(PlayerId.YELLOW, CellId.from_vec(dest_cell)):
 		var blocker := _pawn_on_cell(dest_cell)
-		if blocker != null and blocker != pawn:
-			return false
+		if blocker != null:
+			var blocker_logic := _logic_of(blocker)
+			if blocker_logic.pawn_id != logic.pawn_id:
+				return false
 	return true
 
 
@@ -199,7 +218,7 @@ func _resolve_destination_index(from_index: int, steps: int) -> int:
 
 	var from_cell: Vector2i = _yellow_path[from_index]
 	# Inside safe zone: exact dice only (e.g. 3 left => 1/2/3 ok, 4/5/6 not).
-	if board.is_home_stretch_cell(&"yellow", from_cell):
+	if Classic15x15Board.is_home_stretch_cell_of(PlayerId.YELLOW, CellId.from_vec(from_cell)):
 		if steps > remaining:
 			return -1
 		return from_index + steps
@@ -209,7 +228,7 @@ func _resolve_destination_index(from_index: int, steps: int) -> int:
 	return from_index + advance
 
 
-func _on_pawn_clicked(pawn: Pawn) -> void:
+func _on_pawn_clicked(pawn: PawnView) -> void:
 	if _move_in_progress or not _awaiting_pawn_choice:
 		return
 	if not pawn.is_selectable:
@@ -224,47 +243,53 @@ func _on_pawn_clicked(pawn: Pawn) -> void:
 	pawn.set_selected(true)
 
 
-func _confirm_pawn_action(pawn: Pawn) -> void:
+func _confirm_pawn_action(pawn: PawnView) -> void:
 	_move_in_progress = true
 	_awaiting_pawn_choice = false
 	_stop_all_bobbing()
 	_clear_selection()
 
-	if pawn.in_base:
-		await _exit_pawn_to_spawn(pawn)
+	var logic: PawnState = _logic_of(pawn)
+	if logic.is_in_base():
+		await _exit_pawn_to_spawn(pawn, logic)
 	else:
-		await _move_pawn_steps(pawn, _last_dice)
+		await _move_pawn_steps(pawn, logic, _last_dice)
 
 	_move_in_progress = false
 	_finish_action_after_roll()
 
 
-func _exit_pawn_to_spawn(pawn: Pawn) -> void:
-	var spawn_cell: Vector2i = board.get_spawn_cell(&"yellow")
+func _exit_pawn_to_spawn(pawn: PawnView, logic: PawnState) -> void:
+	var spawn_cell: Vector2i = Classic15x15Board.spawn_grid_position_for(PlayerId.YELLOW)
 	var yellow_root: Node2D = pawn.get_parent() as Node2D
 	var target: Vector2 = yellow_root.to_local(
 		board.to_global(board.get_cell_local_position(spawn_cell))
 	)
+	logic.exit_base_to_spawn(CellId.from_vec(spawn_cell))
 	pawn.grid_pos = spawn_cell
-	pawn.path_index = 0
-	pawn.in_base = false
 	pawn.z_index = spawn_cell.x + spawn_cell.y + 1
 	await pawn.move_to_local(target)
 
 
-func _move_pawn_steps(pawn: Pawn, steps: int) -> void:
-	var dest_index := _resolve_destination_index(pawn.path_index, steps)
+func _move_pawn_steps(pawn: PawnView, logic: PawnState, steps: int) -> void:
+	var dest_index := _resolve_destination_index(logic.path_index, steps)
 	if dest_index < 0:
 		return
 
 	var yellow_root: Node2D = pawn.get_parent() as Node2D
-	for idx in range(pawn.path_index + 1, dest_index + 1):
+	for idx in range(logic.path_index + 1, dest_index + 1):
 		var cell: Vector2i = _yellow_path[idx]
+		var cell_id: StringName = CellId.from_vec(cell)
+		var zone: int = (
+				PawnZone.HOME_STRETCH
+				if Classic15x15Board.is_home_stretch_cell_of(PlayerId.YELLOW, cell_id)
+				else PawnZone.MAIN_PATH
+		)
 		var target: Vector2 = yellow_root.to_local(
 			board.to_global(board.get_cell_local_position(cell))
 		)
+		logic.set_position(zone, idx, cell_id)
 		pawn.grid_pos = cell
-		pawn.path_index = idx
 		pawn.z_index = cell.x + cell.y + 1
 		await pawn.move_to_local(target, 0.18)
 
@@ -294,23 +319,26 @@ func _end_turn_to_cyan() -> void:
 
 
 func _all_pawns_in_base() -> bool:
-	for pawn in _yellow_pawns:
-		if is_instance_valid(pawn) and not pawn.in_base:
+	for logic in _yellow_pawn_states:
+		if not logic.is_in_base():
 			return false
 	return true
 
 
-func _get_base_pawns() -> Array[Pawn]:
-	var result: Array[Pawn] = []
-	for pawn in _yellow_pawns:
-		if is_instance_valid(pawn) and pawn.in_base:
+func _get_base_pawns() -> Array[PawnView]:
+	var result: Array[PawnView] = []
+	for i in _yellow_pawns.size():
+		var pawn: PawnView = _yellow_pawns[i]
+		if is_instance_valid(pawn) and _yellow_pawn_states[i].is_in_base():
 			result.append(pawn)
 	return result
 
 
-func _pawn_on_cell(cell: Vector2i) -> Pawn:
-	for pawn in _yellow_pawns:
-		if is_instance_valid(pawn) and not pawn.in_base and pawn.grid_pos == cell:
+func _pawn_on_cell(cell: Vector2i) -> PawnView:
+	for i in _yellow_pawns.size():
+		var pawn: PawnView = _yellow_pawns[i]
+		var logic: PawnState = _yellow_pawn_states[i]
+		if is_instance_valid(pawn) and not logic.is_in_base() and pawn.grid_pos == cell:
 			return pawn
 	return null
 
