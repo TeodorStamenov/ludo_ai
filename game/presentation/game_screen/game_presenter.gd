@@ -7,7 +7,8 @@ extends Node
 ##   - слуша events_published(sequence, events) от MatchSession;
 ##   - предава батча към AnimationQueue (последователен playback #168 + binder #167);
 ##   - след AnimationQueue.all_done() извиква session.events_presented(sequence);
-##   - преобразува ValidMovesChanged / awaiting_human_action → подсветяване;
+##   - преобразува ValidMovesChanged → PawnView.show_valid_move (#170 / YEL-020);
+##   - преобразува awaiting_human_action → подсветяване + input gate;
 ##   - преобразува клик/tap върху пионка → MovePawnCommand през HumanController;
 ##   - преобразува клик върху зар → RollDiceCommand през HumanController;
 ##   - слуша match_finished → results_requested (AppFlow / GameScreen);
@@ -192,10 +193,17 @@ func apply_valid_pawn_ids(pawn_ids: Array) -> void:
 			pawn.show_valid_move()
 
 
-## ValidMovesChanged → подсветяване. AnimationQueue (#167/#168) може да го вика при play.
+## ValidMovesChanged → bob на валидните пионки (#170 / YEL-020).
+## Вика се от EventViewBinder по време на AnimationQueue playback (след DiceRolled).
+## AI/Remote seats не подскачат — cue-ът е само за human избор.
 func apply_valid_moves_changed(event: ValidMovesChangedEvent) -> void:
 	if event == null:
 		return
+	if _session != null:
+		var controller: PlayerController = _session.get_controller(event.player_id)
+		if controller != null and controller.is_autonomous():
+			_clear_valid_move_highlights()
+			return
 	apply_valid_pawn_ids(event.valid_pawn_ids)
 
 
@@ -215,7 +223,19 @@ func _on_events_published(sequence: int, events: Array) -> void:
 	if _animation_queue != null:
 		_animation_queue.play_batch(sequence, events)
 	else:
+		# Без опашка: snap present (вкл. ValidMovesChanged → bob) преди gate.
+		_present_events_snap(events)
 		_on_animation_all_done(sequence)
+
+
+## Синхронен present на батч през EventViewBinder — fallback без AnimationQueue.
+func _present_events_snap(events: Array) -> void:
+	_sync_event_binder()
+	if _event_binder == null or events == null:
+		return
+	for entry in events:
+		if entry is DomainEvent:
+			_event_binder.present(entry as DomainEvent)
 
 
 func _on_animation_all_done(sequence: int) -> void:

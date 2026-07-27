@@ -16,7 +16,8 @@ var _board_view: BoardView = null
 var _hud: GameHUD = null
 ## pawn_id (StringName) → PawnView
 var _pawn_views: Dictionary = {}
-## Optional: (ValidMovesChangedEvent) -> void — обикновено GamePresenter.apply_valid_moves_changed
+## Optional: (ValidMovesChangedEvent) -> void — обикновено GamePresenter.apply_valid_moves_changed.
+## Ако липсва, binder-ът сам вика PawnView.show_valid_move / hide_valid_move (#170).
 var _valid_moves_handler: Callable = Callable()
 
 
@@ -107,9 +108,30 @@ func _present_dice_rolled_animated(event: DiceRolledEvent) -> void:
 	_notify_hud(&"present_dice_rolled", event)
 
 
+## ValidMovesChanged → bob на валидните пионки (YEL-020 / #170).
+## Handler (GamePresenter) има приоритет — пази selection state; иначе директен apply.
 func _present_valid_moves_changed(event: ValidMovesChangedEvent) -> void:
+	if event == null:
+		return
 	if _valid_moves_handler.is_valid():
 		_valid_moves_handler.call(event)
+		return
+	apply_valid_pawn_ids(event.valid_pawn_ids)
+
+
+## Изчиства bob на всички регистрирани пионки, после show_valid_move за списъка.
+## Празен списък = само изчистване (няма избираеми / край на хода).
+func apply_valid_pawn_ids(pawn_ids: Array) -> void:
+	for key in _pawn_views.keys():
+		var pawn: PawnView = _pawn_of(StringName(str(key)))
+		if pawn != null:
+			pawn.hide_valid_move()
+	if pawn_ids == null:
+		return
+	for entry in pawn_ids:
+		var pawn: PawnView = _pawn_of(StringName(str(entry)))
+		if pawn != null:
+			pawn.show_valid_move()
 
 
 func _present_pawn_moved(event: PawnMovedEvent) -> void:

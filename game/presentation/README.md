@@ -34,6 +34,10 @@ Domain не чака tween. Presentation потвърждава след вся�
 `AnimationFinishedGate` чака `animation_finished(kind)` (#169) → `all_done` →
 `events_presented`.
 
+`ValidMovesChanged` (#170 / YEL-020): след `DiceRolled` binder/presenter вика
+`PawnView.show_valid_move()` само за `valid_pawn_ids` (human seats); празен
+списък изчиства bob-а. Невалидните пионки не подскачат.
+
 ## .tscn сцени
 
 Сцените (`.tscn` файлове) се създават в Godot Editor.  
