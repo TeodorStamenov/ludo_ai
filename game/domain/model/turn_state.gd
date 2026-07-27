@@ -15,12 +15,12 @@ extends RefCounted
 ## _roll_allowed, …) — фазата и valid_* масивите са единственият договор за
 ## input / AI / remote player.
 ##
-## Преходите с пълна game-rule логика са в TurnRules / GameEngine (issue #85);
-## тук са data model, фабрики, mutators и сериализация.
+## Преходите с game-rule логика са в TurnRules; тук са data model,
+## фабрики, mutators и сериализация.
 
-## Максимум опити при всички пионки в база (YEL-003 / прототип BASE_ROLL_ATTEMPTS).
+## Максимум опити при всички пионки в база (#94 / YEL-003 / прототип BASE_ROLL_ATTEMPTS).
 const BASE_ROLL_ATTEMPTS: int = 3
-## Опити когато поне една пионка е на дъската (YEL-004).
+## Опити когато поне една пионка е на дъската (#94 / YEL-004).
 const SINGLE_ROLL_ATTEMPTS: int = 1
 ## Няма хвърлен резултат (преди зар / след изчистване).
 const DICE_NONE: int = 0
