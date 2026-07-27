@@ -9,10 +9,11 @@ extends Node2D
 ##   - пази cell → Node2D / локална позиция;
 ##   - НЕ пази текущ играч, зар или правила.
 ##
-## Временно (до #147–#152): хардкоднат layout, изометрична математика
-## и prototype topology API (маршрути/бази/spawn) остават тук, за да
-## работи scenes/ludo_game.tscn. Не са authoritative gameplay state —
-## Domain вече има BoardDefinition / Classic15x15Board.
+## Изометричната математика е в IsometricMath (#147).
+## Временно (до #148–#152): хардкоднат layout и prototype topology API
+## (маршрути/бази/spawn) остават тук, за да работи scenes/ludo_game.tscn.
+## Не са authoritative gameplay state — Domain вече има BoardDefinition /
+## Classic15x15Board.
 
 const CHIP_RED := "res://rss/CHIP/07.png"
 const CHIP_GREEN := "res://rss/CHIP/03.png"
@@ -20,11 +21,6 @@ const CHIP_YELLOW := "res://rss/CHIP/02.png"
 const CHIP_CYAN := "res://rss/CHIP/04.png"
 const CHIP_ORANGE := "res://rss/CHIP/01.png"
 const CHIP_PURPLE := "res://rss/CHIP/05.png"
-
-const TILE_W: float = 136.0
-const TILE_H: float = 97.0
-const HALF_W: float = TILE_W / 2.0
-const HALF_H: float = TILE_H / 2.0
 
 @export var board_scale: float = 0.5:
 	set(value):
@@ -56,21 +52,12 @@ func _ready() -> void:
 	position = viewport_size / 2.0
 
 
-func _iso_to_screen(grid_pos: Vector2i) -> Vector2:
-	var center_offset := Vector2i(7, 7)
-	var rel_x: int = grid_pos.x - center_offset.x
-	var rel_y: int = grid_pos.y - center_offset.y
-	var sx: float = (rel_x - rel_y) * HALF_W * board_scale
-	var sy: float = (rel_x + rel_y) * HALF_H * board_scale
-	return Vector2(sx, sy)
-
-
 func get_cell_local_position(grid_pos: Vector2i) -> Vector2:
-	return _iso_to_screen(grid_pos)
+	return IsometricMath.grid_to_local(grid_pos, board_scale)
 
 
 func get_tile_display_width() -> float:
-	return TILE_W * board_scale
+	return IsometricMath.tile_display_width(board_scale)
 
 
 ## Локална позиция по стабилен cell_id, или Vector2.ZERO ако липсва.
@@ -111,10 +98,10 @@ func is_home_stretch_cell(player: StringName, cell: Vector2i) -> bool:
 func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> Sprite2D:
 	var sprite := Sprite2D.new()
 	sprite.texture = load(texture_path)
-	sprite.position = _iso_to_screen(grid_pos)
+	sprite.position = IsometricMath.grid_to_local(grid_pos, board_scale)
 	sprite.scale = Vector2(board_scale, board_scale)
 	sprite.centered = true
-	sprite.z_index = grid_pos.x + grid_pos.y
+	sprite.z_index = IsometricMath.z_index_for(grid_pos)
 	parent_node.add_child(sprite)
 	if Engine.is_editor_hint():
 		sprite.owner = get_tree().edited_scene_root
@@ -159,7 +146,8 @@ func _build_board() -> void:
 				tex = CHIP_CYAN
 			elif x == 7 and y == 7:
 				tex = CHIP_RED
-				center_position = _iso_to_screen(Vector2i(7, 7))
+				center_position = IsometricMath.grid_to_local(
+						IsometricMath.GRID_CENTER, board_scale)
 
 			var is_north := y >= 2 and y <= 6 and x >= 6 and x <= 8
 			var is_east := x >= 8 and x <= 12 and y >= 6 and y <= 8
