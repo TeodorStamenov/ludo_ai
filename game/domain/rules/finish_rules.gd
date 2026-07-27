@@ -1,18 +1,72 @@
 class_name FinishRules
 extends RefCounted
-## Правила за класиране и приключване на мача (docs/V1_ARCHITECTURE.md, §4.1 / §4.2 / §12;
-## docs/V1_GAME_DESIGN.md §3.1).
+## Правила за прибиране на пионка и класиране (docs/V1_ARCHITECTURE.md, §4.1 / §4.2 / §12;
+## docs/V1_GAME_DESIGN.md §3.1 / §3.2; GAP-007).
 ##
 ## Отговорности:
-##   - класиране на играч с 4 прибрани пионки (PlayerRanked);
+##   - HOME_STRETCH → FINISHED при точен зар до центъра (#99);
+##   - приключване на играч при 4 FINISHED → PlayerRanked (#120);
+##   - при 3–4 играчи мачът продължава за останалите места; ranking[] е стабилен (#121);
 ##   - автоматично последно място когато остава 1 некласиран;
 ##   - MATCH_FINISHED: MatchPhase.FINISHED + TurnPhase.MATCH_FINISHED + MatchFinishedEvent.
 ##
+## Маршрутът не включва CENTER — remaining_to_finish = remaining_to_last_home + 1.
 ## TurnRules сочи OUTCOME_MATCH_FINISHED; GameEngine вика apply_match_finished (#90).
-## Завършил / класиран играч не получава нов ход (TurnRules.should_skip_player).
+## Завършил / класиран играч не получава нов ход (TurnRules.should_skip_player / #120).
+##
+## #121 инварианти: мястото се присвоява веднъж (GameState.rank_player е идемпотентен);
+## 1-во / междинно място при ≥2 некласирани → мачът тече; предпоследно → auto last.
 
 
-## Играч с 4 FINISHED пионки, който още не е класиран.
+## Оставащи стъпки до центъра (последна HOME + 1). 0 = извън маршрута / вече минато.
+func remaining_steps_to_finish(from_index: int, route_length: int) -> int:
+	if from_index < 0 or route_length <= 0 or from_index >= route_length:
+		return 0
+	return route_length - from_index
+
+
+## True ако пионка в HOME_STRETCH може да се прибере с точен зар до центъра (#99).
+func can_finish_pawn(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if state == null or player == null or pawn == null:
+		return false
+	if not pawn.is_in_home_stretch():
+		return false
+	if not DiceState.is_face_value(dice_value):
+		return false
+	var route := _resolve_player_route(state, player.player_id)
+	if route.is_empty():
+		return false
+	if pawn.path_index < 0 or pawn.path_index >= route.size():
+		return false
+	if route[pawn.path_index] != pawn.cell_id:
+		return false
+	var remaining: int = remaining_steps_to_finish(pawn.path_index, route.size())
+	return remaining > 0 and dice_value == remaining
+
+
+## Прибира пионка в центъра (FINISHED, CellId.CENTER). Изисква can_finish_pawn.
+## Вече FINISHED пионка не се пипа (#100). Мутира pawn; връща false без промяна при невалидни входни данни.
+func apply_finish_pawn(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if pawn == null or pawn.is_finished():
+		return false
+	if not can_finish_pawn(state, player, pawn, dice_value):
+		return false
+	var route := _resolve_player_route(state, player.player_id)
+	pawn.mark_finished(route.size())
+	return true
+
+
+## Играч с 4 FINISHED пионки, който още не е класиран (#120).
 func should_rank_player(player: PlayerState) -> bool:
 	return (
 			player != null
@@ -42,7 +96,8 @@ func is_ranking_complete(state: GameState) -> bool:
 	return state.ranking.size() == count and count_unranked_players(state) == 0
 
 
-## Класира играч с 4 FINISHED пионки. Връща PlayerRankedEvent или null.
+## Приключва играч с 4 FINISHED (#120): следващо място + PlayerRankedEvent.
+## Връща null ако няма 4 прибрани / вече е класиран / невалиден вход.
 func rank_finished_player(
 		state: GameState,
 		player_id: StringName,
@@ -59,7 +114,8 @@ func rank_finished_player(
 	return PlayerRankedEvent.create_ranked(player_id, rank_value, command_sequence)
 
 
-## Остава точно 1 некласиран и ≥1 класиран → последно място (стабилно при 2–4).
+## Остава точно 1 некласиран и ≥1 класиран → последно място (стабилно при 2–4 / #121).
+## При ≥2 некласирани (типично след 1-во / 2-ро в 3–4p) → null, мачът продължава.
 func auto_rank_last_remaining(
 		state: GameState,
 		command_sequence: int = DomainEvent.COMMAND_SEQUENCE_UNSET
@@ -82,8 +138,9 @@ func auto_rank_last_remaining(
 	return null
 
 
-## След прибиране / преди advance: rank finisher + евентуално последен.
-## Връща Array от PlayerRankedEvent (0..2).
+## След прибиране / преди advance: следващо място + евентуално последен (#120 / #121).
+## При 3–4p: 1-во / междинно → само finisher event; предпоследно → + auto last.
+## Връща Array от PlayerRankedEvent (0..2). Мястата в ranking[] не се пренареждат.
 func resolve_ranking_progress(
 		state: GameState,
 		player_id: StringName,
@@ -120,3 +177,15 @@ func apply_match_finished(
 		state.turn.enter_match_finished()
 
 	return MatchFinishedEvent.create_from_state(state, command_sequence)
+
+
+func _resolve_player_route(state: GameState, player_id: StringName) -> Array[StringName]:
+	var route: Array[StringName] = []
+	if state == null or player_id == &"":
+		return route
+	if (
+			state.board_id != Classic15x15Board.BOARD_ID
+			and state.board_id != BoardDefinition.DEFAULT_BOARD_ID
+	):
+		return route
+	return Classic15x15Board.player_route_cell_ids_for(player_id)

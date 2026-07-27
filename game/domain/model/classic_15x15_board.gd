@@ -78,6 +78,17 @@ const HOME_STRETCH_CELL_COUNT: int = 16
 const PLAYER_ROUTE_LENGTH: int = MAIN_LOOP_LENGTH + HOME_STRETCH_CELLS_PER_PLAYER
 
 
+## path_index на първата HOME клетка в player route (= MAIN_LOOP_LENGTH).
+## Преди нея е home_entry (MAIN_PATH); оттук нататък зоната е HOME_STRETCH (#97).
+static func first_home_stretch_path_index() -> int:
+	return PLAYER_ROUTE_LENGTH - HOME_STRETCH_CELLS_PER_PLAYER
+
+
+## path_index на home_entry в player route (последна MAIN_PATH клетка преди HOME).
+static func home_entry_path_index() -> int:
+	return first_home_stretch_path_index() - 1
+
+
 ## BoardDefinition с board_id classic_15x15, cells, main_loop и 4 seats.
 static func create() -> BoardDefinition:
 	return BoardDefinition.create(

@@ -10,9 +10,7 @@ extends RefCounted
 
 
 var _move_rules: MoveRules
-@warning_ignore("unused_private_class_variable")
 var _stack_rules: StackRules
-@warning_ignore("unused_private_class_variable")
 var _capture_rules: CaptureRules
 var _turn_rules: TurnRules
 var _finish_rules: FinishRules
@@ -25,11 +23,17 @@ func _init(
 		turn_rules: TurnRules = null,
 		finish_rules: FinishRules = null
 ) -> void:
-	_move_rules = move_rules if move_rules != null else MoveRules.new()
-	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
-	_capture_rules = capture_rules if capture_rules != null else CaptureRules.new()
-	_turn_rules = turn_rules if turn_rules != null else TurnRules.new()
 	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
+	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
+	_capture_rules = (
+			capture_rules if capture_rules != null
+			else CaptureRules.new(_stack_rules)
+	)
+	_move_rules = (
+			move_rules if move_rules != null
+			else MoveRules.new(_finish_rules, _stack_rules, _capture_rules)
+	)
+	_turn_rules = turn_rules if turn_rules != null else TurnRules.new()
 
 
 ## Авторитетен вход (§3): валидира и прилага команда → CommandResult.
@@ -222,8 +226,10 @@ func _apply_roll_dice(
 
 
 ## MovePawnCommand в AWAITING_MOVE → RESOLVING_MOVE (#87/#88):
-## exit-base (YEL-030/032) или ход по маршрута (YEL-040–043).
-## Capture / stacks / finish / gifts → по-късни tasks.
+## exit-base (YEL-030/032), ход по маршрута (YEL-040–055) или прибиране (#99).
+## FINISHED пионка се reject-ва (#100). Трета своя на клетка → ILLEGAL_MOVE (#109).
+## Кацане върху своя → PawnStackFormed (#110). Единична противникова → capture (#113).
+## Gifts → по-късни tasks.
 func _apply_move_pawn(
 		state: GameState,
 		command: MovePawnCommand,
@@ -255,8 +261,24 @@ func _apply_move_pawn(
 						CommandError.CODE_UNKNOWN_PAWN,
 						"pawn_id not found on active player"))
 
+	# #100: FINISHED пионка е терминална — дори ако е в valid_pawn_ids (tampered client).
+	if pawn.is_finished():
+		return CommandResult.rejected(
+				state,
+				CommandError.illegal_move("finished pawn cannot move"))
+
 	var dice_value: int = state.turn.dice_value
 	if not _move_rules.can_move_pawn(state, player, pawn, dice_value):
+		# #109: трета своя на MAIN_PATH / spawn — дори при tampered valid_pawn_ids.
+		if _move_rules.would_place_third_own_pawn(state, player, pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("cannot place third own pawn on cell"))
+		# #111: кацане върху имунна противникова купчина от 2.
+		if _move_rules.would_land_on_enemy_stack(state, player, pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("cannot land on immune enemy stack"))
 		return CommandResult.rejected(
 				state,
 				CommandError.illegal_move("pawn is not movable for current dice"))
@@ -295,6 +317,21 @@ func _apply_move_pawn(
 					CommandError.illegal_move("exit base could not be applied"))
 		events.append(PawnExitedBaseEvent.create_from_states(
 				before, next_pawn, accepted_sequence))
+		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
+		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
+	elif _finish_rules.can_finish_pawn(next, next_player, next_pawn, dice_value):
+		if not _finish_rules.apply_finish_pawn(
+				next, next_player, next_pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("finish pawn could not be applied"))
+		events.append(PawnMovedEvent.create_from_states(
+				before, next_pawn, accepted_sequence))
+		events.append(PawnFinishedEvent.create_from_states(
+				before, next_pawn, accepted_sequence))
+		for ranked_event in _finish_rules.resolve_ranking_progress(
+				next, next_player.player_id, accepted_sequence):
+			events.append(ranked_event)
 	else:
 		if not _move_rules.apply_board_move(
 				next, next_player, next_pawn, dice_value):
@@ -303,13 +340,45 @@ func _apply_move_pawn(
 					CommandError.illegal_move("board move could not be applied"))
 		events.append(PawnMovedEvent.create_from_states(
 				before, next_pawn, accepted_sequence))
+		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
+		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
 
-	var outcome: StringName = _turn_rules.resolve_after_move(next.turn, false)
+	# #120/#121: 4 FINISHED → PlayerRanked; при 3–4p мачът може да продължи;
+	# завършил не получава extra roll / нов ход.
+	var player_completed: bool = next_player.is_ranked()
+	var outcome: StringName = _turn_rules.resolve_after_move(
+			next.turn, false, player_completed)
 	_append_turn_end_advance(next, outcome, accepted_sequence, events)
 
 	_sync_dice_from_turn(next, command.player_id)
 	next.capture_rng(rng)
 	return CommandResult.ok(next, events)
+
+
+## #113/#114: кацане върху единична незащитена противникова →
+## PawnCaptured + PawnSentHome (в свободна base клетка).
+## Преди stack formed — capture освобождава клетката от противника.
+func _append_capture_if_any(
+		state: GameState,
+		arriving: PawnState,
+		command_sequence: int,
+		events: Array
+) -> void:
+	for entry in _capture_rules.resolve_capture(state, arriving, command_sequence):
+		events.append(entry)
+
+
+## #110: кацане върху една своя на MAIN_PATH → PawnStackFormed след exit/move.
+func _append_stack_formed_if_any(
+		state: GameState,
+		arriving: PawnState,
+		command_sequence: int,
+		events: Array
+) -> void:
+	var stack_event: PawnStackFormedEvent = _stack_rules.resolve_stack_formed(
+			state, arriving, command_sequence)
+	if stack_event != null:
+		events.append(stack_event)
 
 
 ## TURN_END → auto-rank last place → advance (TurnChanged / MATCH_FINISHED).

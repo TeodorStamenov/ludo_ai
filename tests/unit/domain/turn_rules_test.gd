@@ -141,6 +141,17 @@ func test_resolve_after_move_without_gift_honors_extra_roll() -> void:
 	assert_true(turn.is_awaiting_roll())
 
 
+## #120: класиран играч губи pending extra roll → TURN_END.
+func test_resolve_after_move_player_completed_forces_turn_end() -> void:
+	var turn := TurnState.create_for_player_turn(1, false)
+	_rules.resolve_after_roll(turn, 6, false, [&"green_0"])
+	assert_true(turn.has_extra_roll_pending())
+	var outcome := _rules.resolve_after_move(turn, false, true)
+	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)
+	assert_true(turn.is_turn_end())
+	assert_false(turn.has_extra_roll_pending())
+
+
 func test_resolve_after_move_with_gift_enters_power_up() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
 	_rules.resolve_after_roll(turn, 4, false, [&"green_0"])
