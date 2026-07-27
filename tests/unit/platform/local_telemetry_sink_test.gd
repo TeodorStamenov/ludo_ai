@@ -1,9 +1,11 @@
 extends TestCase
-## Unit тестове за LocalTelemetrySink — файлово-базиран JSONL telemetry адаптер.
+## Unit тестове за LocalTelemetrySink — файлово-базиран JSONL telemetry адаптер
+## и локален bug report bundle при invariant violation (#143).
 ##
-## Тестовете записват в user://telemetry.log; setUp/tearDown изчистват файла.
-## Проверяват буферирането, auto-flush при достигане на FLUSH_THRESHOLD,
-## atomic-append логиката и незабавния flush при invariant violation.
+## Тестовете записват в user://telemetry.log и user://logs/; setUp/tearDown
+## изчистват артефактите. Проверяват буферирането, auto-flush при
+## FLUSH_THRESHOLD, atomic-append логиката и незабавния flush + bundle
+## при invariant violation.
 ##
 ## БЕЛЕЖКА: LocalTelemetrySink не прилага auto-flush при освобождаване
 ## (NOTIFICATION_PREDELETE е ненадеждно за RefCounted в Godot 4.6).
@@ -12,21 +14,37 @@ extends TestCase
 var sink: LocalTelemetrySink
 
 const _LOG_PATH := "user://telemetry.log"
+const _LOGS_DIR := "user://logs"
 
 
 func setUp() -> void:
 	sink = LocalTelemetrySink.new()
 	_delete_log()
+	_delete_bug_reports()
 
 
 func tearDown() -> void:
 	_delete_log()
+	_delete_bug_reports()
 
 
 func _delete_log() -> void:
 	var dir := DirAccess.open("user://")
 	if dir and dir.file_exists("telemetry.log"):
 		dir.remove("telemetry.log")
+
+
+func _delete_bug_reports() -> void:
+	var dir := DirAccess.open(_LOGS_DIR)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if not dir.current_is_dir() and name.begins_with("bug_report_"):
+			dir.remove(name)
+		name = dir.get_next()
+	dir.list_dir_end()
 
 
 func _read_log_lines() -> Array[String]:
@@ -42,6 +60,34 @@ func _read_log_lines() -> Array[String]:
 			lines.append(line)
 	f = null
 	return lines
+
+
+func _list_bug_report_paths() -> Array[String]:
+	var paths: Array[String] = []
+	var dir := DirAccess.open(_LOGS_DIR)
+	if dir == null:
+		return paths
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if not dir.current_is_dir() and name.begins_with("bug_report_") and name.ends_with(".json"):
+			paths.append("%s/%s" % [_LOGS_DIR, name])
+		name = dir.get_next()
+	dir.list_dir_end()
+	return paths
+
+
+func _read_json_file(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var f := FileAccess.open(path, FileAccess.READ)
+	if not f:
+		return {}
+	var parsed = JSON.parse_string(f.get_as_text())
+	f = null
+	if parsed is Dictionary:
+		return parsed as Dictionary
+	return {}
 
 
 # --- Buffering behaviour ---
@@ -135,7 +181,7 @@ func test_record_state_hash_produces_state_hash_entry() -> void:
 	assert_eq(payload.get("hash"), 999, "hash in payload")
 
 
-# --- Invariant violation ---
+# --- Invariant violation + bug report bundle (#143) ---
 
 func test_record_invariant_violation_flushes_immediately() -> void:
 	sink.record_event(&"some_event")
@@ -156,7 +202,47 @@ func test_record_invariant_violation_writes_violation_entry() -> void:
 			assert_eq(payload.get("match_id"), "match_x", "match_id in violation payload")
 			assert_eq(payload.get("description"), "board corrupted",
 				"description in violation payload")
+			assert_true(str(payload.get("bundle_path", "")).begins_with(_LOGS_DIR),
+				"bundle_path points under user://logs")
 	assert_true(found, "invariant_violation entry found in log")
+
+
+func test_record_invariant_violation_writes_bug_report_bundle() -> void:
+	var snapshot := {
+		"match_id": "match_x",
+		"command_sequence": 12,
+		"state_hash": "42",
+	}
+	sink.record_invariant_violation(&"match_x", "own_stack_overflow: cell overflow", snapshot)
+
+	var path := sink.get_last_bug_report_path()
+	assert_false(path.is_empty(), "last bug report path set")
+	assert_true(FileAccess.file_exists(path), "bundle file exists on disk")
+
+	var reports := _list_bug_report_paths()
+	assert_eq(reports.size(), 1, "exactly one bug report file")
+	assert_eq(reports[0], path, "listed path matches last path")
+
+	var bundle := _read_json_file(path)
+	assert_true(BugReportBundle.is_valid_payload(bundle), "bundle schema valid")
+	assert_eq(bundle.get(BugReportBundle.KEY_MATCH_ID), "match_x")
+	assert_eq(bundle.get(BugReportBundle.KEY_DESCRIPTION),
+			"own_stack_overflow: cell overflow")
+	assert_eq(bundle.get(BugReportBundle.KEY_TRIGGER),
+			String(BugReportBundle.TRIGGER_INVARIANT_VIOLATION))
+	var snap: Dictionary = bundle.get(BugReportBundle.KEY_SNAPSHOT, {})
+	assert_eq(snap.get("command_sequence"), 12, "snapshot preserved in bundle")
+
+
+func test_bug_report_bundle_sanitizes_match_id_in_filename() -> void:
+	sink.record_invariant_violation(&"match/../x y", "bad")
+	var path := sink.get_last_bug_report_path()
+	assert_false(path.is_empty(), "path set")
+	var filename := path.get_file()
+	assert_true(filename.begins_with("bug_report_"), "bug_report_ prefix")
+	assert_false(filename.contains(".."), "no path traversal in filename")
+	assert_false(filename.contains("/"), "no slash in filename")
+	assert_false(filename.contains(" "), "spaces sanitized")
 
 
 # --- Append (не overwrite) при множество flush-ове ---

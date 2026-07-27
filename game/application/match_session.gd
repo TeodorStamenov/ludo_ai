@@ -18,7 +18,7 @@ extends RefCounted
 ##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
 ##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#137);
 ##   - след приета команда проверява §12 инварианти (#142); при нарушение
-##     записва в TelemetrySink (bug report bundle → #143) и спира мача;
+##     записва TelemetrySink → локален BugReportBundle (#143) и спира мача;
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),
@@ -84,7 +84,7 @@ func start(
 	receive_command(StartMatchCommand.new(config))
 
 
-## Опционален TelemetrySink за invariant_violation (#142; bug report → #143).
+## Опционален TelemetrySink: при invariant violation пише bug report bundle (#143).
 func set_telemetry_sink(sink: TelemetrySink) -> void:
 	_telemetry = sink
 
@@ -473,8 +473,9 @@ func _begin_journal() -> void:
 	_journal.record_header(_config, seed_value)
 
 
-## §12 runtime checks след приета команда (#142). При нарушение: telemetry,
-## invariant_violated сигнал, спира мача (без events_published).
+## §12 runtime checks след приета команда (#142). При нарушение: telemetry
+## записва локален bug report bundle (#143), invariant_violated сигнал,
+## спира мача (без events_published).
 func _assert_invariants_or_halt() -> bool:
 	var check := GameStateInvariantChecker.validate_runtime(_state)
 	if check.is_ok():
@@ -486,6 +487,7 @@ func _assert_invariants_or_halt() -> bool:
 			description])
 	if _telemetry != null:
 		var match_id: StringName = _state.match_id if _state != null else &""
+		# LocalTelemetrySink → user://logs/bug_report_*.json (BugReportBundle).
 		_telemetry.record_invariant_violation(match_id, description, snapshot)
 	_invariant_halted = true
 	_active = false
