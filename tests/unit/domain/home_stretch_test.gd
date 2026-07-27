@@ -1,10 +1,11 @@
 extends TestCase
-## Business-critical тестове за влизане в home stretch (Task #97 /
+## Business-critical тестове за влизане в home stretch (Task #105 /
 ## docs/V1_GAME_DESIGN.md §3.2; CURRENT_YELLOW_BEHAVIOR YEL-050 / YEL-053;
-## docs/V1_ARCHITECTURE.md §4.1 / §12).
+## docs/V1_ARCHITECTURE.md §4.1 / §12 / §14).
 ##
-## Инварианти: MAIN_PATH → HOME_STRETCH при дестинация на собствена HOME клетка;
-## маршрутът не обикаля отново общото трасе; заета крайна HOME клетка блокира.
+## Правилото е в MoveRules (#97). Тук: MAIN_PATH → HOME_STRETCH при собствена
+## HOME клетка; без повторна обиколка по общото трасе; заета крайна HOME
+## блокира; MovePawnCommand ↔ PawnMoved / TurnChanged / extra roll при 6.
 
 
 var _rules: MoveRules
@@ -56,6 +57,32 @@ func test_yel_050_yellow_home_entry_steps_land_on_home_cells() -> void:
 				"YEL-050: след влизане не продължава по общото трасе")
 
 
+## YEL-050: traversed от home_entry с 3 → home_entry+1..+3 по жълтия route.
+func test_yel_050_traversed_cells_enter_home_stretch_sequentially() -> void:
+	var state := _setup_yellow_on_main_path()
+	var player := state.get_active_player()
+	var pawn := player.get_pawn_by_index(0)
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var home_entry: int = Classic15x15Board.home_entry_path_index()
+	var steps: int = 3
+	pawn.set_position(PawnZone.MAIN_PATH, home_entry, route[home_entry])
+
+	var traversed := _rules.resolve_traversed_cell_ids(home_entry, steps, route)
+	assert_eq(traversed.size(), steps)
+	for i in steps:
+		assert_eq(traversed[i], route[home_entry + 1 + i])
+		assert_true(Classic15x15Board.is_home_stretch_cell_of(
+				PlayerId.YELLOW, traversed[i]))
+	assert_eq(
+			_rules.resolve_destination_index(home_entry, steps, route.size()),
+			home_entry + steps)
+
+	assert_true(_rules.apply_board_move(state, player, pawn, steps))
+	assert_true(pawn.is_in_home_stretch())
+	assert_eq(pawn.cell_id, traversed[steps - 1])
+	assert_eq(pawn.cell_id, CellId.from_grid(7, 9))
+
+
 ## От клетка преди home_entry с точен зар → първа HOME клетка.
 func test_enter_from_two_before_home_entry() -> void:
 	var state := _setup_green_on_main_path()
@@ -72,6 +99,28 @@ func test_enter_from_two_before_home_entry() -> void:
 	assert_eq(traversed[0], route[from_index + 1])
 	assert_eq(traversed[1], route[first_home])
 	assert_true(_rules.apply_board_move(state, player, pawn, 2))
+	assert_true(pawn.is_in_home_stretch())
+	assert_eq(pawn.path_index, first_home)
+	assert_eq(pawn.cell_id, route[first_home])
+
+
+## От 3 клетки преди home_entry с 4 → първа HOME; преминава през home_entry.
+func test_enter_from_three_before_home_entry_with_four() -> void:
+	var state := _setup_green_on_main_path()
+	var player := state.get_active_player()
+	var pawn := player.get_pawn_by_index(0)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var home_entry: int = Classic15x15Board.home_entry_path_index()
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
+	var from_index: int = home_entry - 3
+	pawn.set_position(PawnZone.MAIN_PATH, from_index, route[from_index])
+
+	assert_true(_rules.would_enter_home_stretch(state, player, pawn, 4))
+	var traversed := _rules.resolve_traversed_cell_ids(from_index, 4, route)
+	assert_eq(traversed.size(), 4)
+	assert_eq(traversed[2], route[home_entry])
+	assert_eq(traversed[3], route[first_home])
+	assert_true(_rules.apply_board_move(state, player, pawn, 4))
 	assert_true(pawn.is_in_home_stretch())
 	assert_eq(pawn.path_index, first_home)
 	assert_eq(pawn.cell_id, route[first_home])
@@ -96,6 +145,26 @@ func test_all_seats_enter_own_home_stretch_from_home_entry() -> void:
 		assert_eq(pawn.cell_id, Classic15x15Board.home_stretch_cells_for(player_id)[0])
 		assert_false(Classic15x15Board.is_home_stretch_cell_of(
 				_other_seat(player_id), pawn.cell_id))
+
+
+## Всички seats: от home_entry с 1–4 → собствените HOME клетки по ред.
+func test_all_seats_home_entry_steps_land_on_own_home_cells() -> void:
+	var state := _setup_four_player_in_progress()
+	for player_id in PlayerId.ALL:
+		var player := state.get_player(player_id)
+		var pawn := player.get_pawn_by_index(0)
+		var route := Classic15x15Board.player_route_cell_ids_for(player_id)
+		var home_entry: int = Classic15x15Board.home_entry_path_index()
+		var homes := Classic15x15Board.home_stretch_cells_for(player_id)
+		for steps in range(1, Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER + 1):
+			pawn.set_position(PawnZone.MAIN_PATH, home_entry, route[home_entry])
+			assert_true(_rules.apply_board_move(state, player, pawn, steps),
+					"%s: влизане с %d" % [player_id, steps])
+			assert_true(pawn.is_in_home_stretch())
+			assert_eq(pawn.path_index, home_entry + steps)
+			assert_eq(pawn.cell_id, homes[steps - 1])
+			assert_true(Classic15x15Board.is_home_stretch_cell_of(
+					player_id, pawn.cell_id))
 
 
 ## Ход, който не достига HOME, остава MAIN_PATH (контраст към YEL-050).
@@ -134,6 +203,27 @@ func test_occupied_first_home_blocks_entry_yel_053() -> void:
 	assert_true(mover.equals(before), "reject не мутира пионката")
 
 
+## YEL-053: заета по-дълбока HOME клетка блокира влизане с точен зар до нея.
+func test_occupied_deeper_home_blocks_entry_yel_053() -> void:
+	var state := _setup_green_on_main_path()
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var home_entry: int = Classic15x15Board.home_entry_path_index()
+	var dest_index: int = home_entry + 3
+	var mover := player.get_pawn_by_index(0)
+	var blocker := player.get_pawn_by_index(1)
+	mover.set_position(PawnZone.MAIN_PATH, home_entry, route[home_entry])
+	blocker.set_position(PawnZone.HOME_STRETCH, dest_index, route[dest_index])
+	var before := mover.duplicate_state()
+
+	assert_false(_rules.would_enter_home_stretch(state, player, mover, 3))
+	assert_false(_rules.can_advance_on_board(state, player, mover, 3))
+	assert_false(_rules.apply_board_move(state, player, mover, 3))
+	assert_true(mover.equals(before))
+	assert_true(_rules.would_enter_home_stretch(state, player, mover, 2),
+			"свободна междинна дестинация остава валидна")
+
+
 ## Overshoot от home_entry с 5 (> 4 HOME клетки) → reject без clamp.
 func test_overshoot_past_home_stretch_from_entry_rejected() -> void:
 	var state := _setup_green_on_main_path()
@@ -145,6 +235,9 @@ func test_overshoot_past_home_stretch_from_entry_rejected() -> void:
 	var before := pawn.duplicate_state()
 	var overshoot: int = Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER + 1
 
+	assert_eq(
+			_rules.remaining_steps_to_route_end(home_entry, route.size()),
+			Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER)
 	assert_false(_rules.would_enter_home_stretch(state, player, pawn, overshoot))
 	assert_false(_rules.can_advance_on_board(state, player, pawn, overshoot))
 	assert_false(_rules.apply_board_move(state, player, pawn, overshoot))
@@ -193,6 +286,96 @@ func test_engine_enter_home_stretch_ends_turn_when_not_six() -> void:
 	assert_ne(result.state.active_player_index, active_before)
 	assert_true(result.events[0] is PawnMovedEvent)
 	assert_true(result.events[1] is TurnChangedEvent)
+	assert_eq(result.event_count(), 2)
+
+
+## Engine: влизане с 6 от преди home_entry → HOME_STRETCH + extra roll (YEL-043).
+func test_engine_enter_home_stretch_with_six_grants_extra_roll() -> void:
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
+	var from_index: int = first_home - 6
+	var state := _setup_yellow_at_path_index_awaiting_move(from_index, 6)
+	state.turn.grant_extra_roll()
+	var player := state.get_active_player()
+	var pawn := player.get_pawn_by_index(0)
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var active_before: int = state.active_player_index
+	var turn_before: int = state.turn.turn_number
+	var rng := SeededRandomSource.new(state.get_rng_seed())
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, pawn.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	var moved := result.state.get_player(player.player_id).get_pawn(pawn.pawn_id)
+	assert_true(moved.is_in_home_stretch())
+	assert_eq(moved.path_index, first_home)
+	assert_eq(moved.cell_id, route[first_home])
+	assert_true(result.state.turn.is_awaiting_roll())
+	assert_true(result.state.turn.allows_roll_dice())
+	assert_eq(
+			result.state.turn.base_attempts_remaining,
+			TurnState.SINGLE_ROLL_ATTEMPTS)
+	assert_eq(result.state.active_player_index, active_before)
+	assert_eq(result.state.turn.turn_number, turn_before)
+	assert_eq(result.event_count(), 1)
+	assert_true(result.events[0] is PawnMovedEvent)
+	assert_false(_events_contain_turn_changed(result.events))
+
+
+## Engine: заета първа HOME → ILLEGAL_MOVE, без мутация на state/RNG (§12).
+func test_engine_occupied_home_entry_rejected_yel_053() -> void:
+	var state := _setup_yellow_at_home_entry_awaiting_move(1)
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
+	var mover := player.get_pawn_by_index(0)
+	var blocker := player.get_pawn_by_index(1)
+	blocker.set_position(PawnZone.HOME_STRETCH, first_home, route[first_home])
+	# valid_pawn_ids умишлено съдържа mover — engine трябва да reject-не по правила.
+	assert_false(_rules.would_enter_home_stretch(state, player, mover, 1))
+	var before := state.duplicate_state()
+	var rng := SeededRandomSource.new(state.get_rng_seed())
+	var rng_before := rng.get_state()
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.is_rejected())
+	assert_eq(result.error.code, CommandError.CODE_ILLEGAL_MOVE)
+	assert_true(state.equals(before))
+	assert_eq(rng.get_state(), rng_before, "§12: reject не консумира RNG")
+	assert_true(mover.is_on_main_path())
+
+
+## Engine: overshoot от home_entry → ILLEGAL_MOVE, без мутация (§12 / GAP-008).
+func test_engine_overshoot_past_home_from_entry_rejected() -> void:
+	var overshoot: int = Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER + 1
+	var state := _setup_yellow_at_home_entry_awaiting_move(overshoot)
+	var player := state.get_active_player()
+	var pawn := player.get_pawn_by_index(0)
+	assert_false(_rules.can_advance_on_board(state, player, pawn, overshoot))
+	var before := state.duplicate_state()
+	var rng := SeededRandomSource.new(state.get_rng_seed())
+	var rng_before := rng.get_state()
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, pawn.pawn_id)
+	state.stamp_command(cmd)
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.is_rejected())
+	assert_eq(result.error.code, CommandError.CODE_ILLEGAL_MOVE)
+	assert_true(state.equals(before))
+	assert_eq(rng.get_state(), rng_before, "§12: reject не консумира RNG")
+	assert_eq(pawn.path_index, Classic15x15Board.home_entry_path_index())
+
+
+func _events_contain_turn_changed(events: Array) -> bool:
+	for entry in events:
+		if entry is TurnChangedEvent:
+			return true
+	return false
 
 
 func _other_seat(player_id: StringName) -> StringName:
@@ -250,15 +433,22 @@ func _setup_yellow_on_main_path() -> GameState:
 
 
 func _setup_yellow_at_home_entry_awaiting_move(dice_value: int) -> GameState:
+	return _setup_yellow_at_path_index_awaiting_move(
+			Classic15x15Board.home_entry_path_index(), dice_value)
+
+
+func _setup_yellow_at_path_index_awaiting_move(
+		path_index: int,
+		dice_value: int
+) -> GameState:
 	var state := _setup_yellow_on_main_path()
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
 	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
-	var home_entry: int = Classic15x15Board.home_entry_path_index()
-	pawn.set_position(PawnZone.MAIN_PATH, home_entry, route[home_entry])
+	pawn.set_position(PawnZone.MAIN_PATH, path_index, route[path_index])
 	state.turn.enter_awaiting_move(dice_value, [pawn.pawn_id])
 	state.dice.set_roll(player.player_id, dice_value)
-	assert_eq(pawn.cell_id, CellId.from_grid(7, 12))
+	assert_true(pawn.is_on_main_path())
 	return state
 
 
