@@ -5,6 +5,7 @@ extends TestCase
 ## Инварианти: мачът продължава след 1-во / междинни места; ranking[] е стабилен
 ## (местата не се пренареждат); предпоследно приключване → auto last + MatchFinished;
 ## класиран играч се прескача.
+## End-to-end победа/класиране → Task #124 / win_and_ranking_test.gd.
 
 
 var _finish: FinishRules

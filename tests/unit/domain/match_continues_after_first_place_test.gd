@@ -4,6 +4,7 @@ extends TestCase
 ##
 ## Инварианти: при 3–4p след победител мачът остава IN_PROGRESS; останалите
 ## могат да хвърлят/ходят; победителят се прескача; MatchFinished не се емитва.
+## End-to-end победа/класиране → Task #124 / win_and_ranking_test.gd.
 
 
 var _finish: FinishRules

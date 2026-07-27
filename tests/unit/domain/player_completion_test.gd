@@ -4,6 +4,7 @@ extends TestCase
 ##
 ## Инварианти: 4 прибрани → PlayerRanked + skip; <4 → без класиране;
 ## при 4p първият finisher не приключва мача; завършил няма extra roll / нов ход.
+## End-to-end победа/класиране → Task #124 / win_and_ranking_test.gd.
 
 
 var _finish: FinishRules

@@ -5,6 +5,7 @@ extends TestCase
 ## Инварианти: should_finish_match ↔ should_continue_match; пълен ranking →
 ## MatchPhase.FINISHED + MatchFinishedEvent; ≥2 некласирани → без тихо finish;
 ## след края командите се отхвърлят.
+## End-to-end победа/класиране → Task #124 / win_and_ranking_test.gd.
 
 
 var _finish: FinishRules
