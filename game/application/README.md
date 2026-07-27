@@ -42,6 +42,7 @@ Presentation ──► Application ──► Domain
 presentation gate → AI/human advance → MatchSummary). Външните команди влизат
 само през `CommandBus.submit()` (HumanController.action_ready и AI advance).
 `EventQueue` буферира DomainEvent-и FIFO; `events_presented` прави
-`acknowledge(sequence)`. `GameplayJournal` се създава при start/restore
-(`get_journal()`); записът на header/команди/hash е в roadmap #133–#136.
-Останалите application класове се довършват в собствени roadmap задачи.
+`acknowledge(sequence)`. `GameplayJournal` се създава при start/restore (`get_journal()`); header-ът
+записва MatchConfig, seed и content version (#133). Записът на команди/hash
+е в roadmap #134–#136. Останалите application класове се довършват в собствени
+roadmap задачи.

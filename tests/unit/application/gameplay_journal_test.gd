@@ -1,9 +1,10 @@
 extends TestCase
-## Business-critical тестове за GameplayJournal (Task #132 /
+## Business-critical тестове за GameplayJournal (Task #132 / #133 /
 ## docs/V1_ARCHITECTURE.md §11 / §12 / §16.3).
 ##
 ## Инварианти: append-only ред; accepted commands за replay без reject/hash шум;
-## command_from_dict диспеч; round-trip без загуба; MatchSession притежава journal.
+## command_from_dict диспеч; round-trip без загуба; MatchSession записва header
+## (MatchConfig + seed + content version) при start.
 
 
 func _make_config() -> MatchConfig:
@@ -143,13 +144,75 @@ func test_match_session_owns_journal_after_start() -> void:
 	state.match_id = &"m_200_1"
 	var session := MatchSession.new()
 	var cfg := _make_config()
-	var engine := GameEngine.new()
 	# Stub apply за да не зависи тестът от пълните правила при StartMatch.
 	session.start(cfg, state, _AcceptEngine.new(), SeededRandomSource.new(1), {}, EventQueue.new())
 	var journal := session.get_journal()
 	assert_not_null(journal, "MatchSession must own a GameplayJournal after start")
 	assert_eq(journal.match_id, &"m_200_1")
 	assert_true(journal.is_valid())
+
+
+func test_record_header_stores_config_seed_and_content_version() -> void:
+	## Replay / bug report (#133): header носи MatchConfig + seed + content version.
+	var journal := GameplayJournal.new()
+	journal.begin(&"m_100_7")
+	var cfg := _make_config()
+	cfg.rng_seed = 99
+	journal.record_header(cfg, 99)
+
+	assert_true(journal.has_header())
+	assert_eq(journal.rng_seed, 99)
+	assert_eq(journal.content_version, GameplayJournal.CONTENT_VERSION)
+	assert_false(journal.match_config.is_empty())
+	assert_eq(int(journal.match_config.get("rng_seed", 0)), 99)
+
+	var restored_cfg := MatchConfig.from_dict(journal.match_config)
+	assert_not_null(restored_cfg)
+	assert_eq(restored_cfg.rng_seed, 99)
+	assert_eq(restored_cfg.seats.size(), 2)
+
+
+func test_match_session_records_journal_header_on_start() -> void:
+	## #133: при start header-ът е попълнен от MatchConfig.rng_seed (не от живия RNG).
+	var state := GameState.new()
+	state.match_id = &"m_200_2"
+	var session := MatchSession.new()
+	var cfg := _make_config()
+	cfg.rng_seed = 42
+	session.start(
+			cfg, state, _AcceptEngine.new(), SeededRandomSource.new(7), {}, EventQueue.new())
+	var journal := session.get_journal()
+	assert_not_null(journal)
+	assert_true(journal.has_header())
+	assert_eq(journal.rng_seed, 42)
+	assert_eq(journal.content_version, GameplayJournal.CONTENT_VERSION)
+	assert_eq(int(journal.match_config.get("rng_seed", 0)), 42)
+	var restored_cfg := MatchConfig.from_dict(journal.match_config)
+	assert_not_null(restored_cfg)
+	assert_eq(restored_cfg.seats.size(), cfg.seats.size())
+
+
+func test_match_session_records_journal_header_on_restore() -> void:
+	## #133: restore също записва header от възстановения MatchConfig.
+	MatchId._reset_counter_for_tests()
+	var cfg := MatchConfig.new()
+	cfg.rng_seed = 55
+	cfg.set_active_seats(MatchConfig.DEFAULT_SEATS_2P)
+	cfg.seats[0].configure(MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
+	cfg.seats[1].configure(
+			MatchConfig.ControllerType.AI, AnimalId.RABBIT, AIDifficulty.EASY)
+	var live := MatchFactory.new().create(cfg)
+	live.events_presented(live.get_pending_sequence())
+	var snapshot := live.to_snapshot()
+
+	var session := MatchSession.new()
+	assert_true(session.restore_from_snapshot(snapshot, _AcceptEngine.new()))
+	var journal := session.get_journal()
+	assert_not_null(journal)
+	assert_eq(journal.match_id, live.get_state().match_id)
+	assert_true(journal.has_header())
+	assert_eq(journal.rng_seed, 55)
+	assert_eq(journal.content_version, GameplayJournal.CONTENT_VERSION)
 
 
 class _AcceptEngine extends GameEngine:

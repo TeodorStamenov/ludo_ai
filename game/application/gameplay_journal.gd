@@ -137,11 +137,15 @@ func entry_count() -> int:
 
 
 func is_empty() -> bool:
-	return _entries.is_empty() and match_config.is_empty()
+	return (
+			_entries.is_empty()
+			and match_config.is_empty()
+			and content_version == &""
+	)
 
 
 func has_header() -> bool:
-	return not match_config.is_empty() or content_version != &""
+	return not match_config.is_empty() and content_version != &""
 
 
 func clear() -> void:

@@ -425,9 +425,13 @@ func _clear_human_action_routes() -> void:
 
 
 ## Създава / нулира GameplayJournal за текущия match_id (#132).
-## Header / команди / hash-ове се попълват от последващи roadmap задачи (#133–#136).
+## Записва MatchConfig, seed и content version в header-а (#133).
+## Команди / state hash-ове се попълват от последващи roadmap задачи (#134–#136).
 func _begin_journal() -> void:
 	if _journal == null:
 		_journal = GameplayJournal.new()
 	var id: StringName = _state.match_id if _state != null else &""
 	_journal.begin(id)
+	# Replay / bug report четат seed от header (не от живия RNG state).
+	var seed_value: int = _config.rng_seed if _config != null else 0
+	_journal.record_header(_config, seed_value)
