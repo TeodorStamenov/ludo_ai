@@ -196,6 +196,25 @@ func test_sequence_mismatch_is_rejected() -> void:
 	assert_eq(rng.get_state(), rng_before)
 
 
+func test_wrong_match_is_rejected_without_rng_use() -> void:
+	var state := _setup_in_progress()
+	assert_true(state.match_id != &"")
+	var before := state.duplicate_state()
+	var rng := SeededRandomSource.new(state.get_rng_seed())
+	var rng_before := rng.get_state()
+	var cmd := RollDiceCommand.create_for_player(state.get_active_player_id())
+	cmd.match_id = &"m_9999999999999_0"
+	cmd.sequence = state.next_command_sequence()
+
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.is_rejected())
+	assert_eq(result.error.code, CommandError.CODE_WRONG_MATCH)
+	assert_eq(result.event_count(), 0)
+	assert_true(state.equals(before))
+	assert_eq(rng.get_state(), rng_before)
+
+
 func test_roll_dice_rejected_when_match_not_active() -> void:
 	var state := GameState.create_from_match_config(_two_player_config(3))
 	assert_true(state.is_setup())
