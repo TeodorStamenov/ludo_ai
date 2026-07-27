@@ -6,7 +6,8 @@ extends RefCounted
 ## Отговорности:
 ##   - излизане от база само при 6 (#92);
 ##   - изчисляване на валидни пионки след зар (#95 / YEL-020/044/045/052–055);
-##   - движение по общото трасе / home stretch (точен зар — без GAP-008 clamp).
+##   - движение по общото трасе (#96 / YEL-040–043) — точен зар, без GAP-008 clamp;
+##   - влизане / точен зар в home stretch (#97–#98 / YEL-050–055).
 ##
 ## Capture / stacks / FINISHED → CaptureRules / StackRules / FinishRules.
 ## Gift → RESOLVING_POWER_UP.
@@ -95,7 +96,7 @@ func resolve_player_route(state: GameState, player_id: StringName) -> Array[Stri
 
 
 ## Destination path_index след `steps` от `from_index`. Overshoot / край → NONE.
-## Точен зар до края на маршрута (YEL-052 / GAP-008 rejected).
+## Точен зар до края на маршрута (YEL-052 / GAP-008 rejected — без clamp).
 func resolve_destination_index(from_index: int, steps: int, route_length: int) -> int:
 	if from_index < 0 or steps <= 0 or route_length <= 0:
 		return DESTINATION_NONE
@@ -105,6 +106,22 @@ func resolve_destination_index(from_index: int, steps: int, route_length: int) -
 	if steps > remaining:
 		return DESTINATION_NONE
 	return from_index + steps
+
+
+## Клетките от хода: exclusive from → inclusive dest (YEL-040 последователно).
+## Празен при overshoot / невалидни входни данни. Без clamp (GAP-008 rejected).
+func resolve_traversed_cell_ids(
+		from_index: int,
+		steps: int,
+		route: Array[StringName]
+) -> Array[StringName]:
+	var cells: Array[StringName] = []
+	var dest_index := resolve_destination_index(from_index, steps, route.size())
+	if dest_index == DESTINATION_NONE:
+		return cells
+	for i in range(from_index + 1, dest_index + 1):
+		cells.append(route[i])
+	return cells
 
 
 ## True ако пионка на дъската може да се премести с дадения зар (YEL-040/052/053/055).
@@ -152,8 +169,9 @@ func apply_exit_base(
 	return true
 
 
-## Премества пионка по маршрута с dice_value клетки (YEL-040). Мутира pawn.
-## Връща false без промяна ако ходът е невалиден.
+## Премества пионка с dice_value клетки по маршрута (YEL-040 / #96).
+## Остава MAIN_PATH докато дестинацията е на общото трасе; home stretch → #97.
+## Мутира pawn; връща false без промяна ако ходът е невалиден.
 func apply_board_move(
 		state: GameState,
 		player: PlayerState,
@@ -165,12 +183,15 @@ func apply_board_move(
 	var route := resolve_player_route(state, player.player_id)
 	var dest_index := resolve_destination_index(pawn.path_index, dice_value, route.size())
 	var dest_cell: StringName = route[dest_index]
-	var zone: int = (
-			PawnZone.HOME_STRETCH
-			if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell)
-			else PawnZone.MAIN_PATH)
+	var zone: int = _zone_for_destination(player.player_id, dest_cell)
 	pawn.set_position(zone, dest_index, dest_cell)
 	return true
+
+
+func _zone_for_destination(player_id: StringName, dest_cell: StringName) -> int:
+	if Classic15x15Board.is_home_stretch_cell_of(player_id, dest_cell):
+		return PawnZone.HOME_STRETCH
+	return PawnZone.MAIN_PATH
 
 
 func _uses_classic_board(state: GameState) -> bool:

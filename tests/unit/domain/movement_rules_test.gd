@@ -6,8 +6,8 @@ extends TestCase
 ##   - Хвърлено 6 дава право на допълнителен ход (виж extra_roll_on_six_test / #93).
 ##   - Три опита при всички пионки в база (виж three_attempts_from_base_test / #94).
 ##   - Валидни пионки след зар (виж valid_pawns_after_roll_test / #95).
-##   - Движение по общото трасе и влизане в home stretch.
-##   - Точен зар за завършване в края на home stretch.
+##   - Движение по общото трасе (виж main_path_movement_test / #96).
+##   - Влизане в home stretch / точен зар при завършване (#97–#98).
 
 
 func test_move_rules_extends_ref_counted() -> void:
