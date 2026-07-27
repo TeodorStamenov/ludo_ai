@@ -111,24 +111,21 @@ func test_roll_then_exit_base_preserves_extra_roll_flow() -> void:
 	assert_true(after_move.events[0] is PawnExitedBaseEvent)
 
 
-func test_board_path_move_still_not_implemented() -> void:
+func test_board_path_move_resolves_via_resolving_move() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
 	pawn.exit_base_to_spawn(Classic15x15Board.spawn_cell_for(player.player_id))
 	state.turn.enter_awaiting_move(4, [pawn.pawn_id])
-	var before := state.duplicate_state()
 	var rng := SeededRandomSource.new(state.get_rng_seed())
-	var rng_before := rng.get_state()
 	var cmd := MovePawnCommand.create_for_pawn(player.player_id, pawn.pawn_id)
 	state.stamp_command(cmd)
 
 	var result := _engine.validate_and_apply(state, cmd, rng)
 
-	assert_true(result.is_rejected())
-	assert_eq(result.error.code, CommandError.CODE_NOT_IMPLEMENTED)
-	assert_true(state.equals(before))
-	assert_eq(rng.get_state(), rng_before)
+	assert_true(result.accepted)
+	assert_true(result.events[0] is PawnMovedEvent)
+	assert_eq(result.state.get_player(player.player_id).get_pawn(pawn.pawn_id).path_index, 4)
 
 
 func _fixed_rng(face: int) -> RandomSource:

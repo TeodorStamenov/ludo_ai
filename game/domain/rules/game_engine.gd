@@ -223,8 +223,9 @@ func _apply_roll_dice(
 	return CommandResult.ok(next, events)
 
 
-## MovePawnCommand в AWAITING_MOVE (#87): валидация + exit-base MVP (YEL-030/032).
-## Path / capture / stacks / finish → #88 / #95.
+## MovePawnCommand в AWAITING_MOVE → RESOLVING_MOVE (#87/#88):
+## exit-base (YEL-030/032) или ход по маршрута (YEL-040–043).
+## Capture / stacks / finish / gifts → по-късни tasks.
 func _apply_move_pawn(
 		state: GameState,
 		command: MovePawnCommand,
@@ -256,10 +257,26 @@ func _apply_move_pawn(
 						CommandError.CODE_UNKNOWN_PAWN,
 						"pawn_id not found on active player"))
 
-	# #87 MVP: само излизане от база. Ходове по дъската → #88 / #95.
-	if not pawn.is_in_base():
-		return CommandResult.not_implemented(
-				state, "MovePawnCommand board path (#88/#95)")
+	if pawn.is_finished():
+		return CommandResult.rejected(
+				state,
+				CommandError.illegal_move("finished pawn cannot move"))
+
+	var dice_value: int = state.turn.dice_value
+	if pawn.is_in_base():
+		if not _move_rules.allows_exit_base(dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("exit base requires dice 6"))
+	elif pawn.is_on_board():
+		if not _move_rules.can_advance_on_board(state, player, pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("board move is not legal for dice"))
+	else:
+		return CommandResult.rejected(
+				state,
+				CommandError.illegal_move("pawn is not movable from current zone"))
 
 	var next: GameState = state.duplicate_state()
 	var next_player := next.get_active_player()
@@ -285,15 +302,24 @@ func _apply_move_pawn(
 				CommandError.wrong_phase("could not enter RESOLVING_MOVE"))
 
 	var before := next_pawn.duplicate_state()
-	if not _move_rules.apply_exit_base(
-			next, next_player, next_pawn, next.turn.dice_value):
-		return CommandResult.rejected(
-				state,
-				CommandError.illegal_move("exit base could not be applied"))
+	var events: Array = []
 
-	var events: Array = [
-		PawnExitedBaseEvent.create_from_states(before, next_pawn, accepted_sequence),
-	]
+	if next_pawn.is_in_base():
+		if not _move_rules.apply_exit_base(
+				next, next_player, next_pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("exit base could not be applied"))
+		events.append(PawnExitedBaseEvent.create_from_states(
+				before, next_pawn, accepted_sequence))
+	else:
+		if not _move_rules.apply_board_move(
+				next, next_player, next_pawn, dice_value):
+			return CommandResult.rejected(
+					state,
+					CommandError.illegal_move("board move could not be applied"))
+		events.append(PawnMovedEvent.create_from_states(
+				before, next_pawn, accepted_sequence))
 
 	var outcome: StringName = _turn_rules.resolve_after_move(next.turn, false)
 	if outcome == TurnRules.OUTCOME_TURN_END:

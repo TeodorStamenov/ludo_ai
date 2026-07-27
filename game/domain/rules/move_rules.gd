@@ -1,18 +1,19 @@
 class_name MoveRules
 extends RefCounted
 ## Правила за движение по маршрута (docs/V1_ARCHITECTURE.md, раздел 4, 14;
-## docs/V1_GAME_DESIGN.md §3; CURRENT_YELLOW_BEHAVIOR YEL-013/030/044/045).
+## docs/V1_GAME_DESIGN.md §3; CURRENT_YELLOW_BEHAVIOR YEL-013/030/040–045/050–055).
 ##
 ## Отговорности:
 ##   - излизане от база само при 6;
-##   - изчисляване на валидни пионки след зар (#95 — пълна path валидация);
-##   - движение по общото трасе / home stretch / точен зар за finish.
+##   - изчисляване на валидни пионки след зар;
+##   - движение по общото трасе / home stretch (точен зар — без GAP-008 clamp).
 ##
-## #86/#87 MVP: collect_valid_pawn_ids + apply_exit_base за база при зар 6.
-## Ходове по дъската → #88 / #95.
+## Capture / stacks / FINISHED → отделни rules (#89+). Gift → RESOLVING_POWER_UP.
 
 
 const EXIT_BASE_VALUE: int = DiceState.EXIT_BASE_VALUE
+## Невалиден destination index (няма ход / overshoot).
+const DESTINATION_NONE: int = -1
 
 
 func allows_exit_base(dice_value: int) -> bool:
@@ -20,9 +21,9 @@ func allows_exit_base(dice_value: int) -> bool:
 
 
 ## Пионки, за които MovePawnCommand е валидна след зар.
-## База → само при 6 (YEL-013 / #92). Пълна path валидация → #95.
+## База → само при 6 (YEL-013 / #92). Дъска → can_advance_on_board (YEL-040+).
 func collect_valid_pawn_ids(
-		_state: GameState,
+		state: GameState,
 		player: PlayerState,
 		dice_value: int
 ) -> Array:
@@ -38,6 +39,9 @@ func collect_valid_pawn_ids(
 		if pawn.is_in_base():
 			if allows_exit_base(dice_value):
 				result.append(pawn.pawn_id)
+		elif pawn.is_on_board():
+			if can_advance_on_board(state, player, pawn, dice_value):
+				result.append(pawn.pawn_id)
 	return result
 
 
@@ -45,12 +49,62 @@ func collect_valid_pawn_ids(
 func resolve_spawn_cell(state: GameState, player_id: StringName) -> StringName:
 	if state == null or player_id == &"":
 		return &""
-	if (
-			state.board_id == Classic15x15Board.BOARD_ID
-			or state.board_id == BoardDefinition.DEFAULT_BOARD_ID
-	):
+	if _uses_classic_board(state):
 		return Classic15x15Board.spawn_cell_for(player_id)
 	return &""
+
+
+## Пълен маршрут на seat (cell_id). Непозната дъска / играч → [].
+func resolve_player_route(state: GameState, player_id: StringName) -> Array[StringName]:
+	var route: Array[StringName] = []
+	if state == null or player_id == &"":
+		return route
+	if not _uses_classic_board(state):
+		return route
+	return Classic15x15Board.player_route_cell_ids_for(player_id)
+
+
+## Destination path_index след `steps` от `from_index`. Overshoot / край → NONE.
+## Точен зар до края на маршрута (YEL-052 / GAP-008 rejected).
+func resolve_destination_index(from_index: int, steps: int, route_length: int) -> int:
+	if from_index < 0 or steps <= 0 or route_length <= 0:
+		return DESTINATION_NONE
+	var remaining: int = (route_length - 1) - from_index
+	if remaining <= 0:
+		return DESTINATION_NONE
+	if steps > remaining:
+		return DESTINATION_NONE
+	return from_index + steps
+
+
+## True ако пионка на дъската може да се премести с дадения зар (YEL-040/052/053/055).
+func can_advance_on_board(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if state == null or player == null or pawn == null:
+		return false
+	if not pawn.is_on_board():
+		return false
+	if not DiceState.is_face_value(dice_value):
+		return false
+	var route := resolve_player_route(state, player.player_id)
+	if route.is_empty():
+		return false
+	if pawn.path_index < 0 or pawn.path_index >= route.size():
+		return false
+	if route[pawn.path_index] != pawn.cell_id:
+		return false
+	var dest_index := resolve_destination_index(pawn.path_index, dice_value, route.size())
+	if dest_index == DESTINATION_NONE:
+		return false
+	var dest_cell: StringName = route[dest_index]
+	if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell):
+		if _own_other_pawn_on_cell(player, pawn.pawn_id, dest_cell):
+			return false
+	return true
 
 
 ## Извежда пионка от база на spawn (YEL-030). Изисква BASE + валиден зар 6.
@@ -72,3 +126,47 @@ func apply_exit_base(
 		return false
 	pawn.exit_base_to_spawn(spawn)
 	return true
+
+
+## Премества пионка по маршрута с dice_value клетки (YEL-040). Мутира pawn.
+## Връща false без промяна ако ходът е невалиден.
+func apply_board_move(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if not can_advance_on_board(state, player, pawn, dice_value):
+		return false
+	var route := resolve_player_route(state, player.player_id)
+	var dest_index := resolve_destination_index(pawn.path_index, dice_value, route.size())
+	var dest_cell: StringName = route[dest_index]
+	var zone: int = (
+			PawnZone.HOME_STRETCH
+			if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell)
+			else PawnZone.MAIN_PATH)
+	pawn.set_position(zone, dest_index, dest_cell)
+	return true
+
+
+func _uses_classic_board(state: GameState) -> bool:
+	return (
+			state.board_id == Classic15x15Board.BOARD_ID
+			or state.board_id == BoardDefinition.DEFAULT_BOARD_ID
+	)
+
+
+func _own_other_pawn_on_cell(
+		player: PlayerState,
+		moving_pawn_id: StringName,
+		cell_id: StringName
+) -> bool:
+	for entry in player.pawns:
+		if not (entry is PawnState):
+			continue
+		var other := entry as PawnState
+		if other.pawn_id == moving_pawn_id:
+			continue
+		if other.cell_id == cell_id and other.is_on_board():
+			return true
+	return false
