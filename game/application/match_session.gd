@@ -16,7 +16,7 @@ extends RefCounted
 ##     сигнализира Presentation за очакван human input;
 ##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
 ##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
-##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#136);
+##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#137);
 ##   - при MatchFinished произвежда MatchSummary чрез match_finished сигнал.
 ##
 ## Snapshot API (§5.2 / §9 / §11): to_snapshot(), to_snapshot_json(),

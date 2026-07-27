@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## MatchSession притежава един journal за активния мач. Journal-ът не прилага
 ## правила — само записва факти (header, приети/отхвърлени команди, state hash).
-## Deterministic replay (#137) чете seed + accepted commands и възпроизвежда мача.
+## DeterministicReplayRunner (#137) чете seed + accepted commands и възпроизвежда мача.
 ##
 ## Сериализация: to_dict() / from_dict() / to_json() / from_json().
 ## command_from_dict() диспечира към конкретния GameCommand subclass по command_type
@@ -123,6 +123,20 @@ func get_accepted_commands() -> Array[GameCommand]:
 		var cmd: GameCommand = command_from_dict(data)
 		if cmd != null:
 			out.append(cmd)
+	return out
+
+
+## Записани state_hash записи в хронологичен ред — вход за replay verify (#137).
+## Всеки елемент: {sequence: int, hash: String}.
+func get_recorded_state_hashes() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for entry: Dictionary in _entries:
+		if StringName(str(entry.get(ENTRY_KIND, ""))) != KIND_STATE_HASH:
+			continue
+		out.append({
+			ENTRY_SEQUENCE: int(entry.get(ENTRY_SEQUENCE, -1)),
+			ENTRY_HASH: str(entry.get(ENTRY_HASH, "")),
+		})
 	return out
 
 

@@ -27,6 +27,7 @@ Presentation ──► Application ──► Domain
 | `command_bus.gd`          | Единственото входно гнездо за GameCommand-и |
 | `event_queue.gd`          | FIFO буфер на DomainEvent-и; sequence acknowledge след presentation |
 | `gameplay_journal.gd`     | Append-only journal на активния мач (replay / bug report / #132) |
+| `deterministic_replay_runner.gd` | Headless replay от journal (seed + accepted commands → state hash / #137) |
 | `controller/`             | PlayerController (интерфейс), Human, AI, Remote |
 | `ai/`                     | AIPolicy (интерфейс), Easy, Medium, Hard имплементации |
 | `ports/`                  | Интерфейси към persistence, ads, settings, telemetry |
@@ -45,5 +46,7 @@ presentation gate → AI/human advance → MatchSummary). Външните ко�
 `acknowledge(sequence)`. `GameplayJournal` се създава при start/restore (`get_journal()`); header-ът
 записва MatchConfig, seed и content version (#133). Приетите и отхвърлените
 команди (с причина) и state hash след всяка приета команда се записват в
-journal при `receive_command` (#134–#136). Останалите application класове се
-довършват в собствени roadmap задачи.
+journal при `receive_command` (#134–#136). `DeterministicReplayRunner` чете
+journal-а (seed + accepted commands), прилага ги през `GameEngine` без
+presentation gate и проверява state hash (#137). Останалите application
+класове се довършват в собствени roadmap задачи.
