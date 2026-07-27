@@ -7,7 +7,8 @@ extends RefCounted
 ##   - излизане от база само при 6 (#92);
 ##   - изчисляване на валидни пионки след зар (#95 / YEL-020/044/045/052–055);
 ##   - движение по общото трасе (#96 / YEL-040–043) — точен зар, без GAP-008 clamp;
-##   - влизане / точен зар в home stretch (#97–#98 / YEL-050–055).
+##   - влизане в home stretch (#97 / YEL-050) — MAIN_PATH → HOME_STRETCH, без обиколка;
+##   - точен зар вътре в home stretch (#98 / YEL-051–055).
 ##
 ## Capture / stacks / FINISHED → CaptureRules / StackRules / FinishRules.
 ## Gift → RESOLVING_POWER_UP.
@@ -124,7 +125,8 @@ func resolve_traversed_cell_ids(
 	return cells
 
 
-## True ако пионка на дъската може да се премести с дадения зар (YEL-040/052/053/055).
+## True ако пионка на дъската може да се премести с дадения зар (YEL-040/050/052/053/055).
+## Home stretch дестинация: само ако крайната клетка е свободна от своя пионка (YEL-053).
 func can_advance_on_board(
 		state: GameState,
 		player: PlayerState,
@@ -154,6 +156,24 @@ func can_advance_on_board(
 	return true
 
 
+## True ако ходът от MAIN_PATH би влязъл в собствения home stretch (YEL-050 / #97).
+func would_enter_home_stretch(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> bool:
+	if pawn == null or not pawn.is_on_main_path():
+		return false
+	if not can_advance_on_board(state, player, pawn, dice_value):
+		return false
+	var route := resolve_player_route(state, player.player_id)
+	var dest_index := resolve_destination_index(pawn.path_index, dice_value, route.size())
+	if dest_index == DESTINATION_NONE:
+		return false
+	return Classic15x15Board.is_home_stretch_cell_of(player.player_id, route[dest_index])
+
+
 ## Извежда пионка от база на spawn (YEL-030). Изисква can_exit_base.
 ## Мутира pawn; връща false без промяна при невалидни входни данни.
 func apply_exit_base(
@@ -169,8 +189,8 @@ func apply_exit_base(
 	return true
 
 
-## Премества пионка с dice_value клетки по маршрута (YEL-040 / #96).
-## Остава MAIN_PATH докато дестинацията е на общото трасе; home stretch → #97.
+## Премества пионка с dice_value клетки по маршрута (YEL-040 / #96, YEL-050 / #97).
+## MAIN_PATH дестинация → MAIN_PATH; home stretch дестинация → HOME_STRETCH (без обиколка).
 ## Мутира pawn; връща false без промяна ако ходът е невалиден.
 func apply_board_move(
 		state: GameState,
@@ -188,6 +208,7 @@ func apply_board_move(
 	return true
 
 
+## Зона след хода: HOME_STRETCH при собствена HOME клетка (#97), иначе MAIN_PATH.
 func _zone_for_destination(player_id: StringName, dest_cell: StringName) -> int:
 	if Classic15x15Board.is_home_stretch_cell_of(player_id, dest_cell):
 		return PawnZone.HOME_STRETCH

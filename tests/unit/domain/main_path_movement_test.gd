@@ -61,9 +61,7 @@ func test_mid_loop_move_stays_on_main_path() -> void:
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-	var first_home: int = (
-			Classic15x15Board.PLAYER_ROUTE_LENGTH
-			- Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
 	var from_index: int = 12
 	assert_lt(from_index + 6, first_home, "ходът не трябва да достига home stretch")
 	pawn.set_position(PawnZone.MAIN_PATH, from_index, route[from_index])
@@ -96,10 +94,7 @@ func test_overshoot_from_home_entry_rejected_without_clamp_gap_008() -> void:
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-	var home_entry_index: int = (
-			Classic15x15Board.PLAYER_ROUTE_LENGTH
-			- Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER
-			- 1)
+	var home_entry_index: int = Classic15x15Board.home_entry_path_index()
 	pawn.set_position(PawnZone.MAIN_PATH, home_entry_index, route[home_entry_index])
 	assert_true(Classic15x15Board.is_main_loop_cell(pawn.cell_id))
 	var before := pawn.duplicate_state()

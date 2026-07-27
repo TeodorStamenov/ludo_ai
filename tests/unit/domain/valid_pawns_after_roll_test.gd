@@ -88,9 +88,7 @@ func test_collect_occupied_home_dest_excluded_yel_053() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-	var first_home: int = (
-			Classic15x15Board.PLAYER_ROUTE_LENGTH
-			- Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
 	var mover := player.get_pawn_by_index(0)
 	var blocker := player.get_pawn_by_index(1)
 	mover.set_position(PawnZone.HOME_STRETCH, first_home, route[first_home])

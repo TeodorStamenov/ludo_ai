@@ -139,7 +139,7 @@ func test_enter_home_stretch_from_main_path_yel_050() -> void:
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-	var first_home_index: int = Classic15x15Board.PLAYER_ROUTE_LENGTH - Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER
+	var first_home_index: int = Classic15x15Board.first_home_stretch_path_index()
 	var from_index: int = first_home_index - 2
 	pawn.set_position(PawnZone.MAIN_PATH, from_index, route[from_index])
 	state.turn.enter_awaiting_move(2, [pawn.pawn_id])
