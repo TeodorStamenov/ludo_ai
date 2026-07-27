@@ -5,7 +5,7 @@ extends Node
 ##
 ## Отговорности:
 ##   - слуша events_published(sequence, events) от MatchSession;
-##   - предава батча към AnimationQueue;
+##   - предава батча към AnimationQueue (+ EventViewBinder → views, #167);
 ##   - след AnimationQueue.all_done() извиква session.events_presented(sequence);
 ##   - преобразува ValidMovesChanged / awaiting_human_action → подсветяване;
 ##   - преобразува клик/tap върху пионка → MovePawnCommand през HumanController;
@@ -27,6 +27,8 @@ var _board_view: BoardView = null
 var _hud: GameHUD = null
 ## pawn_id (StringName) → PawnView
 var _pawn_views: Dictionary = {}
+## DomainEvent → view dispatch (#167); споделен с AnimationQueue.
+var _event_binder: EventViewBinder = null
 
 var _active_human: HumanController = null
 var _active_player_id: StringName = &""
@@ -93,6 +95,7 @@ func set_animation_queue(queue: AnimationQueue) -> void:
 	_animation_queue = queue
 	if _animation_queue != null and not _animation_queue.all_done.is_connected(_on_animation_all_done):
 		_animation_queue.all_done.connect(_on_animation_all_done)
+	_sync_event_binder()
 
 
 func set_dice_view(dice: DiceView) -> void:
@@ -101,10 +104,12 @@ func set_dice_view(dice: DiceView) -> void:
 	_dice_view = dice
 	if _dice_view != null and not _dice_view.roll_requested.is_connected(_on_dice_roll_requested):
 		_dice_view.roll_requested.connect(_on_dice_roll_requested)
+	_sync_event_binder()
 
 
 func set_board_view(board: BoardView) -> void:
 	_board_view = board
+	_sync_event_binder()
 
 
 func get_board_view() -> BoardView:
@@ -113,6 +118,7 @@ func get_board_view() -> BoardView:
 
 func set_hud(hud: GameHUD) -> void:
 	_hud = hud
+	_sync_event_binder()
 
 
 func get_hud() -> GameHUD:
@@ -127,7 +133,12 @@ func get_animation_queue() -> AnimationQueue:
 	return _animation_queue
 
 
-## Регистрира PawnView за highlight + input. Повторна регистрация заменя.
+func get_event_binder() -> EventViewBinder:
+	_sync_event_binder()
+	return _event_binder
+
+
+## Регистрира PawnView за highlight + input + EventViewBinder. Повторна регистрация заменя.
 func register_pawn_view(pawn: PawnView) -> void:
 	if pawn == null or pawn.pawn_id == &"":
 		return
@@ -138,6 +149,7 @@ func register_pawn_view(pawn: PawnView) -> void:
 	_pawn_views[pawn.pawn_id] = pawn
 	if not pawn.clicked.is_connected(_on_pawn_clicked):
 		pawn.clicked.connect(_on_pawn_clicked)
+	_sync_event_binder()
 
 
 func unregister_pawn_view(pawn_id: StringName) -> void:
@@ -145,6 +157,7 @@ func unregister_pawn_view(pawn_id: StringName) -> void:
 	if pawn != null and pawn.clicked.is_connected(_on_pawn_clicked):
 		pawn.clicked.disconnect(_on_pawn_clicked)
 	_pawn_views.erase(pawn_id)
+	_sync_event_binder()
 
 
 func clear_pawn_views() -> void:
@@ -153,6 +166,20 @@ func clear_pawn_views() -> void:
 		if pawn != null and is_instance_valid(pawn) and pawn.clicked.is_connected(_on_pawn_clicked):
 			pawn.clicked.disconnect(_on_pawn_clicked)
 	_pawn_views.clear()
+	_sync_event_binder()
+
+
+## Поддържа EventViewBinder в синхрон с текущите view refs (#167).
+func _sync_event_binder() -> void:
+	if _event_binder == null:
+		_event_binder = EventViewBinder.new()
+	_event_binder.set_dice_view(_dice_view)
+	_event_binder.set_board_view(_board_view)
+	_event_binder.set_hud(_hud)
+	_event_binder.set_pawn_views(_pawn_views)
+	_event_binder.set_valid_moves_handler(apply_valid_moves_changed)
+	if _animation_queue != null:
+		_animation_queue.set_event_binder(_event_binder)
 
 
 ## Подсветява валидните пионки (ValidMovesChanged / awaiting_human). Не валидира правила.

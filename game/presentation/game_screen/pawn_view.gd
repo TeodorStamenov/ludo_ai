@@ -156,6 +156,53 @@ func set_selected(selected: bool) -> void:
 		scale = _base_scale
 
 
+## Instant apply от PawnMovedEvent (#167). Клетъчна анимация е #172.
+func present_pawn_moved(event: PawnMovedEvent, local_target: Vector2) -> void:
+	if event == null or not event.is_valid():
+		return
+	_apply_cell_pose(event.to_cell_id, local_target)
+
+
+## Instant apply от PawnExitedBaseEvent (#167). Анимация на излизане е #173.
+func present_pawn_exited_base(event: PawnExitedBaseEvent, local_target: Vector2) -> void:
+	if event == null or not event.is_valid():
+		return
+	_apply_cell_pose(event.spawn_cell_id, local_target)
+
+
+## Instant apply от PawnSentHomeEvent (#167). Меко „вкъщи“ tween е #175.
+func present_pawn_sent_home(event: PawnSentHomeEvent, local_target: Vector2) -> void:
+	if event == null or not event.is_valid():
+		return
+	_apply_cell_pose(event.base_cell_id, local_target)
+
+
+## Instant apply от PawnFinishedEvent (#167). Finish анимация е #176.
+func present_pawn_finished(event: PawnFinishedEvent, local_target: Vector2) -> void:
+	if event == null or not event.is_valid():
+		return
+	_apply_cell_pose(event.center_cell_id, local_target)
+
+
+## Capture cue (#167). Позицията на взетата пионка идва от PawnSentHome.
+func present_pawn_captured(_event: PawnCapturedEvent) -> void:
+	pass
+
+
+## Stack cue (#167). Пълно offset/анимация е #174.
+func present_stack_formed(_event: PawnStackFormedEvent, _is_arriving: bool) -> void:
+	pass
+
+
+func _apply_cell_pose(cell_id: StringName, local_target: Vector2) -> void:
+	_prepare_for_action()
+	_stop_action_tween()
+	if CellId.is_valid(cell_id):
+		grid_pos = CellId.to_vec(cell_id)
+		z_index = grid_pos.x + grid_pos.y + 1
+	set_rest_position(local_target)
+
+
 ## Ход по дъската: лек hop към local_target, после rest + animation_finished.
 func move_to_local(local_target: Vector2, duration: float = 0.28) -> void:
 	_prepare_for_action()
