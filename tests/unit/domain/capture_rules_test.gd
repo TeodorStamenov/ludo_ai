@@ -1,11 +1,10 @@
 extends TestCase
-## Business-critical тестове за CaptureRules — имунитет на купчина (#111),
-## прескачане (#112), взимане (#113), връщане в свободна база (#114) и
-## защита на home stretch от противници (#115)
+## Business-critical тестове за CaptureRules API — имунитет (#111), прескачане
+## (#112), взимане (#113), свободна база (#114), home stretch (#115)
 ## (docs/V1_ARCHITECTURE.md §12; V1_GAME_DESIGN.md §3.1–3.2).
 ##
-## #115: HOME_STRETCH / BASE / FINISHED не са capturable; чужд home stretch
-## блокира кацане; маршрутите не пресичат чужд home stretch.
+## Сценарии end-to-end за взимане → Task #118 / pawn_capture_test.gd.
+## Home stretch защита като отделен suite → #119.
 
 
 var _capture: CaptureRules

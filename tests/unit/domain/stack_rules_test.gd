@@ -6,7 +6,7 @@ extends TestCase
 ## Правилата са в StackRules / MoveRules / GameEngine (#108–#111). Тук: макс. 2
 ## свои; образуване (PawnStackFormed); разпадане при напускане → оставащата е
 ## уязвима; трета своя → невалиден ход; купчина от 2 е имунна срещу кацане.
-## Прескачане → #117. Пълно взимане → #118.
+## Прескачане → #117 / jump_over_stack_test. Пълно взимане → #118 / pawn_capture_test.
 
 
 var _rules: MoveRules
