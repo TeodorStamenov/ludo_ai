@@ -208,9 +208,10 @@ func _build_state_view() -> Dictionary:
 
 
 func _build_legal_actions() -> Array:
-	if _state == null:
+	if _state == null or _engine == null:
 		return []
-	return _state.get_legal_actions()
+	# §5.3: controllers ползват същия набор от GameEngine (не директно GameState).
+	return _engine.get_legal_actions(_state)
 
 
 func _is_match_over(events: Array) -> bool:

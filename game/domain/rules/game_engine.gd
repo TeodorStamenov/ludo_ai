@@ -2,7 +2,9 @@ class_name GameEngine
 extends RefCounted
 ## Централна точка на domain логиката (docs/V1_ARCHITECTURE.md, §3 / §4.3 / §12).
 ##
-## Публичен договор: команда → CommandResult (ново състояние + събития / грешка).
+## Публичен договор:
+##   - validate_and_apply / apply_command → CommandResult (състояние + събития / грешка);
+##   - get_legal_actions(state) → Array[GameCommand] за Human/AI/Remote (§5.3).
 ## При reject state и RNG остават непроменени (§12).
 ##
 ## Делегира правилата на MoveRules / StackRules / CaptureRules / TurnRules /
@@ -83,6 +85,43 @@ func apply_command(
 		rng: RandomSource
 ) -> Dictionary:
 	return _to_apply_dict(validate_and_apply(state, command, rng))
+
+
+## Валидни команди за Human/AI/Remote (§4.2 / §5.3) — един и същ набор.
+## Не мутира state. AWAITING_ROLL → RollDice; AWAITING_MOVE → MovePawn само
+## за пионки в turn.valid_pawn_ids, които минават MoveRules.can_move_pawn
+## (филтрира stale / tampered ids). Командите са stamp-нати с match_id/sequence.
+func get_legal_actions(state: GameState) -> Array:
+	var actions: Array = []
+	if state == null or not state.is_in_progress():
+		return actions
+	if state.turn == null:
+		return actions
+	var active_id := state.get_active_player_id()
+	if active_id == &"":
+		return actions
+
+	if state.turn.allows_roll_dice():
+		actions.append(state.stamp_command(RollDiceCommand.new(active_id)))
+		return actions
+
+	if not state.turn.allows_move_pawn():
+		return actions
+
+	var player := state.get_active_player()
+	if player == null:
+		return actions
+	var dice_value: int = state.turn.dice_value
+	for pawn_entry in state.turn.valid_pawn_ids:
+		var pawn_id := StringName(str(pawn_entry))
+		var pawn := player.get_pawn(pawn_id)
+		if pawn == null:
+			continue
+		if not _move_rules.can_move_pawn(state, player, pawn, dice_value):
+			continue
+		actions.append(state.stamp_command(
+				MovePawnCommand.new(active_id, pawn_id)))
+	return actions
 
 
 func _validate_envelope(state: GameState, command: GameCommand) -> CommandError:

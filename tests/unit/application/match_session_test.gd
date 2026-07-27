@@ -39,6 +39,11 @@ class StubEngine extends GameEngine:
 			"error": null,
 		}
 
+	func get_legal_actions(state: GameState) -> Array:
+		if state == null:
+			return []
+		return state.get_legal_actions()
+
 
 class RejectEngine extends GameEngine:
 	func apply_command(state: GameState, command: GameCommand, _rng: RandomSource) -> Dictionary:
