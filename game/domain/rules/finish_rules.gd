@@ -6,15 +6,17 @@ extends RefCounted
 ## Отговорности:
 ##   - HOME_STRETCH → FINISHED при точен зар до центъра (#99);
 ##   - приключване на играч при 4 FINISHED → PlayerRanked (#120);
-##   - при 3–4 играчи мачът продължава за останалите места; ranking[] е стабилен (#121);
+##   - при 3–4 играчи ranking[] е стабилен (#121);
+##   - след 1-во място при ≥2 некласирани мачът продължава (#122 / §3.1);
 ##   - автоматично последно място когато остава 1 некласиран;
 ##   - MATCH_FINISHED: MatchPhase.FINISHED + TurnPhase.MATCH_FINISHED + MatchFinishedEvent.
 ##
 ## Маршрутът не включва CENTER — remaining_to_finish = remaining_to_last_home + 1.
-## TurnRules сочи OUTCOME_MATCH_FINISHED; GameEngine вика apply_match_finished (#90).
+## TurnRules сочи OUTCOME_MATCH_FINISHED; GameEngine вика apply_match_finished (#90)
+## само когато should_continue_match е false (#122).
 ## Завършил / класиран играч не получава нов ход (TurnRules.should_skip_player / #120).
 ##
-## #121 инварианти: мястото се присвоява веднъж (GameState.rank_player е идемпотентен);
+## #121/#122 инварианти: мястото се присвоява веднъж (GameState.rank_player е идемпотентен);
 ## 1-во / междинно място при ≥2 некласирани → мачът тече; предпоследно → auto last.
 
 
@@ -96,6 +98,20 @@ func is_ranking_complete(state: GameState) -> bool:
 	return state.ranking.size() == count and count_unranked_players(state) == 0
 
 
+## True ако ranking[] вече има 1-во място (победител по §3.1).
+func has_first_place(state: GameState) -> bool:
+	return state != null and state.ranking.size() >= 1
+
+
+## §3.1 / #122: при ≥2 некласирани мачът продължава за останалите места.
+## След 1-во / междинно място в 3–4p → true; след auto last / пълен ranking → false.
+## 2p след победител (остава 1) → false — auto_rank_last приключва мача.
+func should_continue_match(state: GameState) -> bool:
+	if state == null:
+		return false
+	return count_unranked_players(state) >= 2
+
+
 ## Приключва играч с 4 FINISHED (#120): следващо място + PlayerRankedEvent.
 ## Връща null ако няма 4 прибрани / вече е класиран / невалиден вход.
 func rank_finished_player(
@@ -115,7 +131,7 @@ func rank_finished_player(
 
 
 ## Остава точно 1 некласиран и ≥1 класиран → последно място (стабилно при 2–4 / #121).
-## При ≥2 некласирани (типично след 1-во / 2-ро в 3–4p) → null, мачът продължава.
+## При ≥2 некласирани (типично след 1-во / 2-ро в 3–4p) → null; should_continue_match (#122).
 func auto_rank_last_remaining(
 		state: GameState,
 		command_sequence: int = DomainEvent.COMMAND_SEQUENCE_UNSET
@@ -139,8 +155,9 @@ func auto_rank_last_remaining(
 
 
 ## След прибиране / преди advance: следващо място + евентуално последен (#120 / #121).
-## При 3–4p: 1-во / междинно → само finisher event; предпоследно → + auto last.
-## Връща Array от PlayerRankedEvent (0..2). Мястата в ranking[] не се пренареждат.
+## При 3–4p: 1-во / междинно → само finisher event (мачът продължава, #122);
+## предпоследно → + auto last. Мястата в ranking[] не се пренареждат.
+## Връща Array от PlayerRankedEvent (0..2).
 func resolve_ranking_progress(
 		state: GameState,
 		player_id: StringName,

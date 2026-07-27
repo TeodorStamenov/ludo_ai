@@ -49,6 +49,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/domain/pawn_finish_test.gd",
 	"res://tests/unit/domain/player_completion_test.gd",
 	"res://tests/unit/domain/multiplayer_ranking_test.gd",
+	"res://tests/unit/domain/match_continues_after_first_place_test.gd",
 	"res://tests/unit/domain/finished_pawn_movement_ban_test.gd",
 	"res://tests/unit/domain/power_up_test.gd",
 	"res://tests/unit/domain/turn_rules_test.gd",
