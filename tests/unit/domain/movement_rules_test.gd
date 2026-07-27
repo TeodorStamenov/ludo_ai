@@ -1,10 +1,10 @@
 extends TestCase
 ## Unit тестове за MoveRules — правилата за движение по маршрута.
 ##
-## Критични инварианти (docs/V1_ARCHITECTURE.md, раздел 12):
-##   - Пионка излиза от базата само при хвърлено 6.
-##   - Хвърлено 6 дава право на допълнителен ход.
-##   - Три опита при всички пионки в база.
+## Критични инварианти (docs/V1_ARCHITECTURE.md, раздел 12 / Task #92):
+##   - Пионка излиза от базата само при хвърлено 6 (виж и exit_base_rule_test).
+##   - Хвърлено 6 дава право на допълнителен ход (#93).
+##   - Три опита при всички пионки в база (#94).
 ##   - Движение по общото трасе и влизане в home stretch.
 ##   - Точен зар за завършване в края на home stretch.
 
@@ -33,18 +33,14 @@ func test_move_rules_script_path_is_in_domain() -> void:
 			"MoveRules не трябва да импортира от presentation/")
 
 
-## Документиран инвариант: пионка излиза от базата само при 6.
-## Тестът верифицира структурата — пълната логика изисква имплементация на GameEngine.
-func test_exit_base_requires_six_invariant_documented() -> void:
-	# Стойностите на зара: само 6 позволява излизане.
-	var allowed_exit_roll := 6
-	var forbidden_rolls: Array = [1, 2, 3, 4, 5]
-	assert_eq(allowed_exit_roll, 6,
-			"Само хвърляне на 6 позволява излизане от базата")
-	assert_eq(forbidden_rolls.size(), 5,
-			"Петте останали стойности са забранени за излизане")
-	assert_false(6 in forbidden_rolls,
-			"6 не трябва да е в забранените стойности")
+## Инвариант #92 / YEL-030–031: излизане от база само при 6 (MoveRules).
+func test_exit_base_requires_six() -> void:
+	var rules := MoveRules.new()
+	assert_eq(MoveRules.EXIT_BASE_VALUE, DiceState.EXIT_BASE_VALUE)
+	assert_true(rules.allows_exit_base(6))
+	for face in [1, 2, 3, 4, 5]:
+		assert_false(rules.allows_exit_base(face),
+				"зар %d не позволява излизане от база" % face)
 
 
 ## Документиран инвариант: хвърлено 6 дава допълнителен ход.
