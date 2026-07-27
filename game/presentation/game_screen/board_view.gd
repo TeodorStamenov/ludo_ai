@@ -11,9 +11,11 @@ extends Node2D
 ##
 ## Изометричната математика е в IsometricMath (#147).
 ## cell_id → позиция е в CellPositionMap (#149).
+## Tile node names = CellId (не @Sprite2D@N) — lookup само през _cell_nodes (#150).
 ## Gameplay topology (бази/spawn/маршрути/home stretch) е само в Domain
 ## (Classic15x15Board) — премахната оттук (#148).
 ## Хардкоднатият visual layout остава до #152 (BoardDefinition).
+## Baked vs runtime tiles dual source — #151.
 
 const CHIP_RED := "res://rss/CHIP/07.png"
 const CHIP_GREEN := "res://rss/CHIP/03.png"
@@ -31,14 +33,16 @@ const CHIP_PURPLE := "res://rss/CHIP/05.png"
 	set(_value):
 		_build_board()
 
-## cell_id (CellId) → Sprite2D на тайла. Празен до първо _build_board().
+## cell_id (CellId) → Sprite2D на тайла. Празен до _build_board / _index_existing_tiles.
 var _cell_nodes: Dictionary = {}
 ## Пълен cell_id → локална изометрична позиция (15×15).
 var _cell_positions: CellPositionMap = CellPositionMap.new(0.5)
 
 
 func _ready() -> void:
-	if not Engine.is_editor_hint():
+	if Engine.is_editor_hint():
+		_index_existing_tiles()
+	else:
 		_build_board()
 	var viewport_size: Vector2 = get_viewport_rect().size
 	position = viewport_size / 2.0
@@ -57,14 +61,44 @@ func get_cell_position_by_id(cell_id: StringName) -> Vector2:
 	return _cell_positions.position_of(cell_id)
 
 
-## Sprite2D на клетката, или null ако липсва.
+## Sprite2D на клетката по cell_id, или null ако липсва.
+## Никога не търси по editor-generated @Sprite2D@ имена.
 func get_cell_node(cell_id: StringName) -> Node2D:
 	return _cell_nodes.get(cell_id) as Node2D
+
+
+## Индексира вече налични tile children по стабилен cell_id (име или meta).
+## Игнорира възли с невалидни / editor-generated имена.
+func _index_existing_tiles() -> void:
+	_cell_nodes.clear()
+	_cell_positions.rebuild(board_scale)
+	var tiles_node: Node = get_node_or_null("Tiles")
+	if tiles_node == null:
+		return
+	for child in tiles_node.get_children():
+		var cell_id: StringName = _cell_id_from_tile_node(child)
+		if cell_id == &"":
+			continue
+		_cell_nodes[cell_id] = child as Node2D
+
+
+func _cell_id_from_tile_node(node: Node) -> StringName:
+	if node.has_meta(&"cell_id"):
+		var meta_id: StringName = node.get_meta(&"cell_id") as StringName
+		if CellId.is_valid(meta_id):
+			return meta_id
+	var name_id := StringName(node.name)
+	if CellId.is_valid(name_id):
+		return name_id
+	return &""
 
 
 func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> Sprite2D:
 	var cell_id: StringName = CellId.from_vec(grid_pos)
 	var sprite := Sprite2D.new()
+	# Стабилно име = cell_id — без editor-generated @Sprite2D@N (#150).
+	sprite.name = String(cell_id)
+	sprite.set_meta(&"cell_id", cell_id)
 	sprite.texture = load(texture_path)
 	sprite.position = _cell_positions.position_of(cell_id)
 	sprite.scale = Vector2(board_scale, board_scale)
@@ -78,6 +112,15 @@ func _add_tile(texture_path: String, grid_pos: Vector2i, parent_node: Node) -> S
 	return sprite
 
 
+func _clear_tiles(tiles_node: Node) -> void:
+	# free() веднага — queue_free би оставил старите cell_id имена в дървото
+	# и новите sprite-и щяха да получат uniquified имена (c_8_2@2).
+	for child in tiles_node.get_children():
+		tiles_node.remove_child(child)
+		child.free()
+	_cell_nodes.clear()
+
+
 func _build_board() -> void:
 	var tiles_node: Node = get_node_or_null("Tiles")
 	if not tiles_node:
@@ -87,10 +130,7 @@ func _build_board() -> void:
 		if Engine.is_editor_hint():
 			tiles_node.owner = get_tree().edited_scene_root
 
-	for child in tiles_node.get_children():
-		child.queue_free()
-
-	_cell_nodes.clear()
+	_clear_tiles(tiles_node)
 	_cell_positions.rebuild(board_scale)
 
 	# Layout: 11x11 area within 15x15 grid. Center is (7,7).

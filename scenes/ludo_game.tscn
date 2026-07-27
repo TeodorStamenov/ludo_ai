@@ -19,438 +19,438 @@ script = ExtResource("1_board_script")
 
 [node name="Tiles" type="Node2D" parent="Board" unique_id=664235706]
 
-[node name="@Sprite2D@20386" type="Sprite2D" parent="Board/Tiles" unique_id=1750648539]
+[node name="c_2_2" type="Sprite2D" parent="Board/Tiles" unique_id=1750648539]
 z_index = 4
 position = Vector2(0, -242.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20387" type="Sprite2D" parent="Board/Tiles" unique_id=73525290]
+[node name="c_3_2" type="Sprite2D" parent="Board/Tiles" unique_id=73525290]
 z_index = 5
 position = Vector2(34, -218.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20388" type="Sprite2D" parent="Board/Tiles" unique_id=1237761718]
+[node name="c_6_2" type="Sprite2D" parent="Board/Tiles" unique_id=1237761718]
 z_index = 8
 position = Vector2(136, -145.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20389" type="Sprite2D" parent="Board/Tiles" unique_id=648347273]
+[node name="c_7_2" type="Sprite2D" parent="Board/Tiles" unique_id=648347273]
 z_index = 9
 position = Vector2(170, -121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20390" type="Sprite2D" parent="Board/Tiles" unique_id=255470155]
+[node name="c_8_2" type="Sprite2D" parent="Board/Tiles" unique_id=255470155]
 z_index = 10
 position = Vector2(204, -97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20391" type="Sprite2D" parent="Board/Tiles" unique_id=164994162]
+[node name="c_11_2" type="Sprite2D" parent="Board/Tiles" unique_id=164994162]
 z_index = 13
 position = Vector2(306, -24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20392" type="Sprite2D" parent="Board/Tiles" unique_id=1110274423]
+[node name="c_12_2" type="Sprite2D" parent="Board/Tiles" unique_id=1110274423]
 z_index = 14
 position = Vector2(340, 0)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20393" type="Sprite2D" parent="Board/Tiles" unique_id=1958925525]
+[node name="c_2_3" type="Sprite2D" parent="Board/Tiles" unique_id=1958925525]
 z_index = 5
 position = Vector2(-34, -218.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20394" type="Sprite2D" parent="Board/Tiles" unique_id=1433188524]
+[node name="c_3_3" type="Sprite2D" parent="Board/Tiles" unique_id=1433188524]
 z_index = 6
 position = Vector2(0, -194)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20395" type="Sprite2D" parent="Board/Tiles" unique_id=586637880]
+[node name="c_6_3" type="Sprite2D" parent="Board/Tiles" unique_id=586637880]
 z_index = 9
 position = Vector2(102, -121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20396" type="Sprite2D" parent="Board/Tiles" unique_id=330396264]
+[node name="c_7_3" type="Sprite2D" parent="Board/Tiles" unique_id=330396264]
 z_index = 10
 position = Vector2(136, -97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20397" type="Sprite2D" parent="Board/Tiles" unique_id=631287474]
+[node name="c_8_3" type="Sprite2D" parent="Board/Tiles" unique_id=631287474]
 z_index = 11
 position = Vector2(170, -72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20398" type="Sprite2D" parent="Board/Tiles" unique_id=946951438]
+[node name="c_11_3" type="Sprite2D" parent="Board/Tiles" unique_id=946951438]
 z_index = 14
 position = Vector2(272, 0)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20399" type="Sprite2D" parent="Board/Tiles" unique_id=174839537]
+[node name="c_12_3" type="Sprite2D" parent="Board/Tiles" unique_id=174839537]
 z_index = 15
 position = Vector2(306, 24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20400" type="Sprite2D" parent="Board/Tiles" unique_id=181782104]
+[node name="c_6_4" type="Sprite2D" parent="Board/Tiles" unique_id=181782104]
 z_index = 10
 position = Vector2(68, -97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20401" type="Sprite2D" parent="Board/Tiles" unique_id=1325824455]
+[node name="c_7_4" type="Sprite2D" parent="Board/Tiles" unique_id=1325824455]
 z_index = 11
 position = Vector2(102, -72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20402" type="Sprite2D" parent="Board/Tiles" unique_id=64102496]
+[node name="c_8_4" type="Sprite2D" parent="Board/Tiles" unique_id=64102496]
 z_index = 12
 position = Vector2(136, -48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20403" type="Sprite2D" parent="Board/Tiles" unique_id=1785236688]
+[node name="c_6_5" type="Sprite2D" parent="Board/Tiles" unique_id=1785236688]
 z_index = 11
 position = Vector2(34, -72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20404" type="Sprite2D" parent="Board/Tiles" unique_id=1551978538]
+[node name="c_7_5" type="Sprite2D" parent="Board/Tiles" unique_id=1551978538]
 z_index = 12
 position = Vector2(68, -48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20405" type="Sprite2D" parent="Board/Tiles" unique_id=160892120]
+[node name="c_8_5" type="Sprite2D" parent="Board/Tiles" unique_id=160892120]
 z_index = 13
 position = Vector2(102, -24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20406" type="Sprite2D" parent="Board/Tiles" unique_id=353137624]
+[node name="c_2_6" type="Sprite2D" parent="Board/Tiles" unique_id=353137624]
 z_index = 8
 position = Vector2(-136, -145.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20407" type="Sprite2D" parent="Board/Tiles" unique_id=1108721066]
+[node name="c_3_6" type="Sprite2D" parent="Board/Tiles" unique_id=1108721066]
 z_index = 9
 position = Vector2(-102, -121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20408" type="Sprite2D" parent="Board/Tiles" unique_id=1711664356]
+[node name="c_4_6" type="Sprite2D" parent="Board/Tiles" unique_id=1711664356]
 z_index = 10
 position = Vector2(-68, -97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20409" type="Sprite2D" parent="Board/Tiles" unique_id=1957911759]
+[node name="c_5_6" type="Sprite2D" parent="Board/Tiles" unique_id=1957911759]
 z_index = 11
 position = Vector2(-34, -72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20410" type="Sprite2D" parent="Board/Tiles" unique_id=116897051]
+[node name="c_6_6" type="Sprite2D" parent="Board/Tiles" unique_id=116897051]
 z_index = 12
 position = Vector2(0, -48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20411" type="Sprite2D" parent="Board/Tiles" unique_id=2070569501]
+[node name="c_7_6" type="Sprite2D" parent="Board/Tiles" unique_id=2070569501]
 z_index = 13
 position = Vector2(34, -24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("7_on877")
 
-[node name="@Sprite2D@20412" type="Sprite2D" parent="Board/Tiles" unique_id=1228777073]
+[node name="c_8_6" type="Sprite2D" parent="Board/Tiles" unique_id=1228777073]
 z_index = 14
 position = Vector2(68, 0)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20413" type="Sprite2D" parent="Board/Tiles" unique_id=1002545158]
+[node name="c_9_6" type="Sprite2D" parent="Board/Tiles" unique_id=1002545158]
 z_index = 15
 position = Vector2(102, 24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20414" type="Sprite2D" parent="Board/Tiles" unique_id=1801105549]
+[node name="c_10_6" type="Sprite2D" parent="Board/Tiles" unique_id=1801105549]
 z_index = 16
 position = Vector2(136, 48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20415" type="Sprite2D" parent="Board/Tiles" unique_id=2087402272]
+[node name="c_11_6" type="Sprite2D" parent="Board/Tiles" unique_id=2087402272]
 z_index = 17
 position = Vector2(170, 72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20416" type="Sprite2D" parent="Board/Tiles" unique_id=1880298053]
+[node name="c_12_6" type="Sprite2D" parent="Board/Tiles" unique_id=1880298053]
 z_index = 18
 position = Vector2(204, 97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20417" type="Sprite2D" parent="Board/Tiles" unique_id=757299122]
+[node name="c_2_7" type="Sprite2D" parent="Board/Tiles" unique_id=757299122]
 z_index = 9
 position = Vector2(-170, -121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20418" type="Sprite2D" parent="Board/Tiles" unique_id=1809262002]
+[node name="c_3_7" type="Sprite2D" parent="Board/Tiles" unique_id=1809262002]
 z_index = 10
 position = Vector2(-136, -97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20419" type="Sprite2D" parent="Board/Tiles" unique_id=571645848]
+[node name="c_4_7" type="Sprite2D" parent="Board/Tiles" unique_id=571645848]
 z_index = 11
 position = Vector2(-102, -72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20420" type="Sprite2D" parent="Board/Tiles" unique_id=1859040026]
+[node name="c_5_7" type="Sprite2D" parent="Board/Tiles" unique_id=1859040026]
 z_index = 12
 position = Vector2(-68, -48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20421" type="Sprite2D" parent="Board/Tiles" unique_id=1524554882]
+[node name="c_6_7" type="Sprite2D" parent="Board/Tiles" unique_id=1524554882]
 z_index = 13
 position = Vector2(-34, -24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20422" type="Sprite2D" parent="Board/Tiles" unique_id=1504676653]
+[node name="c_7_7" type="Sprite2D" parent="Board/Tiles" unique_id=1504676653]
 z_index = 14
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("5_cggvj")
 
-[node name="@Sprite2D@20423" type="Sprite2D" parent="Board/Tiles" unique_id=826671345]
+[node name="c_8_7" type="Sprite2D" parent="Board/Tiles" unique_id=826671345]
 z_index = 15
 position = Vector2(34, 24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20424" type="Sprite2D" parent="Board/Tiles" unique_id=1397760135]
+[node name="c_9_7" type="Sprite2D" parent="Board/Tiles" unique_id=1397760135]
 z_index = 16
 position = Vector2(68, 48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20425" type="Sprite2D" parent="Board/Tiles" unique_id=319272691]
+[node name="c_10_7" type="Sprite2D" parent="Board/Tiles" unique_id=319272691]
 z_index = 17
 position = Vector2(102, 72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20426" type="Sprite2D" parent="Board/Tiles" unique_id=665482320]
+[node name="c_11_7" type="Sprite2D" parent="Board/Tiles" unique_id=665482320]
 z_index = 18
 position = Vector2(136, 97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20427" type="Sprite2D" parent="Board/Tiles" unique_id=1317353447]
+[node name="c_12_7" type="Sprite2D" parent="Board/Tiles" unique_id=1317353447]
 z_index = 19
 position = Vector2(170, 121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20428" type="Sprite2D" parent="Board/Tiles" unique_id=1490702179]
+[node name="c_2_8" type="Sprite2D" parent="Board/Tiles" unique_id=1490702179]
 z_index = 10
 position = Vector2(-204, -97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20429" type="Sprite2D" parent="Board/Tiles" unique_id=328288680]
+[node name="c_3_8" type="Sprite2D" parent="Board/Tiles" unique_id=328288680]
 z_index = 11
 position = Vector2(-170, -72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20430" type="Sprite2D" parent="Board/Tiles" unique_id=796106667]
+[node name="c_4_8" type="Sprite2D" parent="Board/Tiles" unique_id=796106667]
 z_index = 12
 position = Vector2(-136, -48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20431" type="Sprite2D" parent="Board/Tiles" unique_id=1486990271]
+[node name="c_5_8" type="Sprite2D" parent="Board/Tiles" unique_id=1486990271]
 z_index = 13
 position = Vector2(-102, -24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20432" type="Sprite2D" parent="Board/Tiles" unique_id=1747623078]
+[node name="c_6_8" type="Sprite2D" parent="Board/Tiles" unique_id=1747623078]
 z_index = 14
 position = Vector2(-68, 0)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20433" type="Sprite2D" parent="Board/Tiles" unique_id=1333535163]
+[node name="c_7_8" type="Sprite2D" parent="Board/Tiles" unique_id=1333535163]
 z_index = 15
 position = Vector2(-34, 24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20434" type="Sprite2D" parent="Board/Tiles" unique_id=1796722399]
+[node name="c_8_8" type="Sprite2D" parent="Board/Tiles" unique_id=1796722399]
 z_index = 16
 position = Vector2(0, 48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20435" type="Sprite2D" parent="Board/Tiles" unique_id=2113939103]
+[node name="c_9_8" type="Sprite2D" parent="Board/Tiles" unique_id=2113939103]
 z_index = 17
 position = Vector2(34, 72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20436" type="Sprite2D" parent="Board/Tiles" unique_id=852906896]
+[node name="c_10_8" type="Sprite2D" parent="Board/Tiles" unique_id=852906896]
 z_index = 18
 position = Vector2(68, 97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20437" type="Sprite2D" parent="Board/Tiles" unique_id=1736198462]
+[node name="c_11_8" type="Sprite2D" parent="Board/Tiles" unique_id=1736198462]
 z_index = 19
 position = Vector2(102, 121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20438" type="Sprite2D" parent="Board/Tiles" unique_id=381842084]
+[node name="c_12_8" type="Sprite2D" parent="Board/Tiles" unique_id=381842084]
 z_index = 20
 position = Vector2(136, 145.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_ubud5")
 
-[node name="@Sprite2D@20439" type="Sprite2D" parent="Board/Tiles" unique_id=692704700]
+[node name="c_6_9" type="Sprite2D" parent="Board/Tiles" unique_id=692704700]
 z_index = 15
 position = Vector2(-102, 24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20440" type="Sprite2D" parent="Board/Tiles" unique_id=1611230833]
+[node name="c_7_9" type="Sprite2D" parent="Board/Tiles" unique_id=1611230833]
 z_index = 16
 position = Vector2(-68, 48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20441" type="Sprite2D" parent="Board/Tiles" unique_id=2136377139]
+[node name="c_8_9" type="Sprite2D" parent="Board/Tiles" unique_id=2136377139]
 z_index = 17
 position = Vector2(-34, 72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20442" type="Sprite2D" parent="Board/Tiles" unique_id=1596717147]
+[node name="c_6_10" type="Sprite2D" parent="Board/Tiles" unique_id=1596717147]
 z_index = 16
 position = Vector2(-136, 48.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20443" type="Sprite2D" parent="Board/Tiles" unique_id=956501382]
+[node name="c_7_10" type="Sprite2D" parent="Board/Tiles" unique_id=956501382]
 z_index = 17
 position = Vector2(-102, 72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20444" type="Sprite2D" parent="Board/Tiles" unique_id=1727205459]
+[node name="c_8_10" type="Sprite2D" parent="Board/Tiles" unique_id=1727205459]
 z_index = 18
 position = Vector2(-68, 97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20445" type="Sprite2D" parent="Board/Tiles" unique_id=243943087]
+[node name="c_2_11" type="Sprite2D" parent="Board/Tiles" unique_id=243943087]
 z_index = 13
 position = Vector2(-306, -24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20446" type="Sprite2D" parent="Board/Tiles" unique_id=734881162]
+[node name="c_3_11" type="Sprite2D" parent="Board/Tiles" unique_id=734881162]
 z_index = 14
 position = Vector2(-272, 0)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20447" type="Sprite2D" parent="Board/Tiles" unique_id=243652976]
+[node name="c_6_11" type="Sprite2D" parent="Board/Tiles" unique_id=243652976]
 z_index = 17
 position = Vector2(-170, 72.75)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20448" type="Sprite2D" parent="Board/Tiles" unique_id=195397212]
+[node name="c_7_11" type="Sprite2D" parent="Board/Tiles" unique_id=195397212]
 z_index = 18
 position = Vector2(-136, 97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20449" type="Sprite2D" parent="Board/Tiles" unique_id=1068010046]
+[node name="c_8_11" type="Sprite2D" parent="Board/Tiles" unique_id=1068010046]
 z_index = 19
 position = Vector2(-102, 121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20450" type="Sprite2D" parent="Board/Tiles" unique_id=655848494]
+[node name="c_11_11" type="Sprite2D" parent="Board/Tiles" unique_id=655848494]
 z_index = 22
 position = Vector2(0, 194)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20451" type="Sprite2D" parent="Board/Tiles" unique_id=1752604558]
+[node name="c_12_11" type="Sprite2D" parent="Board/Tiles" unique_id=1752604558]
 z_index = 23
 position = Vector2(34, 218.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20452" type="Sprite2D" parent="Board/Tiles" unique_id=596131416]
+[node name="c_2_12" type="Sprite2D" parent="Board/Tiles" unique_id=596131416]
 z_index = 14
 position = Vector2(-340, 0)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20453" type="Sprite2D" parent="Board/Tiles" unique_id=714424957]
+[node name="c_3_12" type="Sprite2D" parent="Board/Tiles" unique_id=714424957]
 z_index = 15
 position = Vector2(-306, 24.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("6_hn112")
 
-[node name="@Sprite2D@20454" type="Sprite2D" parent="Board/Tiles" unique_id=639443540]
+[node name="c_6_12" type="Sprite2D" parent="Board/Tiles" unique_id=639443540]
 z_index = 18
 position = Vector2(-204, 97)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20455" type="Sprite2D" parent="Board/Tiles" unique_id=2049190409]
+[node name="c_7_12" type="Sprite2D" parent="Board/Tiles" unique_id=2049190409]
 z_index = 19
 position = Vector2(-170, 121.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20456" type="Sprite2D" parent="Board/Tiles" unique_id=884519051]
+[node name="c_8_12" type="Sprite2D" parent="Board/Tiles" unique_id=884519051]
 z_index = 20
 position = Vector2(-136, 145.5)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_3cliy")
 
-[node name="@Sprite2D@20457" type="Sprite2D" parent="Board/Tiles" unique_id=1401433039]
+[node name="c_11_12" type="Sprite2D" parent="Board/Tiles" unique_id=1401433039]
 z_index = 23
 position = Vector2(-34, 218.25)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("4_1qj7a")
 
-[node name="@Sprite2D@20458" type="Sprite2D" parent="Board/Tiles" unique_id=683950585]
+[node name="c_12_12" type="Sprite2D" parent="Board/Tiles" unique_id=683950585]
 z_index = 24
 position = Vector2(0, 242.5)
 scale = Vector2(0.5, 0.5)
