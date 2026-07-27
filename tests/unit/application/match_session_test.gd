@@ -204,6 +204,19 @@ func test_event_queue_populated_after_command() -> void:
 	assert_false(queue.is_empty(), "EventQueue must contain events after command")
 
 
+func test_events_presented_acknowledges_event_queue() -> void:
+	var parts := _make_parts()
+	var e := DomainEvent.new()
+	e.event_type = &"DiceRolled"
+	var session := _start(parts, [e])
+	var queue: EventQueue = session.get_event_queue()
+	assert_false(queue.is_empty(), "queue must hold events while presentation pending")
+	var pending := session.get_pending_sequence()
+	session.events_presented(pending)
+	assert_true(queue.is_empty(),
+			"events_presented must acknowledge/clear the presented sequence")
+
+
 func test_command_bus_bound_and_forwards_submit() -> void:
 	var parts := _make_parts()
 	var session := _start(parts)

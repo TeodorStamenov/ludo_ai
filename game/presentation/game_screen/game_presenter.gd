@@ -4,7 +4,8 @@ extends Node
 ## (docs/V1_ARCHITECTURE.md, раздел 6.1).
 ##
 ## Отговорности:
-##   - слуша events_published(sequence, events) от MatchSession;
+##   - слуша events_published(sequence, events) от MatchSession
+##     (или взима батча чрез EventQueue.take_sequence(sequence));
 ##   - предава батча към AnimationQueue;
 ##   - след AnimationQueue.all_done() извиква session.events_presented(sequence);
 ##   - преобразува ValidMovesChanged → подсветяване на пионки в BoardView;

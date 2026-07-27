@@ -25,7 +25,7 @@ Presentation ──► Application ──► Domain
 | `match_session.gd`        | Притежава GameState, GameEngine, RNG; оркестрира мача |
 | `match_factory.gd`        | Строи MatchSession от MatchConfig |
 | `command_bus.gd`          | Единственото входно гнездо за GameCommand-и |
-| `event_queue.gd`          | Буферира DomainEvent-и за Presentation |
+| `event_queue.gd`          | FIFO буфер на DomainEvent-и; sequence acknowledge след presentation |
 | `controller/`             | PlayerController (интерфейс), Human, AI, Remote |
 | `ai/`                     | AIPolicy (интерфейс), Easy, Medium, Hard имплементации |
 | `ports/`                  | Интерфейси към persistence, ads, settings, telemetry |
@@ -40,4 +40,6 @@ Presentation ──► Application ──► Domain
 `MatchSession` оркестрира мача според §5.2 (команди → GameEngine → events →
 presentation gate → AI/human advance → MatchSummary). Външните команди влизат
 само през `CommandBus.submit()` (HumanController.action_ready и AI advance).
-Останалите application класове се довършват в собствени roadmap задачи.
+`EventQueue` буферира DomainEvent-и FIFO; `events_presented` прави
+`acknowledge(sequence)`. Останалите application класове се довършват в
+собствени roadmap задачи.

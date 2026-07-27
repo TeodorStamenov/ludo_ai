@@ -111,6 +111,10 @@ func receive_command(command: GameCommand) -> void:
 func events_presented(sequence: int) -> void:
 	if sequence != _pending_sequence:
 		return
+	# Presentation gate: изчиства представената поредица от EventQueue
+	# (no-op ако Presenter вече е dequeue-нал / take_sequence-нал).
+	if _event_queue != null:
+		_event_queue.acknowledge(sequence)
 	_pending_sequence = -1
 	_last_stable_snapshot = to_snapshot()
 	if _active:
