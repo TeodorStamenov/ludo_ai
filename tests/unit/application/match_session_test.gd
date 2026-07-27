@@ -1,5 +1,10 @@
 extends TestCase
-## Unit тестове за MatchSession с stub GameEngine и GameState.
+## Business-critical тестове за MatchSession (Task #131 /
+## docs/V1_ARCHITECTURE.md §5.2 / §9 / §12).
+##
+## Инварианти: команди през session; events_published + presentation gate;
+## rejected не пипа state/RNG; AI auto-submit след events_presented;
+## MatchFinished → MatchSummary; snapshot/restore без загуба.
 ##
 ## StubEngine — приема всяка команда и връща предварително зададени events.
 ## StubState  — минимален GameState stub.
@@ -457,3 +462,101 @@ func test_command_bus_forwards_rejection() -> void:
 	assert_not_null(captured.cmd, "CommandBus must forward command_rejected")
 	assert_eq(str(captured.reason), "illegal_move",
 			"Rejection reason must be forwarded unchanged")
+
+
+func test_rejected_command_does_not_mutate_state_or_rng() -> void:
+	## §12: невалидна команда не променя state или RNG.
+	var session := _start_real_match_stable()
+	var hash_before := session.get_state().compute_hash()
+	var seq_before := session.get_state().command_sequence
+	var rng_before: Dictionary = session.get_rng().get_state().duplicate(true)
+	var active_id := session.get_state().get_active_player_id()
+	var pawn := session.get_state().get_active_player().get_pawn_by_index(0)
+	assert_not_null(pawn)
+
+	var rejected := {"fired": false}
+	session.command_rejected.connect(func(_cmd, _reason): rejected.fired = true)
+	session.receive_command(MovePawnCommand.create_for_pawn(active_id, pawn.pawn_id))
+
+	assert_true(rejected.fired, "illegal MovePawn while AWAITING_ROLL must reject")
+	assert_eq(hash_before, session.get_state().compute_hash(),
+			"rejected command must not change GameState hash")
+	assert_eq(seq_before, session.get_state().command_sequence,
+			"rejected command must not advance command_sequence")
+	var rng_after: Dictionary = session.get_rng().get_state()
+	assert_eq(str(rng_before.get("seed", "")), str(rng_after.get("seed", "")))
+	assert_eq(str(rng_before.get("state", "")), str(rng_after.get("state", "")),
+			"rejected command must not advance RNG")
+	assert_false(session.is_presentation_pending(),
+			"rejection must not open a presentation gate")
+	assert_true(session.is_active())
+
+
+func test_ai_turn_auto_submits_after_events_presented() -> void:
+	## §5.2 / §5.3: след events_presented autonomous controller подава команда.
+	var parts := _make_parts()
+	(parts["state"] as StubState)._active_id = &"p2"
+	var session := _start(parts)
+	var engine: StubEngine = parts["engine"]
+	var count_before := engine.call_count
+	engine.set_next_events([])
+
+	session.events_presented(session.get_pending_sequence())
+
+	assert_eq(engine.call_count, count_before + 1,
+			"AI turn must auto-submit through CommandBus after events_presented")
+	assert_true(engine.last_command is RollDiceCommand,
+			"AI must choose a legal RollDiceCommand")
+	assert_eq((engine.last_command as GameCommand).player_id, &"p2")
+
+
+func test_inactive_session_ignores_commands_after_match_finished() -> void:
+	var parts := _make_parts()
+	var finish_event := DomainEvent.new()
+	finish_event.event_type = DomainEvent.TYPE_MATCH_FINISHED
+	var session := _start(parts, [finish_event])
+	assert_false(session.is_active())
+	var engine: StubEngine = parts["engine"]
+	var count_before := engine.call_count
+
+	session.receive_command(RollDiceCommand.new(&"p1"))
+
+	assert_eq(engine.call_count, count_before,
+			"inactive MatchSession must drop commands after MatchFinished")
+
+
+func test_events_presented_ignores_mismatched_sequence() -> void:
+	var parts := _make_parts()
+	var session := _start(parts)
+	var pending := session.get_pending_sequence()
+	assert_true(pending >= 0)
+
+	session.events_presented(pending + 99)
+
+	assert_true(session.is_presentation_pending(),
+			"wrong sequence must leave presentation gate closed")
+	assert_eq(session.get_pending_sequence(), pending)
+	assert_true(session.get_last_stable_snapshot().is_empty(),
+			"mismatched ack must not capture stable snapshot")
+
+
+func test_real_engine_roll_dice_through_session() -> void:
+	## Оркестрация с реален GameEngine: приета команда → events + gate.
+	var session := _start_real_match_stable()
+	var active_id := session.get_state().get_active_player_id()
+	var seq_before := session.get_state().command_sequence
+	var published := {"seq": -1, "count": 0}
+	session.events_published.connect(func(seq, events):
+		published.seq = seq
+		published.count = events.size()
+	)
+
+	session.receive_command(RollDiceCommand.new(active_id))
+
+	assert_true(session.is_presentation_pending())
+	assert_eq(session.get_state().command_sequence, seq_before + 1)
+	assert_true(session.get_state().turn.has_dice_result(),
+			"accepted RollDice must set turn.dice_value via GameEngine")
+	assert_eq(published.seq, session.get_pending_sequence())
+	assert_true(published.count > 0, "accepted roll must publish domain events")
+	assert_false(session.get_event_queue().is_empty())
