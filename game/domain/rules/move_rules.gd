@@ -146,6 +146,7 @@ func resolve_traversed_cell_ids(
 ## True ако пионка на дъската може да се премести с дадения зар (YEL-040/050/052/053/055).
 ## Home stretch дестинация: само ако крайната клетка е свободна от своя пионка (YEL-053).
 ## Междинни HOME клетки не блокират (YEL-054).
+## Main-path stack/capture landing → StackRules / CaptureRules (#108+).
 func can_advance_on_board(
 		state: GameState,
 		player: PlayerState,
@@ -170,7 +171,9 @@ func can_advance_on_board(
 		return false
 	var dest_cell: StringName = route[dest_index]
 	if Classic15x15Board.is_home_stretch_cell_of(player.player_id, dest_cell):
-		if _own_other_pawn_on_cell(player, pawn.pawn_id, dest_cell):
+		var occupancy := CellOccupancy.from_state(state)
+		if occupancy.count_own_excluding(
+				dest_cell, player.player_id, pawn.pawn_id) > 0:
 			return false
 	return true
 
@@ -278,19 +281,3 @@ func _uses_classic_board(state: GameState) -> bool:
 			state.board_id == Classic15x15Board.BOARD_ID
 			or state.board_id == BoardDefinition.DEFAULT_BOARD_ID
 	)
-
-
-func _own_other_pawn_on_cell(
-		player: PlayerState,
-		moving_pawn_id: StringName,
-		cell_id: StringName
-) -> bool:
-	for entry in player.pawns:
-		if not (entry is PawnState):
-			continue
-		var other := entry as PawnState
-		if other.pawn_id == moving_pawn_id:
-			continue
-		if other.cell_id == cell_id and other.is_on_board():
-			return true
-	return false
