@@ -15,6 +15,7 @@ extends RefCounted
 ## балансират между оценка и случайност.
 ##
 ## Имплементации:
+##   - FirstLegalAIPolicy — винаги първото legal action (симулации / #139)
 ##   - EasyAIPolicy   — квази-случаен избор (ai/easy_ai_policy.gd)
 ##   - MediumAIPolicy — частична оценка   (ai/medium_ai_policy.gd)
 ##   - HardAIPolicy   — пълна оценка      (ai/hard_ai_policy.gd)

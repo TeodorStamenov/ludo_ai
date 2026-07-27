@@ -121,6 +121,7 @@ const TEST_FILES: Array[String] = [
 	"res://tests/unit/platform/local_telemetry_sink_test.gd",
 	# simulation
 	"res://tests/simulation/deterministic_replay_test.gd",
+	"res://tests/simulation/full_match_simulation_test.gd",
 	"res://tests/simulation/thousands_of_matches_test.gd",
 ]
 
