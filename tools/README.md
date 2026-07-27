@@ -76,7 +76,7 @@ Credentials могат да са и в `tools/.env` (`CURSOR_API_KEY`, `PROJECT_
 |--------------|------------------------------------|-------------|
 | Dev модел    | `grok-4.5`                         | —           |
 | Max retries  | 3                                  | —           |
-| Godot binary | `../../godot/godot` (от repo root) | `GODOT_BIN` |
+| Godot binary | `../../godot` (от repo root → бинарникът) | `GODOT_BIN` |
 
 ---
 

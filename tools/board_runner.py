@@ -106,8 +106,9 @@ STATUS_DONE        = "Done"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Godot binary — override чрез GODOT_BIN env var
-_default_godot = PROJECT_ROOT.parent.parent / "godot" / "godot"
+# Godot binary — override чрез GODOT_BIN env var.
+# Layout: <godot-root>/godot (binary), <godot-root>/projects/<repo>.
+_default_godot = PROJECT_ROOT.parent.parent / "godot"
 GODOT_BIN = Path(os.environ.get("GODOT_BIN", str(_default_godot)))
 TEST_SCRIPT = "tests/test_runner.gd"
 
