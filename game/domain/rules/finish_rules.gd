@@ -6,12 +6,16 @@ extends RefCounted
 ## Отговорности:
 ##   - HOME_STRETCH → FINISHED при точен зар до центъра (#99);
 ##   - приключване на играч при 4 FINISHED → PlayerRanked (#120);
+##   - при 3–4 играчи мачът продължава за останалите места; ranking[] е стабилен (#121);
 ##   - автоматично последно място когато остава 1 некласиран;
 ##   - MATCH_FINISHED: MatchPhase.FINISHED + TurnPhase.MATCH_FINISHED + MatchFinishedEvent.
 ##
 ## Маршрутът не включва CENTER — remaining_to_finish = remaining_to_last_home + 1.
 ## TurnRules сочи OUTCOME_MATCH_FINISHED; GameEngine вика apply_match_finished (#90).
 ## Завършил / класиран играч не получава нов ход (TurnRules.should_skip_player / #120).
+##
+## #121 инварианти: мястото се присвоява веднъж (GameState.rank_player е идемпотентен);
+## 1-во / междинно място при ≥2 некласирани → мачът тече; предпоследно → auto last.
 
 
 ## Оставащи стъпки до центъра (последна HOME + 1). 0 = извън маршрута / вече минато.
@@ -110,7 +114,8 @@ func rank_finished_player(
 	return PlayerRankedEvent.create_ranked(player_id, rank_value, command_sequence)
 
 
-## Остава точно 1 некласиран и ≥1 класиран → последно място (стабилно при 2–4).
+## Остава точно 1 некласиран и ≥1 класиран → последно място (стабилно при 2–4 / #121).
+## При ≥2 некласирани (типично след 1-во / 2-ро в 3–4p) → null, мачът продължава.
 func auto_rank_last_remaining(
 		state: GameState,
 		command_sequence: int = DomainEvent.COMMAND_SEQUENCE_UNSET
@@ -133,8 +138,9 @@ func auto_rank_last_remaining(
 	return null
 
 
-## След прибиране / преди advance: rank finisher + евентуално последен.
-## Връща Array от PlayerRankedEvent (0..2).
+## След прибиране / преди advance: следващо място + евентуално последен (#120 / #121).
+## При 3–4p: 1-во / междинно → само finisher event; предпоследно → + auto last.
+## Връща Array от PlayerRankedEvent (0..2). Мястата в ranking[] не се пренареждат.
 func resolve_ranking_progress(
 		state: GameState,
 		player_id: StringName,
