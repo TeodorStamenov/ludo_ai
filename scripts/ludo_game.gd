@@ -6,7 +6,7 @@ const BASE_ROLL_ATTEMPTS := 3
 
 @onready var board: BoardView = $Board
 @onready var pawns_root: Node2D = $Pawns
-@onready var dice: Node3D = $UI/DiceViewportContainer/SubViewport/DiceWorld/Dice
+@onready var dice: DiceView = $UI/DiceViewportContainer/SubViewport/DiceWorld/Dice
 @onready var dice_result: Label = $UI/DiceResult
 @onready var dice_button: Button = $UI/DiceButton
 @onready var debug_rolls: HBoxContainer = $UI/DebugRolls
@@ -27,18 +27,36 @@ var _extra_roll_pending: bool = false
 var _base_attempts_left: int = BASE_ROLL_ATTEMPTS
 var _roll_allowed: bool = true
 
+## Временен gameplay RNG за прототипа до MatchSession wiring (#177).
+## DiceView не хвърля сам — получава DiceRolledEvent (#161).
+var _gameplay_rng: SeededRandomSource = SeededRandomSource.new(
+		MatchConfig.generate_rng_seed())
+
+## Forced debug rolls — само в debug build (#163 / §6.4). Null в production.
+var _debug_dice: DebugDiceAdapter = null
+
 
 func _ready() -> void:
 	dice_button.pressed.connect(_on_dice_button_pressed)
 	dice.dice_rolled.connect(_on_dice_rolled)
-
-	for i in range(1, 7):
-		var button: Button = debug_rolls.get_node("Roll%d" % i) as Button
-		button.pressed.connect(_on_debug_roll_pressed.bind(i))
+	dice.roll_requested.connect(_on_dice_button_pressed)
+	_setup_debug_rolls()
 
 	_yellow_path = Classic15x15Board.player_route_grid_positions_for(PlayerId.YELLOW)
 	_spawn_yellow_pawns()
 	_start_yellow_turn()
+
+
+## Debug бутоните 1–6 съществуват само при authorized DebugDiceAdapter (#163).
+func _setup_debug_rolls() -> void:
+	_debug_dice = DebugDiceAdapter.create_authorized()
+	if _debug_dice == null:
+		debug_rolls.visible = false
+		debug_rolls.process_mode = Node.PROCESS_MODE_DISABLED
+		return
+	for i in range(1, 7):
+		var button: Button = debug_rolls.get_node("Roll%d" % i) as Button
+		button.pressed.connect(_on_debug_roll_pressed.bind(i))
 
 
 func _spawn_yellow_pawns() -> void:
@@ -110,7 +128,12 @@ func _on_dice_button_pressed() -> void:
 
 
 func _on_debug_roll_pressed(value: int) -> void:
-	_try_roll_dice(value)
+	if _debug_dice == null:
+		return
+	var forced: int = _debug_dice.request_forced_face(value)
+	if forced == 0:
+		return
+	_try_roll_dice(forced)
 
 
 func _try_roll_dice(forced_value: int = 0) -> void:
@@ -121,10 +144,14 @@ func _try_roll_dice(forced_value: int = 0) -> void:
 	if _current_player != PlayerId.YELLOW:
 		return
 	_roll_allowed = false
-	if forced_value > 0:
-		dice.roll(forced_value)
-	else:
-		dice.roll()
+	var value: int = (
+			forced_value if DiceState.is_face_value(forced_value)
+			else _gameplay_rng.next_int(DiceState.VALUE_MIN, DiceState.VALUE_MAX)
+	)
+	# Прототип: локален RNG → DiceRolledEvent → DiceView (#161).
+	# Целево: MatchSession публикува DiceRolledEvent след RollDiceCommand (#177).
+	var rolled := DiceRolledEvent.create_rolled(_current_player, value)
+	dice.present_dice_rolled(rolled)
 
 
 func _on_dice_rolled(value: int) -> void:

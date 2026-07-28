@@ -650,7 +650,7 @@ ai_ludo/
 - `Pawn` пази едновременно visual/input поведение и части от gameplay state;
 - `dice.gd` генерира gameplay резултата във visual node;
 - няма autoload services, persistence, tests, AI или content `Resource` типове;
-- `dice_3d.gd` и `dice_3d.tscn` са неизползван legacy вариант;
+- legacy `dice_3d.gd` / `dice_3d.tscn` са премахнати след parity с `DiceView` (#164);
 - `ludo_game.tscn` съдържа стотици baked tile sprites, а board script може да ги
   построи отново, което създава двоен source of truth;
 - input-ът разчита основно на mouse events и трябва да се валидира за touch.
@@ -702,7 +702,7 @@ ai_ludo/
 1. `ludo_board.gd` става `BoardView` и спира да пази gameplay state.
 2. `pawn.gd` става `PawnView`.
 3. `dice.gd` става `DiceView`; резултатът идва от domain.
-4. Премахваме legacy `dice_3d` след потвърден parity.
+4. ~~Премахваме legacy `dice_3d` след потвърден parity.~~ ✅ (#164)
 
 ### Етап D — AI и pass-and-play
 

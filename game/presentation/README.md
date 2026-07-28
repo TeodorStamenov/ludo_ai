@@ -16,18 +16,49 @@ Presentation **може** да импортира от `game/application/` и `g
 |---|---|
 | `game_screen/`   | GameScreen, GamePresenter, BoardView, PawnView, DiceView, GiftView, HUD |
 | `menus/`         | Main Menu, Match Setup, Campaign, Results, Settings |
-| `common/`        | AnimationQueue, AudioFeedback, HapticFeedback |
+| `common/`        | AnimationQueue, AnimationFinishedGate, EventViewBinder, AudioFeedback, HapticFeedback |
 
 ## Ключов договор
 
 ```text
 MatchSession.events_published(sequence, events)
-    → GamePresenter → AnimationQueue (проиграва последователно)
+    → GamePresenter → AnimationQueue.play_batch
+    → EventViewBinder.present_for_playback(event)  (последователен await)
+          → DiceView / PawnView / HUD …
     → AnimationQueue.all_done(sequence)
     → GamePresenter → MatchSession.events_presented(sequence)
 ```
 
-Domain не чака tween. Presentation потвърждава след всяка анимация.
+Domain не чака tween. Presentation потвърждава след всяка анимация:
+`AnimationQueue.play_batch` → `EventViewBinder.present_for_playback` (#168) →
+`AnimationFinishedGate` чака `animation_finished(kind)` (#169) → `all_done` →
+`events_presented`.
+
+`ValidMovesChanged` (#170 / YEL-020): след `DiceRolled` binder/presenter вика
+`PawnView.show_valid_move()` само за `valid_pawn_ids` (human seats); празен
+списък изчиства bob-а. Невалидните пионки не подскачат.
+
+`PawnMoved` (#171 / YEL-023): кликът праща само `MovePawnCommand`; визуалното
+движение тръгва едва след приет команда → `PawnMovedEvent`.
+Отхвърлена команда → `command_rejected` → input се възстановява, пионката
+стои. Hop клетка по клетка по маршрута (#172 / YEL-040); `KIND_MOVE` едва
+след последната клетка.
+
+`PawnExitedBase` (#173 / YEL-030): hop от базовата клетка към spawn след
+приет `MovePawnCommand` при 6; `KIND_MOVE` след кацане. Busy pawn → snap.
+
+`PawnStackFormed` (#174): след кацане върху своя, двете пионки settle-ват
+към изометрични offsets (имунна купчина от 2). `KIND_STACK` от arriving и
+resident (паралелно). Разпадане: преди `PawnMoved` / exit на stacked пионка
+партньорът се връща в центъра на клетката (`KIND_STACK`); напускащата тръгва
+от текущия offset.
+
+`PawnSentHome` (#175): меко „прибиране вкъщи да подремне“ — shrink + settle
+към свободната base клетка след capture. `KIND_HOME` след settle. Busy → snap.
+
+`PawnFinished` (#176): след `PawnMoved` през остатъка на home stretch —
+hop + топъл pulse в `CENTER`. `KIND_FINISH` след settle. Busy → snap.
+Влизане/движение в home stretch без finish остава клетъчен hop (#172).
 
 ## .tscn сцени
 

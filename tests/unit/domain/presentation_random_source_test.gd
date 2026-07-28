@@ -200,7 +200,7 @@ func test_dice_view_owns_presentation_rng_by_default() -> void:
 	# Cast през Object — статичният анализатор знае, че типът не е RandomSource.
 	var rng_obj: Object = view.cosmetic_rng
 	assert_false(rng_obj is RandomSource,
-			"DiceView.cosmetic_rng не трябва да е RandomSource")
+			"DiceView.cosmetic_rng не трябва да е RandomSource (#160)")
 	view.free()
 
 
