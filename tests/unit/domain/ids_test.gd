@@ -318,27 +318,27 @@ func test_match_id_is_valid_rejects_other_prefixes() -> void:
 # ── GiftId ────────────────────────────────────────────────────────────────────
 
 func test_gift_id_generate_returns_string_name() -> void:
-	var id := GiftId.generate()
+	var id := GiftId.generate(0)
 	assert_true(id is StringName, "generate() трябва да върне StringName")
 
 
 func test_gift_id_generate_starts_with_g_prefix() -> void:
-	var id := GiftId.generate()
+	var id := GiftId.generate(0)
 	assert_true(GiftId.is_valid(id),
 			"generate() трябва да върне ID с 'g_' префикс")
 
 
-func test_gift_id_generate_is_unique_per_call() -> void:
+func test_gift_id_generate_is_unique_per_sequence() -> void:
 	var ids: Array[StringName] = []
-	for _i in 10:
-		var id := GiftId.generate()
+	for i in 10:
+		var id := GiftId.generate(i)
 		assert_false(id in ids, "generate() върна дублиран ID: %s" % id)
 		ids.append(id)
 
 
 func test_gift_id_is_valid_accepts_g_prefix() -> void:
-	assert_true(GiftId.is_valid(&"g_0_0"),           "минимален валиден ID")
-	assert_true(GiftId.is_valid(&"g_1721915400000_3"), "типичен генериран ID")
+	assert_true(GiftId.is_valid(&"g_0"), "минимален валиден ID")
+	assert_true(GiftId.is_valid(&"g_11"), "типичен генериран ID")
 
 
 func test_gift_id_is_valid_rejects_other_prefixes() -> void:

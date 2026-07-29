@@ -120,6 +120,9 @@ var ranking: Array = []
 var rng_state: Dictionary = {}
 ## Брой приети команди от старта (COMMAND_SEQUENCE_START = 0). Виж § header.
 var command_sequence: int = COMMAND_SEQUENCE_START
+## command_sequence, при който GiftRules трябва да провери за spawn (#201).
+## 0 = още не е насрочен (преди GameEngine._apply_start_match).
+var next_gift_spawn_at: int = 0
 
 
 ## Фабрика за пълно конфигуриран GameState (колекциите се копират плитко по елемент).
@@ -553,6 +556,8 @@ func is_valid() -> bool:
 		return false
 	if command_sequence < 0:
 		return false
+	if next_gift_spawn_at < 0:
+		return false
 	if not _is_rng_state_valid(rng_state):
 		return false
 	return true
@@ -586,6 +591,7 @@ func to_dict() -> Dictionary:
 		"ranking": ranked,
 		"rng_state": rng_state.duplicate(true),
 		"command_sequence": command_sequence,
+		"next_gift_spawn_at": next_gift_spawn_at,
 	}
 
 
@@ -612,6 +618,7 @@ static func from_dict(data: Dictionary) -> GameState:
 	state.phase = int(working.get("phase", MatchPhase.SETUP))
 	state.active_player_index = int(working.get("active_player_index", ACTIVE_PLAYER_NONE))
 	state.command_sequence = int(working.get("command_sequence", COMMAND_SEQUENCE_START))
+	state.next_gift_spawn_at = int(working.get("next_gift_spawn_at", 0))
 	var rng = working.get("rng_state", {})
 	if rng is Dictionary:
 		state.set_rng_state(rng as Dictionary)
@@ -693,7 +700,8 @@ func equals(other: GameState) -> bool:
 			or board_id != other.board_id
 			or phase != other.phase
 			or active_player_index != other.active_player_index
-			or command_sequence != other.command_sequence):
+			or command_sequence != other.command_sequence
+			or next_gift_spawn_at != other.next_gift_spawn_at):
 		return false
 	if match_config == null:
 		if other.match_config != null:

@@ -1,10 +1,13 @@
 class_name GiftId
 extends RefCounted
 ## Стабилни идентификатори за активни подаръци върху дъската
-## (docs/V1_ARCHITECTURE.md §4.1 gifts[], GiftSpawnedEvent).
+## (docs/V1_ARCHITECTURE.md, §4.1 gifts[], GiftSpawnedEvent).
 ##
-## Формат: "g_{ticks_msec}_{counter}", напр. &"g_1721915400000_3".
-## Префиксът "g_" го отличава от match_id ("m_"), player_id, pawn_id и cell_id.
+## Формат: "g_{command_sequence}", напр. &"g_11". Изведен от
+## command_sequence-а на приетата команда, породила spawn-а — не от wall-clock
+## (§12: state hash / replay трябва да са напълно детерминирани от seed +
+## commands; всеки accepted command спавва най-много един подарък, затова
+## command_sequence гарантира уникалност в рамките на мача).
 ##
 ## Съдържанието на подаръка НЕ е част от ID-то — тегли се чрез RNG при взимане
 ## (docs/V1_ARCHITECTURE.md §4.7; docs/V1_GAME_DESIGN.md §4.1–4.2).
@@ -12,23 +15,10 @@ extends RefCounted
 ## Префикс на формата — отличава gift_id от другите domain идентификатори.
 const PREFIX: String = "g_"
 
-## Монотонен брояч — нараства само напред за уникалност в рамките на сесията.
-static var _counter: int = 0
 
-
-## Генерира уникален gift_id.
-## Гарантирано различен от всеки предишен ID в рамките на едно изпълнение.
-static func generate() -> StringName:
-	var ts: int = Time.get_ticks_msec()
-	var id := StringName("%s%d_%d" % [PREFIX, ts, _counter])
-	_counter += 1
-	return id
-
-
-## Нулира вътрешния брояч. Използва се само в тестове за детерминизъм.
-## В production код не се извиква.
-static func _reset_counter_for_tests() -> void:
-	_counter = 0
+## Генерира gift_id, детерминиран от command_sequence-а на spawn-ващата команда.
+static func generate(command_sequence: int) -> StringName:
+	return StringName("%s%d" % [PREFIX, command_sequence])
 
 
 ## Проверява дали стойността изглежда като генериран gift_id (префикс "g_").

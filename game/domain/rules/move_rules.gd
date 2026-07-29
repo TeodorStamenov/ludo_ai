@@ -414,6 +414,48 @@ func apply_board_move(
 	return true
 
 
+## #212: destination index за power-up движение (телепорт напред / избутване
+## назад) с до max_steps в посока direction (+1 напред, -1 назад) от
+## from_index по player маршрута. При конфликт (imunna купчина / max 2 свои)
+## на пълното разстояние опитва по-малко стъпки в СЪЩАТА посока, докато
+## намери валидна клетка ("най-близката валидна клетка" — V1_GAME_DESIGN §4.3).
+## DESTINATION_NONE ако дори 1 стъпка е извън маршрута или невалидна.
+## За разлика от resolve_destination_index (нормален ход): тук overshoot към
+## края на маршрута просто не се разглежда (idx извън route.size() се прескача),
+## вместо да отхвърля целия ход — power-up-ите не могат да прибират пионка.
+func resolve_power_up_destination_index(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		max_steps: int,
+		direction: int
+) -> int:
+	if state == null or player == null or pawn == null or max_steps <= 0:
+		return DESTINATION_NONE
+	var route := resolve_player_route(state, player.player_id)
+	if route.is_empty() or pawn.path_index < 0 or pawn.path_index >= route.size():
+		return DESTINATION_NONE
+	if route[pawn.path_index] != pawn.cell_id:
+		return DESTINATION_NONE
+
+	for steps in range(max_steps, 0, -1):
+		var idx: int = pawn.path_index + steps * direction
+		if idx < 0 or idx >= route.size():
+			continue
+		var cell: StringName = route[idx]
+		if _capture_rules.blocks_landing(state, cell, player.player_id):
+			continue
+		if Classic15x15Board.is_home_stretch_cell_of(player.player_id, cell):
+			var occupancy := CellOccupancy.from_state(state)
+			if occupancy.count_own_excluding(cell, player.player_id, pawn.pawn_id) > 0:
+				continue
+			return idx
+		if not _stack_rules.can_place_own_pawn(state, cell, player.player_id, pawn.pawn_id):
+			continue
+		return idx
+	return DESTINATION_NONE
+
+
 ## Зона след хода: HOME_STRETCH при собствена HOME клетка (#97), иначе MAIN_PATH.
 func _zone_for_destination(player_id: StringName, dest_cell: StringName) -> int:
 	if Classic15x15Board.is_home_stretch_cell_of(player_id, dest_cell):

@@ -31,9 +31,9 @@ static func create(p_gift_id: StringName, p_cell_id: StringName) -> GiftState:
 	return gift
 
 
-## Фабрика с генериран gift_id върху дадената клетка.
-static func create_on_cell(p_cell_id: StringName) -> GiftState:
-	return create(GiftId.generate(), p_cell_id)
+## Фабрика с генериран gift_id (от command_sequence) върху дадената клетка.
+static func create_on_cell(p_cell_id: StringName, command_sequence: int) -> GiftState:
+	return create(GiftId.generate(command_sequence), p_cell_id)
 
 
 func is_on_cell(p_cell_id: StringName) -> bool:

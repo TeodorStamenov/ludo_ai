@@ -17,6 +17,8 @@ var _capture_rules: CaptureRules
 var _turn_rules: TurnRules
 var _finish_rules: FinishRules
 var _move_evaluator: MoveEvaluator
+var _gift_rules: GiftRules
+var _power_up_registry: PowerUpRegistry
 
 
 func _init(
@@ -25,7 +27,9 @@ func _init(
 		capture_rules: CaptureRules = null,
 		turn_rules: TurnRules = null,
 		finish_rules: FinishRules = null,
-		move_evaluator: MoveEvaluator = null
+		move_evaluator: MoveEvaluator = null,
+		gift_rules: GiftRules = null,
+		power_up_registry: PowerUpRegistry = null
 ) -> void:
 	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
 	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
@@ -42,6 +46,9 @@ func _init(
 			move_evaluator if move_evaluator != null
 			else MoveEvaluator.new(_move_rules, _capture_rules, _finish_rules)
 	)
+	_gift_rules = gift_rules if gift_rules != null else GiftRules.new()
+	_power_up_registry = (
+			power_up_registry if power_up_registry != null else PowerUpRegistry.new())
 
 
 ## Авторитетен вход (§3): валидира и прилага команда → CommandResult.
@@ -195,7 +202,7 @@ func _validate_envelope(state: GameState, command: GameCommand) -> CommandError:
 func _apply_start_match(
 		state: GameState,
 		command: StartMatchCommand,
-		_rng: RandomSource
+		rng: RandomSource
 ) -> CommandResult:
 	var config: MatchConfig = command.config
 	var match_id: StringName = command.match_id
@@ -223,6 +230,11 @@ func _apply_start_match(
 		return CommandResult.rejected(
 				state,
 				CommandError.invalid_command("StartMatchCommand could not begin first turn"))
+
+	# #201: seeded threshold за първото появяване на подарък. Използва живия
+	# rng (не throwaway-то в create_from_match_config), затова capture_rng по-долу.
+	next.next_gift_spawn_at = _gift_rules.schedule_first_spawn(rng, next.command_sequence)
+	next.capture_rng(rng)
 
 	var events: Array = [
 		MatchStartedEvent.create_started(next.match_id, config, accepted_sequence),
@@ -282,6 +294,7 @@ func _apply_roll_dice(
 	else:
 		_append_turn_end_advance(next, outcome, accepted_sequence, events)
 
+	_append_gift_spawn_if_due(next, rng, accepted_sequence, events)
 	_sync_dice_from_turn(next, command.player_id)
 	next.capture_rng(rng)
 	return CommandResult.ok(next, events)
@@ -405,13 +418,24 @@ func _apply_move_pawn(
 		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
 		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
 
+	# #204/#206/#207: пионка ЗАВЪРШИЛА хода си точно на клетка с подарък я взима.
+	# FINISHED пионки не са is_on_main_path() — гарантирано не се пипат тук.
+	var landed_on_gift: bool = _resolve_gift_pickup_if_any(
+			next, next_player, next_pawn, rng, accepted_sequence, events)
+
 	# #120/#121/#122: 4 FINISHED → PlayerRanked; при 3–4p мачът продължава
 	# след 1-во място (≥2 некласирани); завършил не получава extra roll / нов ход.
 	var player_completed: bool = next_player.is_ranked()
 	var outcome: StringName = _turn_rules.resolve_after_move(
-			next.turn, false, player_completed)
+			next.turn, landed_on_gift, player_completed)
+	# RESOLVING_POWER_UP се разрешава синхронно в същата команда (§4.2: взимането
+	# е незабавно, без отделна ResolvePowerUpCommand) — веднага след resolve()
+	# по-горе преминаваме към extra roll / TURN_END, точно както след нормален move.
+	if outcome == TurnRules.OUTCOME_RESOLVING_POWER_UP:
+		outcome = _turn_rules.resolve_after_power_up(next.turn)
 	_append_turn_end_advance(next, outcome, accepted_sequence, events)
 
+	_append_gift_spawn_if_due(next, rng, accepted_sequence, events)
 	_sync_dice_from_turn(next, command.player_id)
 	next.capture_rng(rng)
 	return CommandResult.ok(next, events)
@@ -441,6 +465,57 @@ func _append_stack_formed_if_any(
 			state, arriving, command_sequence)
 	if stack_event != null:
 		events.append(stack_event)
+
+
+## #204/#206/#207: пионка, ЗАВЪРШИЛА хода си точно на клетка с подарък, го взима.
+## Тегли power_up_id чрез RNG (§4.7 стъпка 3), премахва подаръка от state.gifts,
+## разрешава ефекта през PowerUpRegistry (§4.7 стъпка 4-6) и добавя
+## GiftCollected + [ефектни събития] + PowerUpResolved към events. Връща true
+## ако е имало подарък (за TurnRules.resolve_after_move landed_on_gift).
+func _resolve_gift_pickup_if_any(
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		rng: RandomSource,
+		command_sequence: int,
+		events: Array
+) -> bool:
+	if not pawn.is_on_main_path():
+		return false
+	var gift := state.get_gift_at(pawn.cell_id)
+	if gift == null:
+		return false
+
+	var power_up_id: StringName = rng.pick(PowerUpId.ALL)
+	state.remove_gift(gift.gift_id)
+	events.append(GiftCollectedEvent.create_collected(
+			gift.gift_id, pawn.cell_id, pawn.pawn_id, power_up_id, command_sequence))
+
+	var context := PowerUpContext.create(
+			player.player_id, pawn.pawn_id, pawn.cell_id, command_sequence)
+	var resolver := _power_up_registry.resolver_for(power_up_id)
+	var resolved_events: Array = []
+	if resolver != null:
+		resolved_events = resolver.resolve(context, state, rng)
+	for entry in resolved_events:
+		events.append(entry)
+	events.append(PowerUpResolvedEvent.create_resolved(
+			power_up_id, pawn.pawn_id, resolved_events.size(), command_sequence))
+	return true
+
+
+## #201: проверява seeded threshold-а след всяка приета команда (roll или move)
+## и append-ва GiftSpawnedEvent ако е due. No-op ако не е due или няма свободна
+## клетка (threshold пак се презарежда вътре в GiftRules.spawn_if_due).
+func _append_gift_spawn_if_due(
+		state: GameState,
+		rng: RandomSource,
+		command_sequence: int,
+		events: Array
+) -> void:
+	var spawned := _gift_rules.spawn_if_due(state, rng, command_sequence)
+	if spawned != null:
+		events.append(spawned)
 
 
 ## TURN_END → auto-rank last place → advance (TurnChanged / MATCH_FINISHED).

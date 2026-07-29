@@ -59,10 +59,9 @@ func test_gift_id_prefix_constant() -> void:
 
 
 func test_gift_id_generate_returns_unique_valid_ids() -> void:
-	GiftId._reset_counter_for_tests()
 	var seen: Array[StringName] = []
-	for _i in 8:
-		var id := GiftId.generate()
+	for i in 8:
+		var id := GiftId.generate(i)
 		assert_true(id is StringName)
 		assert_true(GiftId.is_valid(id),
 				"generate() трябва да върне валиден gift_id: %s" % id)
@@ -71,9 +70,15 @@ func test_gift_id_generate_returns_unique_valid_ids() -> void:
 		seen.append(id)
 
 
+func test_gift_id_generate_is_deterministic_from_sequence() -> void:
+	assert_eq(GiftId.generate(11), GiftId.generate(11),
+			"§12: gift_id трябва да е чиста функция на command_sequence")
+	assert_ne(GiftId.generate(11), GiftId.generate(12))
+
+
 func test_gift_id_is_valid_accepts_and_rejects() -> void:
-	assert_true(GiftId.is_valid(&"g_0_0"))
-	assert_true(GiftId.is_valid(&"g_1721915400000_3"))
+	assert_true(GiftId.is_valid(&"g_0"))
+	assert_true(GiftId.is_valid(&"g_11"))
 	assert_false(GiftId.is_valid(&""))
 	assert_false(GiftId.is_valid(&"m_1_0"), "match_id не е gift_id")
 	assert_false(GiftId.is_valid(&"yellow_0"), "pawn_id не е gift_id")
@@ -101,9 +106,9 @@ func test_create_sets_all_fields() -> void:
 
 
 func test_create_on_cell_generates_gift_id() -> void:
-	GiftId._reset_counter_for_tests()
-	var gift := GiftState.create_on_cell(&"c_8_6")
+	var gift := GiftState.create_on_cell(&"c_8_6", 5)
 	assert_true(GiftId.is_valid(gift.gift_id))
+	assert_eq(gift.gift_id, &"g_5")
 	assert_eq(gift.cell_id, &"c_8_6")
 	assert_true(gift.is_valid())
 

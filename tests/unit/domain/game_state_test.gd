@@ -78,7 +78,7 @@ func test_default_fields_are_invalid() -> void:
 	assert_eq(state.get_active_player_id(), &"")
 	assert_eq(state.get_legal_actions().size(), 0)
 	assert_eq(state.to_view().get("active_player_id"), "")
-	assert_eq(state.to_dict().size(), 13)
+	assert_eq(state.to_dict().size(), 14)
 
 
 # ── Фабрики ───────────────────────────────────────────────────────────────────

@@ -39,7 +39,8 @@ func test_start_match_initializes_in_progress_and_awaiting_roll() -> void:
 	assert_eq(result.state.turn.turn_number, 1)
 	assert_eq(result.state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 	assert_true(result.state.turn.allows_roll_dice())
-	assert_eq(rng.get_state(), rng_before, "StartMatch не трябва да консумира RNG")
+	assert_ne(rng.get_state(), rng_before,
+			"#201: StartMatch планира първото появяване на подарък през rng")
 	assert_true(state.is_setup(), "входният SETUP state не се мутира при rebuild")
 
 

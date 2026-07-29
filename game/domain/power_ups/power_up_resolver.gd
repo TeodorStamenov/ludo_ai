@@ -22,9 +22,11 @@ extends RefCounted
 ##   - ExtraTurnEffect  (power_ups/extra_turn_effect.gd)
 ##   - PushEffect       (power_ups/push_effect.gd)
 ##
-## Пълната имплементация е обхваната от задача "Създаване на PowerUpResolver интерфейс".
+## Registry: PowerUpRegistry (power_ups/power_up_registry.gd) свързва
+## PowerUpId → resolver instance — GameEngine никога не прави match/if по
+## power_up_id (#207-#213).
 
 
 ## Прилага ефекта и връща поредицата от domain събития.
-func resolve(context: Dictionary, state: GameState, rng: RandomSource) -> Array:
+func resolve(context: PowerUpContext, state: GameState, rng: RandomSource) -> Array:
 	return []  # override в имплементациите

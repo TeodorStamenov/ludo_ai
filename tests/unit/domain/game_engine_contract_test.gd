@@ -90,7 +90,7 @@ func test_null_command_is_rejected_without_rng_use() -> void:
 	assert_eq(rng.get_state(), rng_before)
 
 
-func test_start_match_accepted_from_setup_without_rng_use() -> void:
+func test_start_match_accepted_from_setup_schedules_gift_spawn_via_rng() -> void:
 	var cfg := _two_player_config(11)
 	var state := GameState.create_from_match_config(cfg)
 	assert_true(state.is_setup())
@@ -104,8 +104,10 @@ func test_start_match_accepted_from_setup_without_rng_use() -> void:
 	assert_true(result.accepted)
 	assert_true(result.state.is_in_progress())
 	assert_eq(result.event_count(), 2)
-	assert_eq(rng.get_state(), rng_before,
-			"§12: StartMatch не трябва да консумира RNG")
+	assert_ne(rng.get_state(), rng_before,
+			"#201: StartMatch планира първото появяване на подарък през rng")
+	assert_eq(result.state.rng_state, rng.get_state(),
+			"§12: rng_state трябва да е captured след консумацията")
 	assert_true(state.is_setup(),
 			"входният SETUP state остава непроменен при rebuild")
 

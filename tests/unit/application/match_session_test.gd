@@ -612,18 +612,20 @@ func test_real_engine_roll_dice_through_session() -> void:
 	var session := _start_real_match_stable()
 	var active_id := session.get_state().get_active_player_id()
 	var seq_before := session.get_state().command_sequence
-	var published := {"seq": -1, "count": 0}
+	var published := {"seq": -1, "count": 0, "rolled_count": 0}
 	session.events_published.connect(func(seq, events):
 		published.seq = seq
 		published.count = events.size()
+		published.rolled_count = events.filter(
+				func(e): return e is DiceRolledEvent).size()
 	)
 
 	session.receive_command(RollDiceCommand.new(active_id))
 
 	assert_true(session.is_presentation_pending())
 	assert_eq(session.get_state().command_sequence, seq_before + 1)
-	assert_true(session.get_state().turn.has_dice_result(),
-			"accepted RollDice must set turn.dice_value via GameEngine")
+	assert_eq(published.rolled_count, 1,
+			"accepted RollDice must publish exactly one DiceRolledEvent via GameEngine")
 	assert_eq(published.seq, session.get_pending_sequence())
 	assert_true(published.count > 0, "accepted roll must publish domain events")
 	assert_false(session.get_event_queue().is_empty())
