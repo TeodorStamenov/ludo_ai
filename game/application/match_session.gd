@@ -69,7 +69,24 @@ func start(
 		controllers: Dictionary = {},
 		event_queue: EventQueue = null
 ) -> void:
-	assert(config != null, "MatchSession.start: config не може да е null")
+	prepare(config, state, engine, rng, controllers, event_queue)
+	begin()
+
+
+## Изгражда state/engine/rng/controllers/journal БЕЗ да подава StartMatchCommand
+## (§6.1 / #177). За caller-и (GameScreen), които трябва да bind-нат
+## GamePresenter преди първия events_published батч — иначе MatchStarted /
+## TurnChanged нямат абонат и се губят. start() = prepare() + begin();
+## съществуващите caller-и продължават да ползват start() directly.
+func prepare(
+		config: MatchConfig,
+		state: GameState = null,
+		engine: GameEngine = null,
+		rng: RandomSource = null,
+		controllers: Dictionary = {},
+		event_queue: EventQueue = null
+) -> void:
+	assert(config != null, "MatchSession.prepare: config не може да е null")
 	_config = config
 	_state = state if state != null else GameState.create_from_match_config(config)
 	_engine = engine if engine != null else GameEngine.new()
@@ -85,7 +102,12 @@ func start(
 	# GameState.rng_state е source of truth (§4.1 / §4.5 / #60).
 	# При mid-match restore: живият RNG ← snapshot; иначе snapshot ← жив RNG.
 	_sync_rng_on_start()
-	receive_command(StartMatchCommand.new(config))
+
+
+## Подава StartMatchCommand — първият MatchStarted/TurnChanged events батч.
+## Вика се след prepare() (директно, или чрез start()).
+func begin() -> void:
+	receive_command(StartMatchCommand.new(_config))
 
 
 ## Опционален TelemetrySink: при invariant violation пише bug report bundle (#143).

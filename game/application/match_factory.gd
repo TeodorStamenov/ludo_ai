@@ -22,8 +22,18 @@ func _init(engine: GameEngine = null) -> void:
 
 
 func create(config: MatchConfig, state: GameState = null) -> MatchSession:
-	assert(config != null, "MatchFactory.create: config не може да е null")
-	assert(config.is_valid(), "MatchFactory.create: невалиден MatchConfig")
+	var session := create_unstarted(config, state)
+	session.begin()
+	return session
+
+
+## Изгражда MatchSession БЕЗ да подава StartMatchCommand (§6.1 / #177) — за
+## GameScreen, което трябва да bind-не GamePresenter преди първия
+## events_published батч. Извикващият трябва да викне session.begin() след
+## presenter.bind(session). create() = create_unstarted() + session.begin().
+func create_unstarted(config: MatchConfig, state: GameState = null) -> MatchSession:
+	assert(config != null, "MatchFactory.create_unstarted: config не може да е null")
+	assert(config.is_valid(), "MatchFactory.create_unstarted: невалиден MatchConfig")
 
 	var resolved_state: GameState = (
 			state if state != null else GameState.create_from_match_config(config))
@@ -38,7 +48,7 @@ func create(config: MatchConfig, state: GameState = null) -> MatchSession:
 	var controllers := _build_controllers(config)
 	var event_queue := EventQueue.new()
 	var session := MatchSession.new()
-	session.start(config, resolved_state, engine, rng, controllers, event_queue)
+	session.prepare(config, resolved_state, engine, rng, controllers, event_queue)
 	return session
 
 

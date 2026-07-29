@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://cvd7g0y4y8btq"]
 
 [ext_resource type="Script" uid="uid://fhmoswvj52cf" path="res://game/presentation/game_screen/board_view.gd" id="1_board_script"]
-[ext_resource type="Script" uid="uid://c423datp828uj" path="res://scripts/ludo_game.gd" id="1_game_script"]
+[ext_resource type="Script" uid="uid://cmnnsph2rdnby" path="res://game/presentation/game_screen/game_screen.gd" id="1_game_script"]
 [ext_resource type="PackedScene" path="res://scenes/dice_world.tscn" id="2_dice_world"]
 
 [node name="Game" type="Node2D" unique_id=1860801227]
