@@ -96,7 +96,7 @@ _load_dotenv()
 
 REPO_OWNER = "TeodorStamenov"
 
-DEV_MODEL   = "grok-4.5"
+DEV_MODEL   = "claude-sonnet-5"
 MAX_RETRIES = 3
 
 STATUS_READY       = "Ready"
