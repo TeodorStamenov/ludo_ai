@@ -16,6 +16,7 @@ var _stack_rules: StackRules
 var _capture_rules: CaptureRules
 var _turn_rules: TurnRules
 var _finish_rules: FinishRules
+var _move_evaluator: MoveEvaluator
 
 
 func _init(
@@ -23,7 +24,8 @@ func _init(
 		stack_rules: StackRules = null,
 		capture_rules: CaptureRules = null,
 		turn_rules: TurnRules = null,
-		finish_rules: FinishRules = null
+		finish_rules: FinishRules = null,
+		move_evaluator: MoveEvaluator = null
 ) -> void:
 	_finish_rules = finish_rules if finish_rules != null else FinishRules.new()
 	_stack_rules = stack_rules if stack_rules != null else StackRules.new()
@@ -36,6 +38,10 @@ func _init(
 			else MoveRules.new(_finish_rules, _stack_rules, _capture_rules)
 	)
 	_turn_rules = turn_rules if turn_rules != null else TurnRules.new()
+	_move_evaluator = (
+			move_evaluator if move_evaluator != null
+			else MoveEvaluator.new(_move_rules, _capture_rules, _finish_rules)
+	)
 
 
 ## Авторитетен вход (§3): валидира и прилага команда → CommandResult.
@@ -119,9 +125,26 @@ func get_legal_actions(state: GameState) -> Array:
 			continue
 		if not _move_rules.can_move_pawn(state, player, pawn, dice_value):
 			continue
-		actions.append(state.stamp_command(
-				MovePawnCommand.new(active_id, pawn_id)))
+		var cmd := state.stamp_command(MovePawnCommand.new(active_id, pawn_id))
+		_apply_evaluation_meta(cmd, state, player, pawn, dice_value)
+		actions.append(cmd)
 	return actions
+
+
+## #188-192: прикача AI evaluation сигнали (captures_opponent / escapes_threat /
+## forms_stack / lands_on_gift / enters_finish / target_path_index) към всяка
+## MovePawnCommand — консумирани от MediumAIPolicy/HardAIPolicy._score_action.
+## Human/Remote просто игнорират meta-то; не участва в §12 инварианти.
+func _apply_evaluation_meta(
+		command: GameCommand,
+		state: GameState,
+		player: PlayerState,
+		pawn: PawnState,
+		dice_value: int
+) -> void:
+	var evaluation := _move_evaluator.evaluate(state, player, pawn, dice_value)
+	for key in evaluation:
+		command.set_meta(key, evaluation[key])
 
 
 func _validate_envelope(state: GameState, command: GameCommand) -> CommandError:
