@@ -1,8 +1,22 @@
-# tools/board_runner.py
+# tools/board_runner.py, tools/claude_board_runner.py
 
-Автоматизиран **Dev-only pipeline** за GitHub Projects v2.
+Автоматизирани **Dev-only pipeline** скриптове за GitHub Projects v2 — два
+взаимозаменяеми runner-а, различаващи се само по dev агента:
 
-## Поток
+| Скрипт                      | Dev агент | SDK               |
+|------------------------------|-----------|-------------------|
+| `board_runner.py`            | Cursor    | `cursor-sdk`      |
+| `claude_board_runner.py`     | Claude    | `claude-agent-sdk` |
+
+Споделената логика (GitHub Projects GraphQL, git, import/scene/test проверки,
+prompt текстове, целият orchestration loop) живее в `tools/pipeline_common.py`
+— и двата скрипта я преизползват, за да не се разминава политиката между тях.
+
+**Не пускай двата скрипта едновременно срещу един и същ `PROJECT_NUMBER`** —
+и двата местят items Ready → In progress → Done по същия board; паралелно
+изпълнение ще доведе до състезание за едни и същи issue-та.
+
+## Поток (идентичен и за двата)
 
 ```
 За всяка задача в «Ready» (или остатъци в «In review»):
@@ -10,7 +24,7 @@
   Ready ──► In Progress
               │
               ▼
-         [Dev агент]          (grok-4.5)
+         [Dev агент]
               │
               ▼
          Import check
@@ -29,12 +43,12 @@
 
 Няма per-task Review агент. Batch code review се прави ръчно на всеки 20–30 таска.
 
-Бранч: `feature/issues_N1_N2_N3` (един за целия batch).  
+Бранч: `feature/issues_N1_N2_N3` (един за целия batch).
 Commit: `feat: <title>\n\ncloses #N` — затваря issue при merge в `main`.
 
 ---
 
-## Инсталация (еднократно)
+## Инсталация (еднократно, покрива и двата скрипта)
 
 ```bash
 # 1. Python 3.12 (ако не е наличен)
@@ -49,9 +63,12 @@ pip install -r tools/requirements.txt
 gh auth refresh -s read:project -s project
 ```
 
+`claude-agent-sdk` носи вграден Claude Code CLI бинарник в самия пакет —
+не е нужна отделна `npm install -g @anthropic-ai/claude-code` инсталация.
+
 ---
 
-## Употреба
+## Употреба — Cursor (`board_runner.py`)
 
 ```bash
 source tools/.venv/bin/activate
@@ -68,15 +85,30 @@ python tools/board_runner.py
 
 Credentials могат да са и в `tools/.env` (`CURSOR_API_KEY`, `PROJECT_NUMBER`, `GODOT_BIN`).
 
+## Употреба — Claude (`claude_board_runner.py`)
+
+```bash
+source tools/.venv/bin/activate
+
+export ANTHROPIC_API_KEY="sk-ant-..."       # от console.anthropic.com
+export PROJECT_NUMBER=N                     # числото от GitHub Projects URL
+export GODOT_BIN=/path/to/godot             # по желание
+
+python tools/claude_board_runner.py
+# или: python tools/claude_board_runner.py --dry-run
+```
+
+Credentials могат да са и в `tools/.env` (`ANTHROPIC_API_KEY`, `PROJECT_NUMBER`, `GODOT_BIN`).
+
 ---
 
 ## Конфигурация
 
-| Константа    | Стойност по подразбиране           | Env var     |
-|--------------|------------------------------------|-------------|
-| Dev модел    | `grok-4.5`                         | —           |
-| Max retries  | 3                                  | —           |
-| Godot binary | `../../godot` (от repo root → бинарникът) | `GODOT_BIN` |
+| Константа    | board_runner.py       | claude_board_runner.py | Env var     |
+|--------------|------------------------|-------------------------|-------------|
+| Dev модел    | `claude-sonnet-5`     | `claude-sonnet-5`       | —           |
+| Max retries  | 3                      | 3                        | —           |
+| Godot binary | `../../godot` (от repo root → бинарникът) | същото | `GODOT_BIN` |
 
 ---
 

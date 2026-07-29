@@ -5,3 +5,7 @@
 #   pip install -r tools/requirements.txt
 cursor-sdk>=1.0.24
 python-dotenv>=1.0.0
+
+# claude_board_runner.py — носи вграден Claude Code CLI, без нужда от npm/Node.js.
+claude-agent-sdk>=0.2.128
+anyio>=4.0.0
