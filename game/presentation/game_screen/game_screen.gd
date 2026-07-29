@@ -24,16 +24,12 @@ extends Node
 ## синхронно).
 
 const PAWN_SCENE := preload("res://scenes/pawn.tscn")
-const PAWN_TEXTURE := "res://rss/pawns/User05.png"
 
-## Presentation-only цветова маркировка по seat (§6.3) — темата/skin-ът е
-## content-driven по-късно (AnimalDefinition); засега еднакъв спрайт, tint по цвят.
-const SEAT_TINT: Dictionary = {
-	&"green": Color(0.55, 0.85, 0.45),
-	&"orange": Color(0.95, 0.62, 0.25),
-	&"yellow": Color(0.95, 0.85, 0.25),
-	&"cyan": Color(0.35, 0.80, 0.85),
-}
+## Спрайт по controller_type (не по цвят/seat) — темата/skin-ът е content-driven
+## по-късно (AnimalDefinition); засега разграничаваме human/AI само по текстура,
+## без tint (§6.3).
+const PAWN_TEXTURE_HUMAN := "res://rss/pawns/User03.png"
+const PAWN_TEXTURE_AI := "res://rss/pawns/User05.png"
 
 @onready var _board: BoardView = $Board
 @onready var _pawns_root: Node2D = $Pawns
@@ -83,11 +79,14 @@ func _wire_ui() -> void:
 		_dice_button.pressed.connect(_on_dice_button_pressed)
 	if not _dice_view.dice_rolled.is_connected(_on_dice_rolled):
 		_dice_view.dice_rolled.connect(_on_dice_rolled)
-	_presenter.state_view_changed.connect(_on_state_view_changed)
-	_presenter.human_action_available.connect(_on_human_action_available)
+	# awaiting_human_action (и оттам state_view_changed/human_action_available)
+	# се излъчва само за human seats — MatchSession._advance() го пропуска за
+	# autonomous (AI) controllers. TurnChangedEvent идва за всеки ход, независимо
+	# от controller_type, затова тук слушаме директно session.events_published.
+	_session.events_published.connect(_on_session_events_published)
 	_presenter.results_requested.connect(_on_results_requested)
 	_session.invariant_violated.connect(_on_invariant_violated)
-	_on_state_view_changed(_presenter.get_state_view())
+	_update_turn_label(_session.get_state())
 
 
 func _on_dice_button_pressed() -> void:
@@ -98,15 +97,21 @@ func _on_dice_rolled(value: int) -> void:
 	_dice_result.text = str(value)
 
 
-func _on_state_view_changed(state_view: Dictionary) -> void:
-	var active_id := str(state_view.get("active_player_id", ""))
-	if active_id.is_empty():
+func _on_session_events_published(_sequence: int, events: Array) -> void:
+	for event in events:
+		if event is TurnChangedEvent:
+			_turn_label.text = "%s's turn" % String(
+					(event as TurnChangedEvent).new_player_id).capitalize()
+			return
+
+
+func _update_turn_label(state: GameState) -> void:
+	if state == null:
 		return
-	_turn_label.text = "%s's turn" % active_id.capitalize()
-
-
-func _on_human_action_available(player_id: StringName, _legal_actions: Array) -> void:
-	_turn_label.text = "%s's turn" % String(player_id).capitalize()
+	var active_id := state.get_active_player_id()
+	if active_id == &"":
+		return
+	_turn_label.text = "%s's turn" % String(active_id).capitalize()
 
 
 func _on_results_requested(summary: Dictionary) -> void:
@@ -140,6 +145,12 @@ func _spawn_pawn_views(state: GameState) -> void:
 		seat_root.name = String(player.player_id).capitalize()
 		_pawns_root.add_child(seat_root)
 
+		var seat_config := (
+				state.match_config.get_seat(player.player_id)
+				if state.match_config != null else null)
+		var is_human := seat_config != null and seat_config.is_human()
+		var texture_path := PAWN_TEXTURE_HUMAN if is_human else PAWN_TEXTURE_AI
+
 		for pawn_entry in player.pawns:
 			var pawn_state := pawn_entry as PawnState
 			if pawn_state == null:
@@ -151,8 +162,13 @@ func _spawn_pawn_views(state: GameState) -> void:
 			seat_root.add_child(pawn_view)
 
 			var tile_w: float = _board.get_tile_display_width()
-			pawn_view.setup(PAWN_TEXTURE, tile_w)
-			pawn_view.modulate = SEAT_TINT.get(player.player_id, Color.WHITE)
+			pawn_view.setup(texture_path, tile_w)
+			# grid_pos/z_index: PawnView поддържа тези сама след първия ход
+			# (_apply_cell_pose), но при spawn трябва да ги зададем ръчно —
+			# иначе z_index=0 губи срещу tiles с по-висок painter's-algorithm ред
+			# (случва се видимо само за seats в долната/дясната половина, напр. yellow).
+			pawn_view.grid_pos = CellId.to_vec(pawn_state.cell_id)
+			pawn_view.z_index = pawn_view.grid_pos.x + pawn_view.grid_pos.y + 1
 			pawn_view.set_rest_position(_local_position_for(seat_root, pawn_state.cell_id))
 			_presenter.register_pawn_view(pawn_view)
 
