@@ -23,6 +23,10 @@ signal results_requested(summary: Dictionary)
 signal state_view_changed(state_view: Dictionary)
 signal human_action_available(player_id: StringName, legal_actions: Array)
 
+## Пауза преди DiceView да покаже резултата от хвърляне на AI (усеща се като
+## "компютърът мисли" вместо мигновен резултат) — не важи за човешки хвърляния.
+const AI_ROLL_DELAY_SEC := 0.6
+
 var _session: MatchSession = null
 var _animation_queue: AnimationQueue = null
 var _dice_view: DiceView = null
@@ -226,11 +230,25 @@ func _on_events_published(sequence: int, events: Array) -> void:
 	_clear_valid_move_highlights()
 	_presenting_sequence = sequence
 	if _animation_queue != null:
-		_animation_queue.play_batch(sequence, events)
+		_animation_queue.play_batch(sequence, events, _ai_roll_delay_for(events))
 	else:
 		# Без опашка: snap present (вкл. ValidMovesChanged → bob) преди gate.
 		_present_events_snap(events)
 		_on_animation_all_done(sequence)
+
+
+## AI_ROLL_DELAY_SEC ако батчът съдържа DiceRolledEvent на автономен (AI)
+## контролер, иначе 0.0 (човешките хвърляния остават мигновени).
+func _ai_roll_delay_for(events: Array) -> float:
+	if _session == null or events == null:
+		return 0.0
+	for entry in events:
+		if entry is DiceRolledEvent:
+			var controller: PlayerController = _session.get_controller(
+					(entry as DiceRolledEvent).player_id)
+			if controller != null and controller.is_autonomous():
+				return AI_ROLL_DELAY_SEC
+	return 0.0
 
 
 ## Синхронен present на батч през EventViewBinder — fallback без AnimationQueue.

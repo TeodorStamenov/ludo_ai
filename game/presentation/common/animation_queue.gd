@@ -34,7 +34,11 @@ func get_event_binder() -> EventViewBinder:
 ## present_for_playback (вкл. animation_finished потвърждение #169) за всеки
 ## DomainEvent, после емитира all_done.
 ## Повторно извикване докато is_playing() → игнорира се (session gate).
-func play_batch(sequence: int, events: Array) -> void:
+##
+## ai_roll_delay_sec: пауза преди DiceRolledEvent playback (GamePresenter я
+## подава само когато хвърлящият е AI — усеща се като "компютърът мисли",
+## вместо зарът да падне мигновено след завършването на предходната анимация).
+func play_batch(sequence: int, events: Array, ai_roll_delay_sec: float = 0.0) -> void:
 	if _playing:
 		push_warning(
 				"AnimationQueue.play_batch: already playing sequence %d — ignored %d"
@@ -48,6 +52,8 @@ func play_batch(sequence: int, events: Array) -> void:
 	if _binder != null and events != null:
 		for entry in events:
 			if entry is DomainEvent:
+				if entry is DiceRolledEvent and ai_roll_delay_sec > 0.0:
+					await get_tree().create_timer(ai_roll_delay_sec).timeout
 				await _binder.present_for_playback(entry as DomainEvent)
 
 	_playing = false
