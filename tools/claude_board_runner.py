@@ -39,6 +39,7 @@ tools/pipeline_common.py.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import time
@@ -77,16 +78,28 @@ async def _query_once(prompt: str, model: str) -> str:
 
     result_text = ""
     saw_result = False
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, ResultMessage):
-            saw_result = True
-            if message.is_error:
-                raise RuntimeError(
-                    f"Claude агент завърши с грешка (subtype={message.subtype}): "
-                    f"{(message.result or '').strip() or '(без съобщение)'}"
-                )
-            result_text = (message.result or "").strip()
+    error: RuntimeError | None = None
 
+    # contextlib.aclosing затваря детерминирано query()'s async generator,
+    # докато event loop-ът още работи. Raise-ване от вътре в `async for` без
+    # това оставя generator-а висящ; финализаторът му го затваря по-късно,
+    # след като anyio.run() вече е спрял loop-а — оттам
+    # "aclose(): asynchronous generator is already running".
+    async with contextlib.aclosing(query(prompt=prompt, options=options)) as stream:
+        async for message in stream:
+            if isinstance(message, ResultMessage):
+                saw_result = True
+                if message.is_error:
+                    error = RuntimeError(
+                        f"Claude агент завърши с грешка (subtype={message.subtype}): "
+                        f"{(message.result or '').strip() or '(без съобщение)'}"
+                    )
+                else:
+                    result_text = (message.result or "").strip()
+                break
+
+    if error is not None:
+        raise error
     if not saw_result:
         raise RuntimeError("Claude агент не върна ResultMessage — прекъснат stream.")
     return result_text
