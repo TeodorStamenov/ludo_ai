@@ -4,7 +4,10 @@ extends RefCounted
 ## docs/V1_GAME_DESIGN.md §3.1 / §3.2; GAP-007).
 ##
 ## Отговорности:
-##   - HOME_STRETCH → FINISHED при точен зар до центъра (#99);
+##   - играч прибира пионка веднага щом всичките 4 влязат в home stretch —
+##     флаг-превключване на място, БЕЗ допълнителна стъпка до централна клетка
+##     (V1.1; #99 redefined). Пионките остават на собствените си 4 цветни
+##     клетки (safe/exit/finish zone) — никога на CellId.CENTER;
 ##   - приключване на играч при 4 FINISHED → PlayerRanked (#120);
 ##   - при 3–4 играчи ranking[] е стабилен (#121);
 ##   - след 1-во място при ≥2 некласирани мачът продължава (#122 / §3.1);
@@ -12,7 +15,6 @@ extends RefCounted
 ##   - приключване на целия мач (#123): should_finish_match → MatchPhase.FINISHED
 ##     + TurnPhase.MATCH_FINISHED + MatchFinishedEvent с пълен ranking.
 ##
-## Маршрутът не включва CENTER — remaining_to_finish = remaining_to_last_home + 1.
 ## GameEngine: should_continue_match → мачът тече (#122); should_finish_match →
 ## apply_match_finished (#90 / #123). Завършил не получава нов ход (#120).
 ##
@@ -21,51 +23,39 @@ extends RefCounted
 ## на ≥2 играчи без PlayerRanked).
 
 
-## Оставащи стъпки до центъра (последна HOME + 1). 0 = извън маршрута / вече минато.
-func remaining_steps_to_finish(from_index: int, route_length: int) -> int:
-	if from_index < 0 or route_length <= 0 or from_index >= route_length:
-		return 0
-	return route_length - from_index
-
-
-## True ако пионка в HOME_STRETCH може да се прибере с точен зар до центъра (#99).
-func can_finish_pawn(
-		state: GameState,
+## Играч е "прибрал" всичките си пионки веднага щом всичките 4 са влезли в
+## home stretch (безопасната зона от 4 цветни клетки преди центъра) — не се
+## изисква допълнителна стъпка до централна клетка (V1.1 / #99 redefined).
+## Маркира всяка все още неFINISHED пионка на текущата ѝ клетка (без движение;
+## occupancy правилата вече гарантират, че всяка от 4-те стои на различна
+## клетка — MoveRules.can_advance_on_board / YEL-053). Връща Array от
+## PawnFinishedEvent (0 ако вече е класиран / още не всичките 4 са там).
+func resolve_home_stretch_completion(
 		player: PlayerState,
-		pawn: PawnState,
-		dice_value: int
-) -> bool:
-	if state == null or player == null or pawn == null:
-		return false
-	if not pawn.is_in_home_stretch():
-		return false
-	if not DiceState.is_face_value(dice_value):
-		return false
-	var route := _resolve_player_route(state, player.player_id)
-	if route.is_empty():
-		return false
-	if pawn.path_index < 0 or pawn.path_index >= route.size():
-		return false
-	if route[pawn.path_index] != pawn.cell_id:
-		return false
-	var remaining: int = remaining_steps_to_finish(pawn.path_index, route.size())
-	return remaining > 0 and dice_value == remaining
+		command_sequence: int = DomainEvent.COMMAND_SEQUENCE_UNSET
+) -> Array:
+	var events: Array = []
+	if player == null or player.is_ranked():
+		return events
+	if not _all_pawns_ready_to_finish(player):
+		return events
+	for entry in player.pawns:
+		var pawn := entry as PawnState
+		if pawn == null or pawn.is_finished():
+			continue
+		var before := pawn.duplicate_state()
+		pawn.mark_finished(pawn.path_index, pawn.cell_id)
+		events.append(PawnFinishedEvent.create_from_states(before, pawn, command_sequence))
+	return events
 
 
-## Прибира пионка в центъра (FINISHED, CellId.CENTER). Изисква can_finish_pawn.
-## Вече FINISHED пионка не се пипа (#100). Мутира pawn; връща false без промяна при невалидни входни данни.
-func apply_finish_pawn(
-		state: GameState,
-		player: PlayerState,
-		pawn: PawnState,
-		dice_value: int
-) -> bool:
-	if pawn == null or pawn.is_finished():
-		return false
-	if not can_finish_pawn(state, player, pawn, dice_value):
-		return false
-	var route := _resolve_player_route(state, player.player_id)
-	pawn.mark_finished(route.size())
+func _all_pawns_ready_to_finish(player: PlayerState) -> bool:
+	for entry in player.pawns:
+		var pawn := entry as PawnState
+		if pawn == null:
+			return false
+		if not (pawn.is_in_home_stretch() or pawn.is_finished()):
+			return false
 	return true
 
 
@@ -221,15 +211,3 @@ func _rank_sole_unranked_player(state: GameState) -> void:
 		if player != null and not state.is_ranked(player.player_id):
 			state.rank_player(player.player_id)
 			return
-
-
-func _resolve_player_route(state: GameState, player_id: StringName) -> Array[StringName]:
-	var route: Array[StringName] = []
-	if state == null or player_id == &"":
-		return route
-	if (
-			state.board_id != Classic15x15Board.BOARD_ID
-			and state.board_id != BoardDefinition.DEFAULT_BOARD_ID
-	):
-		return route
-	return Classic15x15Board.player_route_cell_ids_for(player_id)

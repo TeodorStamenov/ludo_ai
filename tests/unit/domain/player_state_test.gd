@@ -193,14 +193,14 @@ func test_count_finished_and_zone_helpers() -> void:
 	assert_eq(player.count_finished_pawns(), 0)
 	assert_false(player.has_finished_all_pawns())
 
-	player.pawns[0] = PawnState.create_finished(&"yellow_0", 56)
-	player.pawns[1] = PawnState.create_finished(&"yellow_1", 56)
+	player.pawns[0] = PawnState.create_finished(&"yellow_0", 56, &"c_7_11")
+	player.pawns[1] = PawnState.create_finished(&"yellow_1", 56, &"c_7_10")
 	assert_eq(player.count_finished_pawns(), 2)
 	assert_eq(player.count_pawns_in_zone(PawnZone.FINISHED), 2)
 	assert_false(player.has_finished_all_pawns())
 
-	player.pawns[2] = PawnState.create_finished(&"yellow_2", 56)
-	player.pawns[3] = PawnState.create_finished(&"yellow_3", 56)
+	player.pawns[2] = PawnState.create_finished(&"yellow_2", 56, &"c_7_9")
+	player.pawns[3] = PawnState.create_finished(&"yellow_3", 56, &"c_7_8")
 	assert_true(player.has_finished_all_pawns())
 	assert_true(player.is_valid())
 

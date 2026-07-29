@@ -63,7 +63,8 @@ func test_collect_excludes_finished_pawns() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var finished := player.get_pawn_by_index(0)
-	finished.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH - 1)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	finished.mark_finished(route.size() - 1, route[route.size() - 1])
 	var on_board := player.get_pawn_by_index(1)
 	_place_on_spawn(player, on_board)
 	var valid: Array = _rules.collect_valid_pawn_ids(state, player, 3)
@@ -79,11 +80,11 @@ func test_collect_overshoot_in_home_stretch_excluded_yel_052() -> void:
 	var from_index: int = route.size() - 2
 	pawn.set_position(PawnZone.HOME_STRETCH, from_index, route[from_index])
 	for i in range(1, PlayerState.PAWNS_PER_PLAYER):
-		player.get_pawn_by_index(i).mark_finished(route.size() - 1)
+		player.get_pawn_by_index(i).mark_finished(route.size() - 1, route[route.size() - 1])
 	assert_eq(_rules.collect_valid_pawn_ids(state, player, 1).size(), 1,
 			"1 → последна HOME клетка")
-	assert_eq(_rules.collect_valid_pawn_ids(state, player, 2).size(), 1,
-			"2 → точен finish до центъра (#99)")
+	assert_eq(_rules.collect_valid_pawn_ids(state, player, 2).size(), 0,
+			"V1.1: няма клетка отвъд последната HOME — 2 е overshoot")
 	assert_eq(_rules.collect_valid_pawn_ids(state, player, 6).size(), 0,
 			"YEL-052: overshoot → няма валидна пионка")
 
@@ -99,16 +100,25 @@ func test_collect_occupied_home_dest_excluded_yel_053() -> void:
 	blocker.set_position(
 			PawnZone.HOME_STRETCH, first_home + 2, route[first_home + 2])
 	for i in range(2, PlayerState.PAWNS_PER_PLAYER):
-		player.get_pawn_by_index(i).mark_finished(route.size() - 1)
-	var valid: Array = _rules.collect_valid_pawn_ids(state, player, 2)
-	assert_false(valid.has(mover.pawn_id),
-			"YEL-053: заета крайна home клетка → невалиден ход")
-	assert_true(valid.has(blocker.pawn_id),
-			"blocker на first_home+2 с 2 → точен finish (#99)")
-	assert_eq(valid.size(), 1)
+		player.get_pawn_by_index(i).mark_finished(route.size() - 1, route[route.size() - 1])
+
+	var valid_two: Array = _rules.collect_valid_pawn_ids(state, player, 2)
+	assert_false(valid_two.has(mover.pawn_id),
+			"YEL-053: заета крайна home клетка (от собствена пионка) → невалиден ход")
+	assert_false(valid_two.has(blocker.pawn_id),
+			"V1.1: с 2 стъпки blocker-ът би надхвърлил последната HOME клетка")
+	assert_eq(valid_two.size(), 0)
+
+	var valid_one: Array = _rules.collect_valid_pawn_ids(state, player, 1)
+	assert_true(valid_one.has(blocker.pawn_id),
+			"blocker сам може да напредне с 1 — последната HOME клетка е свободна")
 
 
-func test_collect_pawn_on_last_cell_finish_only_on_one_gap_007() -> void:
+func test_collect_pawn_on_last_cell_has_no_legal_move_gap_007() -> void:
+	# V1.1: последната home stretch клетка е крайна позиция — няма клетка
+	# отвъд нея (без отделна "finish до центъра" стъпка), затова всеки зар е
+	# overshoot и пионката остава без легален ход (докато не се "прибере"
+	# автоматично, щом всичките 4 на играча са в home stretch).
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
@@ -116,12 +126,9 @@ func test_collect_pawn_on_last_cell_finish_only_on_one_gap_007() -> void:
 	for entry in player.pawns:
 		(entry as PawnState).set_position(
 				PawnZone.HOME_STRETCH, last_index, route[last_index])
-	assert_eq(_rules.collect_valid_pawn_ids(state, player, 1).size(),
-			PlayerState.PAWNS_PER_PLAYER,
-			"GAP-007 / #99: от последна HOME точен зар 1 → finish")
-	for face in range(2, DiceState.VALUE_MAX + 1):
+	for face in range(DiceState.VALUE_MIN, DiceState.VALUE_MAX + 1):
 		assert_eq(_rules.collect_valid_pawn_ids(state, player, face).size(), 0,
-				"overshoot от последната клетка при зар %d" % face)
+				"GAP-007: overshoot от последната клетка при зар %d" % face)
 
 
 func test_engine_roll_four_on_spawn_emits_valid_moves() -> void:

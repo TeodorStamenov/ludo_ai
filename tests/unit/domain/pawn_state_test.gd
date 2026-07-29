@@ -105,10 +105,11 @@ func test_create_at_spawn_matches_yel_030() -> void:
 	assert_true(pawn.is_valid())
 
 
-func test_create_finished_uses_center_cell() -> void:
-	var pawn := PawnState.create_finished(&"green_2", Classic15x15Board.PLAYER_ROUTE_LENGTH)
+func test_create_finished_rests_on_given_home_stretch_cell() -> void:
+	var pawn := PawnState.create_finished(
+			&"green_2", Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, &"c_7_11")
 	assert_eq(pawn.zone, PawnZone.FINISHED)
-	assert_eq(pawn.cell_id, CellId.CENTER)
+	assert_eq(pawn.cell_id, &"c_7_11", "V1.1: FINISHED остава на собствената home stretch клетка")
 	assert_true(pawn.is_finished())
 	assert_true(pawn.is_valid())
 
@@ -133,7 +134,7 @@ func test_zone_helpers_are_mutually_exclusive() -> void:
 	assert_true(pawn.is_on_board())
 	assert_false(pawn.is_on_main_path())
 
-	pawn.mark_finished(56)
+	pawn.mark_finished(50, &"c_7_11")
 	assert_true(pawn.is_finished())
 	assert_false(pawn.is_on_board())
 	assert_false(pawn.is_in_base())
@@ -191,12 +192,12 @@ func test_exit_base_to_spawn() -> void:
 	assert_true(pawn.is_valid())
 
 
-func test_mark_finished_clears_shield_and_sets_center() -> void:
+func test_mark_finished_clears_shield_and_stays_in_place() -> void:
 	var pawn := PawnState.create(
 			&"yellow_0", PawnZone.HOME_STRETCH, 55, &"c_7_8", 1)
-	pawn.mark_finished(56)
+	pawn.mark_finished(55, &"c_7_8")
 	assert_eq(pawn.zone, PawnZone.FINISHED)
-	assert_eq(pawn.cell_id, CellId.CENTER)
+	assert_eq(pawn.cell_id, &"c_7_8", "V1.1: флаг-превключване на място, без движение")
 	assert_eq(pawn.shield_turns_remaining, 0)
 	assert_true(pawn.is_valid())
 
@@ -245,13 +246,13 @@ func test_is_valid_home_stretch_accepts_non_negative_path_index() -> void:
 	assert_true(pawn.is_in_home_stretch())
 
 
-func test_is_valid_finished_requires_center_cell() -> void:
+func test_is_valid_finished_accepts_own_home_stretch_cell() -> void:
+	# V1.1: FINISHED вече не изисква CellId.CENTER — pawn остава на своята
+	# home stretch клетка (флаг-превключване, не движение).
 	var pawn := PawnState.create(
 			&"yellow_0", PawnZone.FINISHED, 56, &"c_7_8")
-	assert_false(pawn.is_valid(),
-			"FINISHED трябва да е на CellId.CENTER")
-	pawn.cell_id = CellId.CENTER
 	assert_true(pawn.is_valid())
+	assert_eq(pawn.cell_id, &"c_7_8")
 
 
 func test_is_valid_accepts_all_zones_with_consistent_fields() -> void:
@@ -259,7 +260,7 @@ func test_is_valid_accepts_all_zones_with_consistent_fields() -> void:
 		PawnState.create_in_base(&"green_0", &"c_2_2"),
 		PawnState.create_at_spawn(&"green_1", &"c_8_2"),
 		PawnState.create(&"green_2", PawnZone.HOME_STRETCH, 53, &"c_7_3"),
-		PawnState.create_finished(&"green_3", 56),
+		PawnState.create_finished(&"green_3", 56, &"c_7_11"),
 	]
 	for pawn: PawnState in cases:
 		assert_true(pawn.is_valid(),

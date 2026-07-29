@@ -173,10 +173,10 @@ func test_create_from_game_state_reads_ranking_and_player_fields() -> void:
 	state.rank_player(PlayerId.YELLOW)
 	state.rank_player(PlayerId.GREEN)
 	var yellow := state.get_player(PlayerId.YELLOW)
+	var yellow_route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
 	for i in PlayerState.PAWNS_PER_PLAYER:
 		var pawn := yellow.get_pawn_by_index(i)
-		pawn.mark_finished(
-				Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW).size())
+		pawn.mark_finished(yellow_route.size() - 1, yellow_route[yellow_route.size() - 1])
 	var result := MatchResult.create_from_game_state(state)
 	assert_true(result.is_valid())
 	assert_eq(result.match_id, state.match_id)

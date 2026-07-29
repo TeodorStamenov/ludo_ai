@@ -214,4 +214,4 @@ func _mark_pawn_finished(player: PlayerState, pawn_index: int) -> void:
 	var pawn := player.get_pawn_by_index(pawn_index)
 	assert_not_null(pawn)
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-	pawn.mark_finished(route.size() - 1)
+	pawn.mark_finished(route.size() - 1, route[route.size() - 1])

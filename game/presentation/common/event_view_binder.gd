@@ -11,8 +11,8 @@ extends RefCounted
 ## PawnExitedBase → hop база → spawn (#173 / YEL-030).
 ## PawnStackFormed → offset settle на двете пионки (#174).
 ## PawnSentHome → меко „вкъщи“ shrink+settle в базата (#175).
-## PawnFinished → hop+pulse в центъра; PawnMoved при finish хопва само
-## остатъка от home stretch (#176).
+## PawnFinished → pulse на място (V1.1: играчът прибира пионка веднага щом
+## всичките 4 влязат в home stretch — флаг-превключване, без движение) (#176).
 ##
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
@@ -288,11 +288,12 @@ func _present_pawn_finished(event: PawnFinishedEvent) -> void:
 	if pawn == null:
 		return
 	_dissolve_stack_snap(pawn)
-	var target: Vector2 = _local_for_pawn(pawn, event.center_cell_id)
+	var target: Vector2 = _local_for_pawn(pawn, event.final_cell_id)
 	pawn.present_pawn_finished(event, target)
 
 
-## Hop+pulse в центъра след home stretch (#176). Busy → snap. KIND_FINISH след settle.
+## Pulse на място (V1.1: final_cell_id == from_cell_id, без движение) (#176).
+## Busy → snap. KIND_FINISH след settle.
 func _present_pawn_finished_animated(event: PawnFinishedEvent) -> void:
 	if event == null or not event.is_valid():
 		return
@@ -300,7 +301,7 @@ func _present_pawn_finished_animated(event: PawnFinishedEvent) -> void:
 	if pawn == null:
 		return
 	await _dissolve_stack_before_departure(pawn)
-	var target: Vector2 = _local_for_pawn(pawn, event.center_cell_id)
+	var target: Vector2 = _local_for_pawn(pawn, event.final_cell_id)
 	if not pawn.is_moving:
 		await AnimationFinishedGate.await_started(
 				pawn,

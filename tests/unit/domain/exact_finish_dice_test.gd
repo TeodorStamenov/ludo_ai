@@ -1,12 +1,13 @@
 extends TestCase
-## Business-critical тестове за точен зар при завършване (Task #106 /
-## docs/V1_GAME_DESIGN.md §3.1 / §3.2; docs/V1_ARCHITECTURE.md §4.1 / §12;
-## CURRENT_YELLOW_BEHAVIOR GAP-007 / GAP-008 rejected).
+## Business-critical тестове за прибиране на пионка (V1.1 — вижте FinishRules /
+## docs/V1_ARCHITECTURE.md §4.1 / §12; docs/V1_GAME_DESIGN.md §3.1 / §3.2).
 ##
-## Правилото е в FinishRules (#99) + MoveRules.can_move_pawn. Тук: от
-## HOME_STRETCH само exact remaining_to_finish → FINISHED / CENTER; overshoot
-## и undershoot (≠ remaining) → reject без clamp; MovePawnCommand ↔
-## PawnFinished при точен зар.
+## Правилото е в FinishRules.resolve_home_stretch_completion (#99 redefined):
+## играчът прибира ВСИЧКИТЕ си 4 пионки едновременно, веднага щом и четирите
+## са влезли в home stretch — флаг-превключване на място, БЕЗ движение до
+## централна клетка (safe/exit/finish zone — 4-те собствени цветни клетки).
+## Движението вътре в home stretch (exact roll, без overshoot) остава
+## непроменено — вижте exact_home_stretch_dice_test.gd.
 
 
 var _finish: FinishRules
@@ -21,148 +22,111 @@ func before_each() -> void:
 	MatchId._reset_counter_for_tests()
 
 
-## remaining_to_finish = remaining_to_last_home + 1 на всяка HOME клетка.
-func test_remaining_to_finish_is_one_past_last_home() -> void:
-	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
-	var route_len: int = Classic15x15Board.PLAYER_ROUTE_LENGTH
-	for offset in Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER:
-		var path_index: int = first_home + offset
-		var to_last: int = _move.remaining_steps_to_route_end(path_index, route_len)
-		var to_finish: int = _finish.remaining_steps_to_finish(path_index, route_len)
-		assert_eq(to_finish, to_last + 1,
-				"path_index %d: finish = last_home + 1" % path_index)
-		assert_eq(to_finish, route_len - path_index)
-
-
-## От всяка HOME клетка: само exact remaining_to_finish finish-ва; другите лица — не.
-func test_only_exact_remaining_finishes_from_each_home_cell() -> void:
-	var state := _setup_yellow_in_home_stretch()
-	var player := state.get_active_player()
-	var pawn := player.get_pawn_by_index(0)
-	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
-	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
-
-	for offset in Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER:
-		var path_index: int = first_home + offset
-		var exact: int = _finish.remaining_steps_to_finish(path_index, route.size())
-		assert_true(DiceState.is_face_value(exact),
-				"remaining %d трябва да е валиден зар" % exact)
-
-		for face in range(DiceState.VALUE_MIN, DiceState.VALUE_MAX + 1):
-			pawn.set_position(PawnZone.HOME_STRETCH, path_index, route[path_index])
-			var before := pawn.duplicate_state()
-			if face == exact:
-				assert_true(_finish.can_finish_pawn(state, player, pawn, face),
-						"offset %d exact %d" % [offset, face])
-				assert_true(_move.can_move_pawn(state, player, pawn, face))
-				assert_true(_finish.apply_finish_pawn(state, player, pawn, face))
-				assert_true(pawn.is_finished())
-				assert_eq(pawn.cell_id, CellId.CENTER)
-			else:
-				assert_false(_finish.can_finish_pawn(state, player, pawn, face),
-						"offset %d face %d ≠ exact %d" % [offset, face, exact])
-				assert_false(_finish.apply_finish_pawn(state, player, pawn, face))
-				assert_true(pawn.equals(before),
-						"non-exact не мутира при face %d" % face)
-
-
-## Undershoot в home: ход по маршрута (не finish); exact finish; overshoot reject.
-func test_undershoot_moves_exact_finishes_overshoot_rejects() -> void:
-	var state := _setup_yellow_in_home_stretch()
-	var player := state.get_active_player()
-	var pawn := player.get_pawn_by_index(0)
-	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
-	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
-	pawn.set_position(PawnZone.HOME_STRETCH, first_home, route[first_home])
-	assert_eq(_finish.remaining_steps_to_finish(first_home, route.size()), 4)
-
-	assert_true(_move.can_advance_in_home_stretch(state, player, pawn, 2))
-	assert_false(_finish.can_finish_pawn(state, player, pawn, 2))
-	assert_true(_move.apply_board_move(state, player, pawn, 2))
-	assert_true(pawn.is_in_home_stretch())
-	assert_false(pawn.is_finished())
-	assert_eq(pawn.path_index, first_home + 2)
-
-	pawn.set_position(PawnZone.HOME_STRETCH, first_home, route[first_home])
-	assert_true(_finish.can_finish_pawn(state, player, pawn, 4))
-	assert_false(_move.can_advance_in_home_stretch(state, player, pawn, 4))
-	assert_true(_finish.apply_finish_pawn(state, player, pawn, 4))
-	assert_true(pawn.is_finished())
-
-	pawn.set_position(PawnZone.HOME_STRETCH, first_home, route[first_home])
-	var before := pawn.duplicate_state()
-	assert_false(_finish.can_finish_pawn(state, player, pawn, 5))
-	assert_false(_move.can_move_pawn(state, player, pawn, 5))
-	assert_false(_finish.apply_finish_pawn(state, player, pawn, 5))
-	assert_true(pawn.equals(before))
-
-
-## От последна HOME: само exact finish (1) е в collect; 2–6 → празно.
-func test_collect_includes_only_on_exact_finish_roll() -> void:
+## No-op докато не всичките 4 пионки са в home stretch.
+func test_resolve_home_stretch_completion_noop_until_all_four_present() -> void:
 	var state := _setup_yellow_in_home_stretch()
 	var player := state.get_active_player()
 	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
-	var last_index: int = route.size() - 1
-	var pawn := player.get_pawn_by_index(0)
-	pawn.set_position(PawnZone.HOME_STRETCH, last_index, route[last_index])
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
+	player.get_pawn_by_index(0).set_position(
+			PawnZone.HOME_STRETCH, first_home, route[first_home])
+	# pawns 1-3 остават в BASE.
+
+	var events := _finish.resolve_home_stretch_completion(player, 5)
+
+	assert_true(events.is_empty())
+	assert_false(player.get_pawn_by_index(0).is_finished())
+	assert_false(player.has_finished_all_pawns())
+
+
+## Всичките 4 в home stretch (на различни клетки) → всяка става FINISHED на място.
+func test_resolve_home_stretch_completion_marks_all_four_in_place() -> void:
+	var state := _setup_yellow_in_home_stretch()
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
+	var expected_cells: Array[StringName] = []
+	for i in PlayerState.PAWNS_PER_PLAYER:
+		var idx: int = first_home + i
+		player.get_pawn_by_index(i).set_position(PawnZone.HOME_STRETCH, idx, route[idx])
+		expected_cells.append(route[idx])
+
+	var events := _finish.resolve_home_stretch_completion(player, 7)
+
+	assert_eq(events.size(), PlayerState.PAWNS_PER_PLAYER)
+	for i in PlayerState.PAWNS_PER_PLAYER:
+		var pawn := player.get_pawn_by_index(i)
+		assert_true(pawn.is_finished())
+		assert_eq(pawn.cell_id, expected_cells[i],
+				"V1.1: FINISHED остава на собствената home stretch клетка")
+	for event in events:
+		assert_true(event is PawnFinishedEvent)
+		var finished := event as PawnFinishedEvent
+		assert_eq(finished.from_cell_id, finished.final_cell_id)
+	assert_true(player.has_finished_all_pawns())
+
+
+## Вече класиран играч → no-op (без повторно маркиране / събития).
+func test_resolve_home_stretch_completion_noop_when_already_ranked() -> void:
+	var state := _setup_yellow_in_home_stretch()
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
+	for i in PlayerState.PAWNS_PER_PLAYER:
+		var idx: int = first_home + i
+		player.get_pawn_by_index(i).mark_finished(idx, route[idx])
+	state.rank_player(player.player_id)
+
+	var events := _finish.resolve_home_stretch_completion(player, 9)
+
+	assert_true(events.is_empty())
+
+
+## Engine: последната пионка влиза в home stretch → PawnMoved + 4×PawnFinished + PlayerRanked.
+func test_engine_last_pawn_entering_home_stretch_finishes_whole_player() -> void:
+	var state := _setup_yellow_in_home_stretch()
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
 	for i in range(1, PlayerState.PAWNS_PER_PLAYER):
-		player.get_pawn_by_index(i).mark_finished(route.size())
-	assert_eq(_finish.remaining_steps_to_finish(last_index, route.size()), 1)
+		var idx: int = first_home + i
+		player.get_pawn_by_index(i).set_position(PawnZone.HOME_STRETCH, idx, route[idx])
+	var mover := player.get_pawn_by_index(0)
+	mover.set_position(PawnZone.MAIN_PATH, first_home - 1, route[first_home - 1])
+	state.turn.enter_awaiting_move(1, [mover.pawn_id])
+	state.dice.set_roll(player.player_id, 1)
+	var rng := SeededRandomSource.new(state.get_rng_seed())
+	var cmd := MovePawnCommand.create_for_pawn(player.player_id, mover.pawn_id)
+	state.stamp_command(cmd)
 
-	assert_eq(_move.collect_valid_pawn_ids(state, player, 1).size(), 1)
-	assert_true(_move.collect_valid_pawn_ids(state, player, 1).has(pawn.pawn_id))
-	for face in range(2, DiceState.VALUE_MAX + 1):
-		assert_eq(_move.collect_valid_pawn_ids(state, player, face).size(), 0,
-				"overshoot face %d от последна HOME → няма ход" % face)
+	var result := _engine.validate_and_apply(state, cmd, rng)
+
+	assert_true(result.accepted)
+	var moved_pawn := result.state.get_player(player.player_id).get_pawn(mover.pawn_id)
+	assert_true(moved_pawn.is_finished())
+	assert_eq(moved_pawn.cell_id, route[first_home])
+	assert_true(result.state.get_active_player().has_finished_all_pawns())
+	assert_true(result.state.get_active_player().is_ranked())
+
+	var finished_count := 0
+	var ranked_count := 0
+	for event in result.events:
+		if event is PawnFinishedEvent:
+			finished_count += 1
+		if event is PlayerRankedEvent:
+			ranked_count += 1
+	assert_eq(finished_count, PlayerState.PAWNS_PER_PLAYER,
+			"всичките 4 пионки минават HOME_STRETCH → FINISHED едновременно")
+	assert_eq(ranked_count, 2,
+			"2p: finisher-ът + auto-rank на единствения останал опонент")
 
 
-## От mid HOME: undershoot advance + exact finish са валидни; overshoot — не.
-func test_collect_mid_home_allows_advance_and_exact_finish_only() -> void:
-	var state := _setup_yellow_in_home_stretch()
-	var player := state.get_active_player()
-	var route := Classic15x15Board.player_route_cell_ids_for(PlayerId.YELLOW)
-	var mid_index: int = Classic15x15Board.first_home_stretch_path_index() + 1
-	var pawn := player.get_pawn_by_index(0)
-	pawn.set_position(PawnZone.HOME_STRETCH, mid_index, route[mid_index])
-	for i in range(1, PlayerState.PAWNS_PER_PLAYER):
-		player.get_pawn_by_index(i).mark_finished(route.size())
-	var exact_finish: int = _finish.remaining_steps_to_finish(mid_index, route.size())
-	assert_eq(exact_finish, 3)
-	assert_eq(_move.remaining_steps_to_route_end(mid_index, route.size()), 2)
-
-	for face in [1, 2, exact_finish]:
-		assert_true(_move.collect_valid_pawn_ids(state, player, face).has(pawn.pawn_id),
-				"face %d: advance или exact finish" % face)
-	for face in range(exact_finish + 1, DiceState.VALUE_MAX + 1):
-		assert_eq(_move.collect_valid_pawn_ids(state, player, face).size(), 0,
-				"overshoot face %d" % face)
-
-
-## Всички seats: от всяка HOME с exact remaining → FINISHED / CENTER.
-func test_all_seats_exact_finish_from_each_home_cell() -> void:
-	var state := _setup_four_player_in_progress()
+## Engine: обикновено напредване в home stretch (не последна пионка) не прибира никого.
+func test_engine_normal_home_stretch_advance_does_not_finish() -> void:
 	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
-	for player_id in PlayerId.ALL:
-		var player := state.get_player(player_id)
-		var pawn := player.get_pawn_by_index(0)
-		var route := Classic15x15Board.player_route_cell_ids_for(player_id)
-		for offset in Classic15x15Board.HOME_STRETCH_CELLS_PER_PLAYER:
-			var path_index: int = first_home + offset
-			var exact: int = _finish.remaining_steps_to_finish(path_index, route.size())
-			pawn.set_position(PawnZone.HOME_STRETCH, path_index, route[path_index])
-			assert_true(_finish.apply_finish_pawn(state, player, pawn, exact),
-					"%s offset %d exact %d" % [player_id, offset, exact])
-			assert_true(pawn.is_finished())
-			assert_eq(pawn.cell_id, CellId.CENTER)
-
-
-## Engine: точен finish от първа HOME с 4 → FINISHED + PawnFinished.
-func test_engine_exact_finish_from_first_home() -> void:
-	var state := _setup_yellow_awaiting_finish_from_path(
-			Classic15x15Board.first_home_stretch_path_index(), 4)
+	var state := _setup_yellow_awaiting_move_from_path(first_home, 2)
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
-	var from_cell: StringName = pawn.cell_id
 	var rng := SeededRandomSource.new(state.get_rng_seed())
 	var cmd := MovePawnCommand.create_for_pawn(player.player_id, pawn.pawn_id)
 	state.stamp_command(cmd)
@@ -170,40 +134,16 @@ func test_engine_exact_finish_from_first_home() -> void:
 	var result := _engine.validate_and_apply(state, cmd, rng)
 
 	assert_true(result.accepted)
-	var finished := result.state.get_player(player.player_id).get_pawn(pawn.pawn_id)
-	assert_true(finished.is_finished())
-	assert_eq(finished.cell_id, CellId.CENTER)
-	assert_true(result.events[0] is PawnMovedEvent)
-	var moved := result.events[0] as PawnMovedEvent
-	assert_eq(moved.from_cell_id, from_cell)
-	assert_eq(moved.to_cell_id, CellId.CENTER)
-	assert_eq(moved.zone, PawnZone.FINISHED)
-	assert_true(result.events[1] is PawnFinishedEvent)
+	var moved := result.state.get_player(player.player_id).get_pawn(pawn.pawn_id)
+	assert_true(moved.is_in_home_stretch())
+	assert_false(moved.is_finished())
+	assert_false(_events_contain_pawn_finished(result.events))
 
 
-## Engine: точен finish от последна HOME с 1 → FINISHED.
-func test_engine_exact_finish_from_last_home() -> void:
+## Engine: overshoot в home stretch → ILLEGAL_MOVE, без мутация (§12 / GAP-008).
+func test_engine_overshoot_in_home_stretch_rejected_without_mutation() -> void:
 	var last_index: int = Classic15x15Board.PLAYER_ROUTE_LENGTH - 1
-	var state := _setup_yellow_awaiting_finish_from_path(last_index, 1)
-	var player := state.get_active_player()
-	var pawn_id: StringName = player.get_pawn_by_index(0).pawn_id
-	var rng := SeededRandomSource.new(state.get_rng_seed())
-	var cmd := MovePawnCommand.create_for_pawn(player.player_id, pawn_id)
-	state.stamp_command(cmd)
-
-	var result := _engine.validate_and_apply(state, cmd, rng)
-
-	assert_true(result.accepted)
-	var finished := result.state.get_player(player.player_id).get_pawn(pawn_id)
-	assert_true(finished.is_finished())
-	assert_eq(finished.cell_id, CellId.CENTER)
-	assert_true(result.events[1] is PawnFinishedEvent)
-
-
-## Engine: non-exact (overshoot) → ILLEGAL_MOVE, без мутация (§12 / GAP-008).
-func test_engine_non_exact_finish_rejected_without_mutation() -> void:
-	var mid_index: int = Classic15x15Board.first_home_stretch_path_index() + 1
-	var state := _setup_yellow_awaiting_finish_from_path(mid_index, 5)
+	var state := _setup_yellow_awaiting_move_from_path(last_index, 3)
 	var before := state.duplicate_state()
 	var rng := SeededRandomSource.new(state.get_rng_seed())
 	var rng_before := rng.get_state()
@@ -218,27 +158,6 @@ func test_engine_non_exact_finish_rejected_without_mutation() -> void:
 	assert_eq(result.error.code, CommandError.CODE_ILLEGAL_MOVE)
 	assert_true(state.equals(before))
 	assert_eq(rng.get_state(), rng_before, "§12: reject не консумира RNG")
-
-
-## Engine: undershoot (2 от първа HOME) мести в stretch, не finish-ва.
-func test_engine_undershoot_advances_in_stretch_not_finish() -> void:
-	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
-	var state := _setup_yellow_awaiting_finish_from_path(first_home, 2)
-	var player := state.get_active_player()
-	var pawn := player.get_pawn_by_index(0)
-	var rng := SeededRandomSource.new(state.get_rng_seed())
-	var cmd := MovePawnCommand.create_for_pawn(player.player_id, pawn.pawn_id)
-	state.stamp_command(cmd)
-
-	var result := _engine.validate_and_apply(state, cmd, rng)
-
-	assert_true(result.accepted)
-	var moved := result.state.get_player(player.player_id).get_pawn(pawn.pawn_id)
-	assert_true(moved.is_in_home_stretch())
-	assert_false(moved.is_finished())
-	assert_eq(moved.path_index, first_home + 2)
-	assert_true(result.events[0] is PawnMovedEvent)
-	assert_false(_events_contain_pawn_finished(result.events))
 
 
 func _events_contain_pawn_finished(events: Array) -> bool:
@@ -262,20 +181,6 @@ func _two_player_config(rng_seed: int = 42) -> MatchConfig:
 	return cfg
 
 
-func _four_player_config(rng_seed: int = 42) -> MatchConfig:
-	var cfg := MatchConfig.new()
-	cfg.rng_seed = rng_seed
-	cfg.set_active_seats(MatchConfig.DEFAULT_SEATS_4P)
-	for i in cfg.seats.size():
-		var seat: MatchConfig.SeatConfig = cfg.seats[i]
-		if i == 0:
-			seat.configure(MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
-		else:
-			seat.configure(
-					MatchConfig.ControllerType.AI, AnimalId.DOG, AIDifficulty.EASY)
-	return cfg
-
-
 func _setup_yellow_in_home_stretch() -> GameState:
 	MatchId._reset_counter_for_tests()
 	var state := GameState.create_from_match_config(_two_player_config())
@@ -286,7 +191,7 @@ func _setup_yellow_in_home_stretch() -> GameState:
 	return state
 
 
-func _setup_yellow_awaiting_finish_from_path(
+func _setup_yellow_awaiting_move_from_path(
 		path_index: int,
 		dice_value: int
 ) -> GameState:
@@ -298,12 +203,4 @@ func _setup_yellow_awaiting_finish_from_path(
 	state.turn.enter_awaiting_move(dice_value, [pawn.pawn_id])
 	state.dice.set_roll(player.player_id, dice_value)
 	assert_true(pawn.is_in_home_stretch())
-	return state
-
-
-func _setup_four_player_in_progress() -> GameState:
-	MatchId._reset_counter_for_tests()
-	var state := GameState.create_from_match_config(_four_player_config())
-	state.set_phase(MatchPhase.IN_PROGRESS)
-	state.turn.begin_player_turn(1, true)
 	return state

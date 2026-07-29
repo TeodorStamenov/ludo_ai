@@ -194,10 +194,7 @@ func can_move_pawn(
 	if pawn.is_in_base():
 		return can_exit_base(state, player, pawn, dice_value)
 	if pawn.is_on_board():
-		return (
-				can_advance_on_board(state, player, pawn, dice_value)
-				or _finish_rules.can_finish_pawn(state, player, pawn, dice_value)
-		)
+		return can_advance_on_board(state, player, pawn, dice_value)
 	return false
 
 

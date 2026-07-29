@@ -177,7 +177,9 @@ func _two_player_in_progress() -> GameState:
 	return state
 
 
-## Активен seat с 3 FINISHED + 1 на последна HOME, AWAITING_MOVE с exact dice.
+## Активен seat с 3 FINISHED (на различни home stretch клетки) + 1 на
+## MAIN_PATH точно преди home stretch entry; dice_value я вкарва в единствената
+## свободна home stretch клетка → 4-тата приета пионка (V1.1 completion).
 func _setup_player_awaiting_fourth_finish(
 		player_index: int,
 		dice_value: int
@@ -186,11 +188,13 @@ func _setup_player_awaiting_fourth_finish(
 	_turn.begin_player_turn(state, player_index, 1)
 	var player := state.get_active_player()
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
 	for i in range(1, PlayerState.PAWNS_PER_PLAYER):
-		player.get_pawn_by_index(i).mark_finished(route.size())
+		var idx: int = first_home + i
+		player.get_pawn_by_index(i).mark_finished(idx, route[idx])
 	var pawn := player.get_pawn_by_index(0)
-	var last_index: int = route.size() - 1
-	pawn.set_position(PawnZone.HOME_STRETCH, last_index, route[last_index])
+	var from_index: int = first_home - dice_value
+	pawn.set_position(PawnZone.MAIN_PATH, from_index, route[from_index])
 	state.turn.enter_awaiting_move(dice_value, [pawn.pawn_id])
 	state.dice.set_roll(player.player_id, dice_value)
 	assert_eq(player.count_finished_pawns(), 3)
@@ -202,11 +206,13 @@ func _setup_two_player_awaiting_fourth_finish(dice_value: int) -> GameState:
 	_turn.begin_player_turn(state, 0, 1)
 	var player := state.get_active_player()
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
 	for i in range(1, PlayerState.PAWNS_PER_PLAYER):
-		player.get_pawn_by_index(i).mark_finished(route.size())
+		var idx: int = first_home + i
+		player.get_pawn_by_index(i).mark_finished(idx, route[idx])
 	var pawn := player.get_pawn_by_index(0)
-	var last_index: int = route.size() - 1
-	pawn.set_position(PawnZone.HOME_STRETCH, last_index, route[last_index])
+	var from_index: int = first_home - dice_value
+	pawn.set_position(PawnZone.MAIN_PATH, from_index, route[from_index])
 	state.turn.enter_awaiting_move(dice_value, [pawn.pawn_id])
 	state.dice.set_roll(player.player_id, dice_value)
 	return state
@@ -221,4 +227,4 @@ func _mark_pawn_finished(player: PlayerState, pawn_index: int) -> void:
 	var pawn := player.get_pawn_by_index(pawn_index)
 	assert_not_null(pawn)
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-	pawn.mark_finished(route.size())
+	pawn.mark_finished(route.size() - 1, route[route.size() - 1])

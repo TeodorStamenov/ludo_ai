@@ -44,7 +44,7 @@ func _init(
 	_turn_rules = turn_rules if turn_rules != null else TurnRules.new()
 	_move_evaluator = (
 			move_evaluator if move_evaluator != null
-			else MoveEvaluator.new(_move_rules, _capture_rules, _finish_rules)
+			else MoveEvaluator.new(_move_rules, _capture_rules)
 	)
 	_gift_rules = gift_rules if gift_rules != null else GiftRules.new()
 	_power_up_registry = (
@@ -394,19 +394,6 @@ func _apply_move_pawn(
 				before, next_pawn, accepted_sequence))
 		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
 		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
-	elif _finish_rules.can_finish_pawn(next, next_player, next_pawn, dice_value):
-		if not _finish_rules.apply_finish_pawn(
-				next, next_player, next_pawn, dice_value):
-			return CommandResult.rejected(
-					state,
-					CommandError.illegal_move("finish pawn could not be applied"))
-		events.append(PawnMovedEvent.create_from_states(
-				before, next_pawn, accepted_sequence))
-		events.append(PawnFinishedEvent.create_from_states(
-				before, next_pawn, accepted_sequence))
-		for ranked_event in _finish_rules.resolve_ranking_progress(
-				next, next_player.player_id, accepted_sequence):
-			events.append(ranked_event)
 	else:
 		if not _move_rules.apply_board_move(
 				next, next_player, next_pawn, dice_value):
@@ -417,6 +404,16 @@ func _apply_move_pawn(
 				before, next_pawn, accepted_sequence))
 		_append_capture_if_any(next, next_pawn, accepted_sequence, events)
 		_append_stack_formed_if_any(next, next_pawn, accepted_sequence, events)
+
+	# V1.1 (#99 redefined): играчът прибира всичките си пионки веднага щом
+	# всичките 4 влязат в home stretch — флаг-превключване на място, без
+	# допълнителна стъпка до централна клетка (safe/exit/finish zone).
+	for finished_event in _finish_rules.resolve_home_stretch_completion(
+			next_player, accepted_sequence):
+		events.append(finished_event)
+	for ranked_event in _finish_rules.resolve_ranking_progress(
+			next, next_player.player_id, accepted_sequence):
+		events.append(ranked_event)
 
 	# #204/#206/#207: пионка ЗАВЪРШИЛА хода си точно на клетка с подарък я взима.
 	# FINISHED пионки не са is_on_main_path() — гарантирано не се пипат тук.

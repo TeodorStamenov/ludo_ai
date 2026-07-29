@@ -72,8 +72,9 @@ static func create_from_states(
 			p_command_sequence)
 
 
-## True ако envelope-ът е валиден, pawn_id / клетките са валидни,
-## zone е PawnZone, from ≠ to, и FINISHED сочи към CellId.CENTER.
+## True ако envelope-ът е валиден, pawn_id / клетките са валидни, zone е
+## PawnZone и from ≠ to. FINISHED е чисто флаг-превключване без движение
+## (V1.1 — вижте PawnFinishedEvent) и никога не е резултат от PawnMoved.
 ## Празен / неизвестен id или невалидна зона → false.
 func is_valid() -> bool:
 	if not super.is_valid():
@@ -88,7 +89,7 @@ func is_valid() -> bool:
 		return false
 	if from_cell_id == to_cell_id:
 		return false
-	if zone == PawnZone.FINISHED and to_cell_id != CellId.CENTER:
+	if zone == PawnZone.FINISHED:
 		return false
 	return true
 

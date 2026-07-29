@@ -37,7 +37,7 @@ func test_all_pawns_in_base_false_when_any_pawn_finished() -> void:
 	var player := state.get_active_player()
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
 	var last_idx: int = route.size() - 1
-	player.get_pawn_by_index(0).mark_finished(last_idx)
+	player.get_pawn_by_index(0).mark_finished(last_idx, route[last_idx])
 	assert_false(_rules.all_pawns_in_base(player))
 	assert_true(_rules.begin_player_turn(state, 0, 1))
 	assert_eq(state.turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)

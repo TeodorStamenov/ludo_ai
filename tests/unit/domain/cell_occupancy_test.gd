@@ -37,14 +37,15 @@ func test_base_pawns_are_not_board_occupants() -> void:
 	assert_eq(occupancy.count_at(yellow_base), 0)
 
 
-## FINISHED пионка на CENTER не е board occupant.
+## FINISHED пионка на собствената home stretch клетка не е board occupant.
 func test_finished_pawns_are_not_board_occupants() -> void:
 	var state := _two_player_in_progress()
 	var yellow := state.get_player(PlayerId.YELLOW)
-	yellow.get_pawn_by_index(0).mark_finished(52)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[0]
+	yellow.get_pawn_by_index(0).mark_finished(52, home_cell)
 	var occupancy := CellOccupancy.from_state(state)
-	assert_true(occupancy.is_empty(CellId.CENTER))
-	assert_eq(occupancy.count_at(CellId.CENTER), 0)
+	assert_true(occupancy.is_empty(home_cell))
+	assert_eq(occupancy.count_at(home_cell), 0)
 
 
 ## Една пионка на MAIN_PATH → count 1, не е stack.

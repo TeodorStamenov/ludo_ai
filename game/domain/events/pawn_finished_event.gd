@@ -1,38 +1,41 @@
 class_name PawnFinishedEvent
 extends DomainEvent
-## Пионка е прибрана в центъра (docs/V1_ARCHITECTURE.md, §4.4 / §11;
-## docs/V1_GAME_DESIGN.md, §3.1 / §3.2 — точен зар от home stretch).
+## Пионка е маркирана FINISHED на място в собствения ѝ home stretch (V1.1;
+## docs/V1_ARCHITECTURE.md, §4.4 / §11; docs/V1_GAME_DESIGN.md, §3.1 / §3.2).
 ##
-## Описва вече настъпил факт: MovePawnCommand е приет и GameEngine е преместил
-## пионката от HOME_STRETCH в FINISHED (cell_id = CellId.CENTER). Носи pawn_id,
-## from_cell_id (последната home клетка) и center_cell_id — не намерение и не
-## screen позиция.
+## Играчът прибира пионка веднага щом всичките му 4 пионки са влезли в
+## home stretch (safe/exit/finish zone — 4-те цветни клетки преди центъра).
+## Флаг-превключване БЕЗ движение: final_cell_id == from_cell_id — пионката
+## остава на клетката, на която вече е стояла (FinishRules.resolve_home_stretch_completion).
+## Никога не сочи към CellId.CENTER.
 ##
-## Специализиран факт спрямо PawnMoved: прибирането може да се анимира отделно
-## (BoardView / PawnView). Presentation не директно решава дали finish е валиден
-## (§3 / §6.2). Типична верига: PawnMoved → PawnFinished → … / PlayerRanked.
+## Специализиран факт спрямо PawnMoved: FINISHED е чисто флаг-превключване,
+## затова е отделно събитие, не PawnMoved с zone=FINISHED. Типична верига:
+## PawnMoved (влизане в home stretch клетка) → … → PawnFinished (щом и 4-те
+## са там) → PlayerRanked.
 ##
 ## Сериализация (journal / replay / AnimationQueue):
-##   envelope полетата от DomainEvent + "pawn_id" + "from_cell_id" + "center_cell_id".
+##   envelope полетата от DomainEvent + "pawn_id" + "from_cell_id" + "final_cell_id".
 ##   DomainEvent.from_dict не диспечира към този subclass — ползвай from_finished_dict.
 
 
-## Пионката, която е прибрана (PawnId); празен преди попълване.
+## Прибраната пионка (PawnId); празен преди попълване.
 var pawn_id: StringName = &""
-## Клетка в home stretch преди прибирането (CellId); празен преди попълване.
+## Home stretch клетката преди флага (CellId); празен преди попълване.
 var from_cell_id: StringName = &""
-## Централната клетка след прибирането (CellId); валидният факт сочи към CellId.CENTER.
-var center_cell_id: StringName = &""
+## Клетката, на която пионката остава завинаги — идентична с from_cell_id
+## (флаг-превключване без движение); празен преди попълване.
+var final_cell_id: StringName = &""
 
 
 func _init(
 		p_pawn_id: StringName = &"",
 		p_from_cell_id: StringName = &"",
-		p_center_cell_id: StringName = &""
+		p_final_cell_id: StringName = &""
 ) -> void:
 	pawn_id = p_pawn_id
 	from_cell_id = p_from_cell_id
-	center_cell_id = p_center_cell_id
+	final_cell_id = p_final_cell_id
 	event_type = TYPE_PAWN_FINISHED
 
 
@@ -41,17 +44,17 @@ func _init(
 static func create_finished(
 		p_pawn_id: StringName,
 		p_from_cell_id: StringName,
-		p_center_cell_id: StringName,
+		p_final_cell_id: StringName,
 		p_command_sequence: int = COMMAND_SEQUENCE_UNSET
 ) -> PawnFinishedEvent:
-	var event := PawnFinishedEvent.new(p_pawn_id, p_from_cell_id, p_center_cell_id)
+	var event := PawnFinishedEvent.new(p_pawn_id, p_from_cell_id, p_final_cell_id)
 	event.command_sequence = p_command_sequence
 	return event
 
 
-## Фабрика от before/after PawnState — from = before.cell_id, center = after.cell_id.
-## Изисква съвпадащ pawn_id, before в HOME_STRETCH и after в FINISHED (център).
-## null, различни id или невалиден преход → празен payload (невалиден факт).
+## Фабрика от before/after PawnState — before в HOME_STRETCH, after FINISHED
+## на СЪЩАТА клетка (флаг-превключване без движение).
+## null, различни id, невалиден преход или движение → празен payload (невалиден факт).
 static func create_from_states(
 		before: PawnState,
 		after: PawnState,
@@ -63,6 +66,8 @@ static func create_from_states(
 		return create_finished(&"", &"", &"", p_command_sequence)
 	if not after.is_finished():
 		return create_finished(&"", &"", &"", p_command_sequence)
+	if before.cell_id != after.cell_id:
+		return create_finished(&"", &"", &"", p_command_sequence)
 	return create_finished(
 			after.pawn_id,
 			before.cell_id,
@@ -70,8 +75,8 @@ static func create_from_states(
 			p_command_sequence)
 
 
-## True ако envelope-ът е валиден, pawn_id / клетките са валидни,
-## center е CellId.CENTER и from ≠ center.
+## True ако envelope-ът е валиден, pawn_id / клетката е валидна и
+## from_cell_id == final_cell_id (флаг-превключване без движение).
 ## Празен / неизвестен id → false.
 func is_valid() -> bool:
 	if not super.is_valid():
@@ -80,11 +85,9 @@ func is_valid() -> bool:
 		return false
 	if not CellId.is_valid(from_cell_id):
 		return false
-	if not CellId.is_valid(center_cell_id):
+	if not CellId.is_valid(final_cell_id):
 		return false
-	if center_cell_id != CellId.CENTER:
-		return false
-	if from_cell_id == center_cell_id:
+	if from_cell_id != final_cell_id:
 		return false
 	return true
 
@@ -94,12 +97,12 @@ func get_player_id() -> StringName:
 	return PawnId.get_player_id(pawn_id)
 
 
-## JSON-safe Dictionary: envelope + pawn_id + from_cell_id + center_cell_id.
+## JSON-safe Dictionary: envelope + pawn_id + from_cell_id + final_cell_id.
 func to_dict() -> Dictionary:
 	var data := super.to_dict()
 	data["pawn_id"] = String(pawn_id)
 	data["from_cell_id"] = String(from_cell_id)
-	data["center_cell_id"] = String(center_cell_id)
+	data["final_cell_id"] = String(final_cell_id)
 	return data
 
 
@@ -110,7 +113,7 @@ static func from_finished_dict(data: Dictionary) -> PawnFinishedEvent:
 	var event := PawnFinishedEvent.new(
 			StringName(str(data.get("pawn_id", ""))),
 			StringName(str(data.get("from_cell_id", ""))),
-			StringName(str(data.get("center_cell_id", ""))))
+			StringName(str(data.get("final_cell_id", ""))))
 	event.command_sequence = int(data.get("command_sequence", COMMAND_SEQUENCE_UNSET))
 	event.event_type = TYPE_PAWN_FINISHED
 	return event
@@ -131,5 +134,5 @@ func equals(other: DomainEvent) -> bool:
 	return (
 			pawn_id == other_finished.pawn_id
 			and from_cell_id == other_finished.from_cell_id
-			and center_cell_id == other_finished.center_cell_id
+			and final_cell_id == other_finished.final_cell_id
 	)

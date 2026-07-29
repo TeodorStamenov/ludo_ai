@@ -24,7 +24,8 @@ func test_can_move_pawn_false_for_all_dice_on_finished() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
-	pawn.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	pawn.mark_finished(route.size() - 1, route[route.size() - 1])
 	for face in range(DiceState.VALUE_MIN, DiceState.VALUE_MAX + 1):
 		assert_false(_move.can_move_pawn(state, player, pawn, face),
 				"FINISHED не е подвижна при зар %d" % face)
@@ -35,7 +36,8 @@ func test_collect_excludes_finished_keeps_movable() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var finished := player.get_pawn_by_index(0)
-	finished.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	finished.mark_finished(route.size() - 1, route[route.size() - 1])
 	var on_board := player.get_pawn_by_index(1)
 	on_board.exit_base_to_spawn(Classic15x15Board.spawn_cell_for(player.player_id))
 	var valid: Array = _move.collect_valid_pawn_ids(state, player, 3)
@@ -44,20 +46,22 @@ func test_collect_excludes_finished_keeps_movable() -> void:
 	assert_eq(valid.size(), 1)
 
 
-## apply_board_move / apply_exit_base / apply_finish_pawn не мутират FINISHED.
+## apply_board_move / apply_exit_base не мутират FINISHED (V1.1: apply_finish_pawn
+## е премахнат — прибирането е флаг-превключване през FinishRules.resolve_home_stretch_completion).
 func test_apply_methods_refuse_finished_without_mutation() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
-	pawn.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var home_cell: StringName = route[route.size() - 1]
+	pawn.mark_finished(route.size() - 1, home_cell)
 	var before := pawn.duplicate_state()
 
 	assert_false(_move.apply_board_move(state, player, pawn, 4))
 	assert_false(_move.apply_exit_base(state, player, pawn, 6))
-	assert_false(_finish.apply_finish_pawn(state, player, pawn, 1))
 	assert_true(pawn.equals(before))
 	assert_true(pawn.is_finished())
-	assert_eq(pawn.cell_id, CellId.CENTER)
+	assert_eq(pawn.cell_id, home_cell)
 
 
 ## Engine: MovePawn върху FINISHED (forced valid list) → ILLEGAL_MOVE, без мутация.
@@ -65,7 +69,8 @@ func test_engine_rejects_move_of_finished_pawn() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	var pawn := player.get_pawn_by_index(0)
-	pawn.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	pawn.mark_finished(route.size() - 1, route[route.size() - 1])
 	# Невалиден клиент: FINISHED е в valid_pawn_ids.
 	state.turn.enter_awaiting_move(3, [pawn.pawn_id])
 	state.dice.set_roll(player.player_id, 3)
@@ -85,33 +90,24 @@ func test_engine_rejects_move_of_finished_pawn() -> void:
 	assert_true(state.get_active_player().get_pawn(pawn.pawn_id).is_finished())
 
 
-## След прибиране + extra roll: следващият RollDice не включва FINISHED пионката.
+## FINISHED пионка не влиза във valid_pawn_ids след нов зар за същия играч.
 func test_roll_after_finish_excludes_finished_from_valid_moves() -> void:
-	var state := _setup_awaiting_finish_with_extra_roll()
+	var state := _setup_in_progress()
 	var player := state.get_active_player()
-	var finishing := player.get_pawn_by_index(0)
+	var finished := player.get_pawn_by_index(0)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	finished.mark_finished(route.size() - 1, route[route.size() - 1])
 	var other := player.get_pawn_by_index(1)
 	other.exit_base_to_spawn(Classic15x15Board.spawn_cell_for(player.player_id))
-	var finish_cmd := MovePawnCommand.create_for_pawn(
-			player.player_id, finishing.pawn_id)
-	state.stamp_command(finish_cmd)
-	var rng := SeededRandomSource.new(state.get_rng_seed())
-
-	var after_finish := _engine.validate_and_apply(state, finish_cmd, rng)
-	assert_true(after_finish.accepted)
-	assert_true(after_finish.state.get_player(player.player_id)
-			.get_pawn(finishing.pawn_id).is_finished())
-	assert_true(after_finish.state.turn.is_awaiting_roll())
-	assert_eq(after_finish.state.get_active_player_id(), player.player_id)
 
 	var roll_rng := _FixedFaceRandomSource.new(2)
 	var roll_cmd := RollDiceCommand.create_for_player(player.player_id)
-	after_finish.state.stamp_command(roll_cmd)
-	var after_roll := _engine.validate_and_apply(after_finish.state, roll_cmd, roll_rng)
+	state.stamp_command(roll_cmd)
+	var after_roll := _engine.validate_and_apply(state, roll_cmd, roll_rng)
 
 	assert_true(after_roll.accepted)
 	assert_true(after_roll.state.turn.is_awaiting_move())
-	assert_false(after_roll.state.turn.has_valid_pawn(finishing.pawn_id),
+	assert_false(after_roll.state.turn.has_valid_pawn(finished.pawn_id),
 			"#100: FINISHED не влиза във valid_pawn_ids след нов зар")
 	assert_true(after_roll.state.turn.has_valid_pawn(other.pawn_id))
 
@@ -123,20 +119,6 @@ func _setup_in_progress() -> GameState:
 	state.turn.begin_player_turn(1, true)
 	assert_true(state.is_in_progress())
 	assert_eq(state.get_active_player_id(), PlayerId.GREEN)
-	return state
-
-
-## Пионка на последна HOME, зар 1, с право на extra roll след хода (като след 6).
-func _setup_awaiting_finish_with_extra_roll() -> GameState:
-	var state := _setup_in_progress()
-	var player := state.get_active_player()
-	var pawn := player.get_pawn_by_index(0)
-	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-	var last_index: int = route.size() - 1
-	pawn.set_position(PawnZone.HOME_STRETCH, last_index, route[last_index])
-	state.turn.enter_awaiting_move(1, [pawn.pawn_id])
-	state.turn.grant_extra_roll()
-	state.dice.set_roll(player.player_id, 1)
 	return state
 
 

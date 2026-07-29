@@ -266,14 +266,15 @@ func present_pawn_sent_home_animated(
 	await play_home_to(local_target)
 
 
-## Instant apply от PawnFinishedEvent (#167). Мекото прибиране в центъра е #176.
+## Instant apply от PawnFinishedEvent (#167). Флаг-превключване на място
+## (V1.1) — pulse-ът е #176.
 func present_pawn_finished(event: PawnFinishedEvent, local_target: Vector2) -> void:
 	if event == null or not event.is_valid():
 		return
-	_apply_cell_pose(event.center_cell_id, local_target)
+	_apply_cell_pose(event.final_cell_id, local_target)
 
 
-## Меко hop+pulse в центъра след home stretch (#176 / V1_GAME_DESIGN §3.2).
+## Pulse на място, без движение (V1.1 / #176 / V1_GAME_DESIGN §3.2).
 ## Емитира animation_finished(KIND_FINISH) след settle (#169).
 func present_pawn_finished_animated(
 		event: PawnFinishedEvent,
@@ -281,8 +282,8 @@ func present_pawn_finished_animated(
 ) -> void:
 	if event == null or not event.is_valid():
 		return
-	if CellId.is_valid(event.center_cell_id):
-		grid_pos = CellId.to_vec(event.center_cell_id)
+	if CellId.is_valid(event.final_cell_id):
+		grid_pos = CellId.to_vec(event.final_cell_id)
 		z_index = grid_pos.x + grid_pos.y + 1
 	await play_finish_to(local_target)
 

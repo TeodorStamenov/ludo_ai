@@ -7,7 +7,7 @@ extends TestCase
 ##   - Payload: pawn_id + from_cell_id + to_cell_id + zone; event_type = TYPE_PAWN_MOVED.
 ##   - Фабрики create_moved / create_from_states; stamp / is_stamped от envelope.
 ##   - is_valid(): валиден envelope + PawnId + CellId + PawnZone; from ≠ to;
-##     FINISHED → CellId.CENTER.
+##     zone никога FINISHED (V1.1 — това е PawnFinishedEvent, флаг без движение).
 ##   - Сериализация to_dict / from_moved_dict / equals / duplicate_event.
 ##   - Събитието описва факт (дестинация), не намерение (§4.3 / §6.2).
 
@@ -186,7 +186,9 @@ func test_is_valid_rejects_invalid_zone() -> void:
 	assert_false(event.is_valid())
 
 
-func test_is_valid_rejects_finished_without_center() -> void:
+func test_is_valid_rejects_finished_zone() -> void:
+	# V1.1: FINISHED е чисто флаг-превключване без движение (PawnFinishedEvent) —
+	# PawnMoved никога не описва преход към FINISHED, дори с различна to клетка.
 	var event := PawnMovedEvent.create_moved(
 			PawnId.for_player(PlayerId.GREEN, 3),
 			CellId.from_grid(7, 6),
@@ -194,29 +196,16 @@ func test_is_valid_rejects_finished_without_center() -> void:
 			PawnZone.FINISHED,
 			1)
 	assert_false(event.is_valid(),
-			"FINISHED трябва да сочи към CellId.CENTER")
+			"PawnMoved не трябва никога да сочи zone=FINISHED")
 
 
-func test_is_valid_accepts_finished_to_center() -> void:
-	var event := PawnMovedEvent.create_moved(
-			PawnId.for_player(PlayerId.GREEN, 3),
-			CellId.from_grid(7, 6),
-			CellId.CENTER,
-			PawnZone.FINISHED,
-			1)
-	assert_true(event.is_valid())
-	assert_true(event.is_finished())
-	assert_false(event.is_on_main_path())
-
-
-func test_is_valid_accepts_all_zones_except_same_cell() -> void:
+func test_is_valid_accepts_all_movable_zones_except_same_cell() -> void:
 	var pawn := PawnId.for_player(PlayerId.ORANGE, 0)
 	var from_cell := CellId.from_grid(6, 13)
 	var cases := [
 		[PawnZone.BASE, CellId.from_grid(12, 12)],
 		[PawnZone.MAIN_PATH, CellId.from_grid(6, 10)],
 		[PawnZone.HOME_STRETCH, CellId.from_grid(7, 11)],
-		[PawnZone.FINISHED, CellId.CENTER],
 	]
 	for entry in cases:
 		var event := PawnMovedEvent.create_moved(

@@ -137,7 +137,8 @@ func test_json_round_trip_preserves_nested_pawn_and_player_state() -> void:
 
 	var p2 := green.get_pawn(PawnId.for_player(PlayerId.GREEN, 2))
 	assert_eq(p2.zone, PawnZone.FINISHED)
-	assert_eq(p2.cell_id, CellId.CENTER)
+	assert_true(Classic15x15Board.is_home_stretch_cell_of(PlayerId.GREEN, p2.cell_id),
+			"V1.1: FINISHED остава на собствената home stretch клетка, не CENTER")
 
 	var p3 := green.get_pawn(PawnId.for_player(PlayerId.GREEN, 3))
 	assert_eq(p3.zone, PawnZone.BASE)
@@ -299,7 +300,7 @@ func _fully_populated_mid_match_state() -> GameState:
 	g1.set_position(PawnZone.HOME_STRETCH, home_path_index, home_cells[0])
 
 	var g2 := green.get_pawn(PawnId.for_player(PlayerId.GREEN, 2))
-	g2.mark_finished(green_route.size())
+	g2.mark_finished(green_route.size() - 1, green_route[green_route.size() - 1])
 
 	# green_3 остава в BASE от create_from_match_config.
 

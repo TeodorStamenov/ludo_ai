@@ -354,7 +354,7 @@ func test_protected_zones_are_not_capturable() -> void:
 	var path_pawn := green.get_pawn_by_index(3)
 	home_pawn.set_position(PawnZone.HOME_STRETCH, 50, home)
 	base_pawn.place_in_base(base)
-	finished_pawn.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH)
+	finished_pawn.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, home)
 	path_pawn.set_position(PawnZone.MAIN_PATH, 20, CellId.from_grid(6, 8))
 
 	assert_true(_capture.is_protected_from_opponents(home_pawn))

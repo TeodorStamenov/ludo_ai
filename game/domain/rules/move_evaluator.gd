@@ -4,8 +4,8 @@ extends RefCounted
 ## (docs/V1_GAME_DESIGN.md §6; #188-192).
 ##
 ## Не въвежда нови правила — само чете вече съществуващите query методи от
-## MoveRules/CaptureRules/StackRules/FinishRules, за да отговори „какво би
-## станало, ако тази пионка се премести с този зар", без да мутира state.
+## MoveRules/CaptureRules/StackRules, за да отговори „какво би станало, ако
+## тази пионка се премести с този зар", без да мутира state.
 ## GameEngine.get_legal_actions() записва резултата като meta върху всяка
 ## MovePawnCommand — точните ключове, които MediumAIPolicy/HardAIPolicy вече
 ## четат в _score_action (game/application/ai/*.gd).
@@ -19,17 +19,14 @@ const KEY_TARGET_PATH_INDEX := "target_path_index"
 
 var _move_rules: MoveRules
 var _capture_rules: CaptureRules
-var _finish_rules: FinishRules
 
 
 func _init(
 		move_rules: MoveRules,
-		capture_rules: CaptureRules,
-		finish_rules: FinishRules
+		capture_rules: CaptureRules
 ) -> void:
 	_move_rules = move_rules
 	_capture_rules = capture_rules
-	_finish_rules = finish_rules
 
 
 ## Изчислява оценъчните сигнали за pawn при dice_value. pawn трябва вече да е
@@ -49,13 +46,6 @@ func evaluate(
 		KEY_TARGET_PATH_INDEX: 0,
 	}
 
-	# #191: прибиране в центъра — capture/stack/gift не важат за CENTER.
-	if _finish_rules.can_finish_pawn(state, player, pawn, dice_value):
-		result[KEY_ENTERS_FINISH] = true
-		result[KEY_TARGET_PATH_INDEX] = _move_rules.resolve_player_route(
-				state, player.player_id).size()
-		return result
-
 	var was_on_board := pawn.is_on_board()
 	var dest_cell: StringName
 
@@ -74,9 +64,12 @@ func evaluate(
 		return result
 
 	# Home stretch дестинация: недостъпна за противници (#115) — occupancy
-	# сама по себе си вече е гарантирала легалността в MoveRules.
+	# сама по себе си вече е гарантирала легалността в MoveRules. V1.1: home
+	# stretch клетките СА safe/exit/finish zone-а — влизане в тях е "enters_finish"
+	# (#191 redefined; вижте FinishRules.resolve_home_stretch_completion).
 	var is_home_stretch := Classic15x15Board.is_home_stretch_cell_of(
 			player.player_id, dest_cell)
+	result[KEY_ENTERS_FINISH] = is_home_stretch
 
 	if not is_home_stretch:
 		result[KEY_CAPTURES_OPPONENT] = (

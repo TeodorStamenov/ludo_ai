@@ -12,7 +12,9 @@ extends RefCounted
 ## Семантика на path_index (docs/CURRENT_YELLOW_BEHAVIOR.md / Classic15x15Board):
 ##   BASE     → PATH_INDEX_IN_BASE (-1)
 ##   MAIN_PATH / HOME_STRETCH → индекс в маршрута на играча (0 = spawn)
-##   FINISHED → >= 0; cell_id е CellId.CENTER (маршрутът не включва центъра)
+##   FINISHED → флаг-превключване на място в home stretch (V1.1) — pawn.cell_id
+##     остава една от 4-те цветни клетки на собствения home stretch; пионката
+##     НЕ се мести до централна клетка (маршрутът не включва центъра).
 
 ## path_index докато пионката е в базата (YEL-001 / прототип pawn.gd).
 const PATH_INDEX_IN_BASE: int = -1
@@ -59,9 +61,12 @@ static func create_at_spawn(p_pawn_id: StringName, p_spawn_cell: StringName) -> 
 	return create(p_pawn_id, PawnZone.MAIN_PATH, PATH_INDEX_AT_SPAWN, p_spawn_cell, 0)
 
 
-## Фабрика за прибрана пионка в центъра (zone=FINISHED).
-static func create_finished(p_pawn_id: StringName, p_path_index: int) -> PawnState:
-	return create(p_pawn_id, PawnZone.FINISHED, p_path_index, CellId.CENTER, 0)
+## Фабрика за прибрана пионка (zone=FINISHED) на собствената ѝ home stretch
+## клетка (V1.1 — вижте класния коментар; НЕ CellId.CENTER).
+static func create_finished(
+		p_pawn_id: StringName, p_path_index: int, p_cell_id: StringName
+) -> PawnState:
+	return create(p_pawn_id, PawnZone.FINISHED, p_path_index, p_cell_id, 0)
 
 
 func get_player_id() -> StringName:
@@ -119,11 +124,12 @@ func set_position(p_zone: int, p_path_index: int, p_cell_id: StringName) -> void
 	cell_id = p_cell_id
 
 
-## Маркира пионката като прибрана в центъра.
-func mark_finished(p_path_index: int) -> void:
+## Маркира пионката като прибрана (флаг-превключване; не мести пионката —
+## p_cell_id е нейната текуща home stretch клетка, V1.1).
+func mark_finished(p_path_index: int, p_cell_id: StringName) -> void:
 	zone = PawnZone.FINISHED
 	path_index = p_path_index
-	cell_id = CellId.CENTER
+	cell_id = p_cell_id
 	shield_turns_remaining = 0
 
 
@@ -159,10 +165,8 @@ func is_valid() -> bool:
 	match zone:
 		PawnZone.BASE:
 			return path_index == PATH_INDEX_IN_BASE
-		PawnZone.MAIN_PATH, PawnZone.HOME_STRETCH:
+		PawnZone.MAIN_PATH, PawnZone.HOME_STRETCH, PawnZone.FINISHED:
 			return path_index >= 0
-		PawnZone.FINISHED:
-			return path_index >= 0 and cell_id == CellId.CENTER
 		_:
 			return false
 

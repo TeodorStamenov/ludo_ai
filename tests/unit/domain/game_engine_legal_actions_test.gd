@@ -64,7 +64,8 @@ func test_legal_actions_filters_unmovable_pawn_in_valid_ids() -> void:
 	var state := _setup_awaiting_move_after_six()
 	var player := state.get_active_player()
 	var finished := player.get_pawn_by_index(0)
-	finished.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH - 1)
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	finished.mark_finished(route.size() - 1, route[route.size() - 1])
 	assert_true(state.turn.has_valid_pawn(finished.pawn_id))
 
 	var actions := _engine.get_legal_actions(state)

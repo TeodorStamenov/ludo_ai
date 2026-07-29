@@ -1,13 +1,14 @@
 class_name PawnFinishedEventTest
 extends TestCase
 ## Unit тестове за PawnFinishedEvent (Task #77 / docs/V1_ARCHITECTURE.md, §4.4 / §11;
-## docs/V1_GAME_DESIGN.md, §3.1 / §3.2 — прибиране в центъра от home stretch).
+## docs/V1_GAME_DESIGN.md, §3.1 / §3.2 — V1.1: прибиране на място в home stretch,
+## флаг-превключване без движение до централна клетка).
 ##
 ## Покрива критични инварианти на факта:
 ##   - Domain: extends DomainEvent/RefCounted, път game/domain/events/.
-##   - Payload: pawn_id + from_cell_id + center_cell_id (== CellId.CENTER).
-##   - create_from_states: само HOME_STRETCH → FINISHED.
-##   - is_valid(): from ≠ center и center е винаги CellId.CENTER.
+##   - Payload: pawn_id + from_cell_id + final_cell_id (from == final).
+##   - create_from_states: само HOME_STRETCH → FINISHED, на СЪЩАТА клетка.
+##   - is_valid(): from == final и двете клетки валидни CellId.
 
 
 # ── Архитектурни изисквания ───────────────────────────────────────────────────
@@ -33,10 +34,9 @@ func test_pawn_finished_event_script_path_is_in_domain_events() -> void:
 
 
 func test_to_dict_has_no_presentation_fields() -> void:
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
 	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.YELLOW, 0),
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
-			CellId.CENTER)
+			PawnId.for_player(PlayerId.YELLOW, 0), home_cell, home_cell)
 	var d := event.to_dict()
 	assert_false(d.has("position"), "Vector2 position не е част от DomainEvent")
 	assert_false(d.has("global_position"), "global_position не е част от DomainEvent")
@@ -47,19 +47,19 @@ func test_to_dict_has_no_presentation_fields() -> void:
 	assert_false(d.has("path_index"), "path_index е в PawnState, не в PawnFinished payload")
 	assert_false(d.has("zone"), "zone след прибиране е винаги FINISHED — не е отделно поле")
 	assert_false(d.has("player_id"), "player_id се извежда от pawn_id, не е отделно поле")
-	assert_false(d.has("to_cell_id"), "дестинацията е center_cell_id, не to_cell_id")
+	assert_false(d.has("to_cell_id"), "флаг-превключване на място — няма to_cell_id")
 
 
 # ── Конструктор / фабрика ─────────────────────────────────────────────────────
 
 func test_init_sets_event_type_and_payload() -> void:
 	var pawn := PawnId.for_player(PlayerId.GREEN, 1)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3]
-	var event := PawnFinishedEvent.new(pawn, from_cell, CellId.CENTER)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3]
+	var event := PawnFinishedEvent.new(pawn, home_cell, home_cell)
 	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_FINISHED)
 	assert_eq(event.pawn_id, pawn)
-	assert_eq(event.from_cell_id, from_cell)
-	assert_eq(event.center_cell_id, CellId.CENTER)
+	assert_eq(event.from_cell_id, home_cell)
+	assert_eq(event.final_cell_id, home_cell)
 	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
 	assert_false(event.is_stamped())
 	assert_true(event.is_valid())
@@ -71,18 +71,18 @@ func test_init_defaults_still_sets_event_type() -> void:
 	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_FINISHED)
 	assert_eq(event.pawn_id, &"")
 	assert_eq(event.from_cell_id, &"")
-	assert_eq(event.center_cell_id, &"")
+	assert_eq(event.final_cell_id, &"")
 	assert_false(event.is_valid(),
 			"PawnFinished без pawn_id/клетки не е валиден факт")
 
 
 func test_create_finished_sets_envelope_and_payload() -> void:
 	var pawn := PawnId.for_player(PlayerId.CYAN, 0)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.CYAN)[3]
-	var event := PawnFinishedEvent.create_finished(pawn, from_cell, CellId.CENTER, 1)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.CYAN)[3]
+	var event := PawnFinishedEvent.create_finished(pawn, home_cell, home_cell, 1)
 	assert_eq(event.pawn_id, pawn)
-	assert_eq(event.from_cell_id, from_cell)
-	assert_eq(event.center_cell_id, CellId.CENTER)
+	assert_eq(event.from_cell_id, home_cell)
+	assert_eq(event.final_cell_id, home_cell)
 	assert_eq(event.command_sequence, 1)
 	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_FINISHED)
 	assert_true(event.is_stamped())
@@ -91,15 +91,17 @@ func test_create_finished_sets_envelope_and_payload() -> void:
 
 func test_create_from_states_copies_finish_transition() -> void:
 	var pawn := PawnId.for_player(PlayerId.ORANGE, 2)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.ORANGE)[3]
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.ORANGE)[3]
 	var before := PawnState.create(
-			pawn, PawnZone.HOME_STRETCH, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, from_cell, 0)
-	var after := PawnState.create_finished(pawn, Classic15x15Board.PLAYER_ROUTE_LENGTH)
+			pawn, PawnZone.HOME_STRETCH, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, home_cell, 0)
+	var after := PawnState.create_finished(
+			pawn, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, home_cell)
 	var event := PawnFinishedEvent.create_from_states(before, after, 2)
 	assert_eq(event.pawn_id, pawn)
 	assert_eq(event.from_cell_id, before.cell_id)
-	assert_eq(event.center_cell_id, after.cell_id)
-	assert_eq(event.center_cell_id, CellId.CENTER)
+	assert_eq(event.final_cell_id, after.cell_id)
+	assert_eq(event.from_cell_id, event.final_cell_id,
+			"V1.1: флаг-превключване на място — from == final")
 	assert_eq(event.command_sequence, 2)
 	assert_true(event.is_valid())
 
@@ -107,18 +109,22 @@ func test_create_from_states_copies_finish_transition() -> void:
 func test_create_from_states_rejects_mismatched_null_or_non_finish() -> void:
 	var yellow := PawnId.for_player(PlayerId.YELLOW, 0)
 	var green := PawnId.for_player(PlayerId.GREEN, 0)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
+	var other_home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[2]
+	var green_home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3]
 	var before := PawnState.create(
-			yellow, PawnZone.HOME_STRETCH, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, from_cell, 0)
+			yellow, PawnZone.HOME_STRETCH, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, home_cell, 0)
 	var after_finished := PawnState.create_finished(
-			yellow, Classic15x15Board.PLAYER_ROUTE_LENGTH)
+			yellow, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, home_cell)
 	var after_other := PawnState.create_finished(
-			green, Classic15x15Board.PLAYER_ROUTE_LENGTH)
+			green, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, green_home_cell)
+	var after_moved := PawnState.create_finished(
+			yellow, Classic15x15Board.PLAYER_ROUTE_LENGTH - 2, other_home_cell)
 	var on_path := PawnState.create(
 			yellow, PawnZone.MAIN_PATH, 3, CellId.from_grid(6, 10), 0)
 	var still_home := PawnState.create(
 			yellow, PawnZone.HOME_STRETCH, Classic15x15Board.PLAYER_ROUTE_LENGTH - 2,
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[2], 0)
+			other_home_cell, 0)
 	assert_false(PawnFinishedEvent.create_from_states(before, after_other, 1).is_valid())
 	assert_false(PawnFinishedEvent.create_from_states(null, after_finished).is_valid())
 	assert_false(PawnFinishedEvent.create_from_states(before, null).is_valid())
@@ -128,13 +134,14 @@ func test_create_from_states_rejects_mismatched_null_or_non_finish() -> void:
 			"finish само от HOME_STRETCH")
 	assert_false(PawnFinishedEvent.create_from_states(before, still_home).is_valid(),
 			"after трябва да е FINISHED")
+	assert_false(PawnFinishedEvent.create_from_states(before, after_moved).is_valid(),
+			"V1.1: FINISHED на различна клетка от before не е флаг-превключване")
 
 
 func test_stamp_uses_base_envelope() -> void:
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
 	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.YELLOW, 0),
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
-			CellId.CENTER)
+			PawnId.for_player(PlayerId.YELLOW, 0), home_cell, home_cell)
 	assert_false(event.is_stamped())
 	event.stamp(1)
 	assert_true(event.is_stamped())
@@ -146,76 +153,57 @@ func test_stamp_uses_base_envelope() -> void:
 # ── is_valid() / helpers ──────────────────────────────────────────────────────
 
 func test_is_valid_rejects_empty_pawn_id() -> void:
-	var event := PawnFinishedEvent.new(
-			&"",
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
-			CellId.CENTER)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
+	var event := PawnFinishedEvent.new(&"", home_cell, home_cell)
 	assert_false(event.is_valid(),
 			"PawnFinished без pawn_id не е валиден факт")
 
 
 func test_is_valid_rejects_unknown_pawn_id() -> void:
-	var event := PawnFinishedEvent.create_finished(
-			&"purple_0",
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
-			CellId.CENTER,
-			1)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
+	var event := PawnFinishedEvent.create_finished(&"purple_0", home_cell, home_cell, 1)
 	assert_false(event.is_valid())
 
 
 func test_is_valid_rejects_invalid_cells() -> void:
 	var pawn := PawnId.for_player(PlayerId.GREEN, 0)
-	var bad_from := PawnFinishedEvent.new(pawn, &"not_a_cell", CellId.CENTER)
-	var bad_center := PawnFinishedEvent.new(
-			pawn, Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3], &"x_0_0")
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3]
+	var bad_from := PawnFinishedEvent.new(pawn, &"not_a_cell", home_cell)
+	var bad_final := PawnFinishedEvent.new(pawn, home_cell, &"x_0_0")
 	assert_false(bad_from.is_valid())
-	assert_false(bad_center.is_valid())
+	assert_false(bad_final.is_valid())
 
 
-func test_is_valid_rejects_non_center_destination() -> void:
+func test_is_valid_rejects_different_from_and_final() -> void:
+	# V1.1: FINISHED е флаг-превключване на място — различни клетки означават
+	# движение, което е PawnMoved-обхват, не PawnFinished.
+	var home_cells := Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)
 	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.YELLOW, 1),
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
-			CellId.from_grid(7, 8),
-			1)
+			PawnId.for_player(PlayerId.YELLOW, 1), home_cells[2], home_cells[3], 1)
 	assert_false(event.is_valid(),
-			"PawnFinished дестинацията трябва да е CellId.CENTER")
-
-
-func test_is_valid_rejects_same_from_and_center() -> void:
-	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.YELLOW, 1),
-			CellId.CENTER,
-			CellId.CENTER,
-			1)
-	assert_false(event.is_valid(),
-			"PawnFinished с from == center не описва прибиране")
+			"PawnFinished изисква from_cell_id == final_cell_id")
 
 
 func test_is_valid_rejects_negative_sequence_even_with_valid_payload() -> void:
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
 	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.YELLOW, 0),
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
-			CellId.CENTER,
-			-1)
+			PawnId.for_player(PlayerId.YELLOW, 0), home_cell, home_cell, -1)
 	assert_false(event.is_valid())
 
 
 func test_is_valid_allows_unset_command_sequence() -> void:
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
 	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.YELLOW, 0),
-			Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3],
-			CellId.CENTER)
+			PawnId.for_player(PlayerId.YELLOW, 0), home_cell, home_cell)
 	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
 	assert_true(event.is_valid(),
 			"PawnFinished може да е валиден преди stamp на command_sequence")
 
 
 func test_get_player_id() -> void:
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.CYAN)[3]
 	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.CYAN, 2),
-			Classic15x15Board.home_stretch_cells_for(PlayerId.CYAN)[3],
-			CellId.CENTER)
+			PawnId.for_player(PlayerId.CYAN, 2), home_cell, home_cell)
 	assert_eq(event.get_player_id(), PlayerId.CYAN)
 
 
@@ -223,37 +211,35 @@ func test_get_player_id() -> void:
 
 func test_to_dict_includes_envelope_and_payload() -> void:
 	var pawn := PawnId.for_player(PlayerId.YELLOW, 0)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
-	var event := PawnFinishedEvent.create_finished(pawn, from_cell, CellId.CENTER, 2)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
+	var event := PawnFinishedEvent.create_finished(pawn, home_cell, home_cell, 2)
 	var d := event.to_dict()
 	assert_true(d.has("event_type"))
 	assert_true(d.has("command_sequence"))
 	assert_true(d.has("pawn_id"))
 	assert_true(d.has("from_cell_id"))
-	assert_true(d.has("center_cell_id"))
+	assert_true(d.has("final_cell_id"))
 	assert_eq(d["event_type"], "PawnFinished")
 	assert_eq(d["command_sequence"], 2)
 	assert_eq(d["pawn_id"], "yellow_0")
-	assert_eq(d["from_cell_id"], String(from_cell))
-	assert_eq(d["center_cell_id"], String(CellId.CENTER))
+	assert_eq(d["from_cell_id"], String(home_cell))
+	assert_eq(d["final_cell_id"], String(home_cell))
 	assert_eq(typeof(d["event_type"]), TYPE_STRING)
 	assert_eq(typeof(d["pawn_id"]), TYPE_STRING)
 	assert_eq(typeof(d["from_cell_id"]), TYPE_STRING)
-	assert_eq(typeof(d["center_cell_id"]), TYPE_STRING)
+	assert_eq(typeof(d["final_cell_id"]), TYPE_STRING)
 
 
 func test_from_dict_round_trip() -> void:
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.CYAN)[3]
 	var original := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.CYAN, 3),
-			Classic15x15Board.home_stretch_cells_for(PlayerId.CYAN)[3],
-			CellId.CENTER,
-			4)
+			PawnId.for_player(PlayerId.CYAN, 3), home_cell, home_cell, 4)
 	var restored := PawnFinishedEvent.from_finished_dict(original.to_dict())
 	assert_true(restored is PawnFinishedEvent)
 	assert_true(original.equals(restored))
 	assert_eq(restored.pawn_id, original.pawn_id)
 	assert_eq(restored.from_cell_id, original.from_cell_id)
-	assert_eq(restored.center_cell_id, original.center_cell_id)
+	assert_eq(restored.final_cell_id, original.final_cell_id)
 	assert_eq(restored.command_sequence, 4)
 	assert_eq(restored.event_type, DomainEvent.TYPE_PAWN_FINISHED)
 	assert_true(restored.is_valid())
@@ -264,7 +250,7 @@ func test_from_dict_defaults_for_missing_keys() -> void:
 	var event := PawnFinishedEvent.from_finished_dict({})
 	assert_eq(event.pawn_id, &"")
 	assert_eq(event.from_cell_id, &"")
-	assert_eq(event.center_cell_id, &"")
+	assert_eq(event.final_cell_id, &"")
 	assert_eq(event.command_sequence, DomainEvent.COMMAND_SEQUENCE_UNSET)
 	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_FINISHED)
 	assert_false(event.is_valid())
@@ -277,7 +263,7 @@ func test_from_dict_forces_event_type() -> void:
 		"command_sequence": 1,
 		"pawn_id": "green_0",
 		"from_cell_id": "c_7_6",
-		"center_cell_id": "c_7_7",
+		"final_cell_id": "c_7_6",
 	}
 	var event := PawnFinishedEvent.from_finished_dict(data)
 	assert_eq(event.event_type, DomainEvent.TYPE_PAWN_FINISHED,
@@ -285,19 +271,16 @@ func test_from_dict_forces_event_type() -> void:
 
 
 func test_duplicate_event_is_independent() -> void:
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.ORANGE)[3]
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.ORANGE)[3]
 	var event := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.ORANGE, 1),
-			from_cell,
-			CellId.CENTER,
-			1)
+			PawnId.for_player(PlayerId.ORANGE, 1), home_cell, home_cell, 1)
 	var copy := event.duplicate_event() as PawnFinishedEvent
 	assert_not_null(copy)
 	assert_true(event.equals(copy))
-	copy.center_cell_id = CellId.from_grid(1, 1)
+	copy.final_cell_id = CellId.from_grid(1, 1)
 	copy.stamp(9)
 	copy.pawn_id = PawnId.for_player(PlayerId.GREEN, 0)
-	assert_eq(event.center_cell_id, CellId.CENTER,
+	assert_eq(event.final_cell_id, home_cell,
 			"мутация на копието не трябва да пипа оригинала")
 	assert_eq(event.pawn_id, PawnId.for_player(PlayerId.ORANGE, 1))
 	assert_eq(event.command_sequence, 1)
@@ -305,14 +288,13 @@ func test_duplicate_event_is_independent() -> void:
 
 func test_equals() -> void:
 	var pawn := PawnId.for_player(PlayerId.GREEN, 0)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3]
-	var a := PawnFinishedEvent.create_finished(pawn, from_cell, CellId.CENTER, 1)
-	var b := PawnFinishedEvent.create_finished(pawn, from_cell, CellId.CENTER, 1)
-	var c := PawnFinishedEvent.create_finished(pawn, from_cell, CellId.CENTER, 2)
+	var home_cells := Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)
+	var a := PawnFinishedEvent.create_finished(pawn, home_cells[3], home_cells[3], 1)
+	var b := PawnFinishedEvent.create_finished(pawn, home_cells[3], home_cells[3], 1)
+	var c := PawnFinishedEvent.create_finished(pawn, home_cells[3], home_cells[3], 2)
 	var d := PawnFinishedEvent.create_finished(
-			PawnId.for_player(PlayerId.YELLOW, 0), from_cell, CellId.CENTER, 1)
-	var e := PawnFinishedEvent.create_finished(
-			pawn, Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[2], CellId.CENTER, 1)
+			PawnId.for_player(PlayerId.YELLOW, 0), home_cells[3], home_cells[3], 1)
+	var e := PawnFinishedEvent.create_finished(pawn, home_cells[2], home_cells[2], 1)
 	assert_true(a.equals(b))
 	assert_false(a.equals(c))
 	assert_false(a.equals(d))
@@ -325,17 +307,18 @@ func test_equals() -> void:
 
 func test_payload_matches_mark_finished() -> void:
 	var pawn := PawnId.for_player(PlayerId.YELLOW, 0)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
 	var before := PawnState.create(
-			pawn, PawnZone.HOME_STRETCH, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, from_cell, 1)
+			pawn, PawnZone.HOME_STRETCH, Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, home_cell, 1)
 	var after := before.duplicate_state()
-	after.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH)
+	after.mark_finished(Classic15x15Board.PLAYER_ROUTE_LENGTH - 1, home_cell)
 	var event := PawnFinishedEvent.create_from_states(before, after, 1)
 	assert_true(event.is_valid())
 	assert_eq(event.pawn_id, after.pawn_id)
 	assert_eq(event.from_cell_id, before.cell_id)
-	assert_eq(event.center_cell_id, after.cell_id)
-	assert_eq(after.cell_id, CellId.CENTER)
+	assert_eq(event.final_cell_id, after.cell_id)
+	assert_eq(after.cell_id, home_cell,
+			"V1.1: FINISHED остава на собствената home stretch клетка")
 	assert_true(after.is_finished())
 	assert_eq(after.shield_turns_remaining, 0)
 	assert_true(before.is_in_home_stretch())
@@ -350,32 +333,30 @@ func test_type_constant_matches_architecture() -> void:
 
 func test_distinct_from_pawn_moved_event_type() -> void:
 	var pawn := PawnId.for_player(PlayerId.YELLOW, 0)
-	var from_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
-	var finished := PawnFinishedEvent.create_finished(pawn, from_cell, CellId.CENTER, 1)
-	var moved := PawnMovedEvent.create_moved(
-			pawn, from_cell, CellId.CENTER, PawnZone.FINISHED, 1)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.YELLOW)[3]
+	var finished := PawnFinishedEvent.create_finished(pawn, home_cell, home_cell, 1)
 	assert_eq(finished.event_type, DomainEvent.TYPE_PAWN_FINISHED)
+	assert_true(finished.is_valid())
+	# V1.1: PawnMoved никога не носи zone=FINISHED — прибирането е отделен факт.
+	var moved := PawnMovedEvent.create_moved(
+			pawn, home_cell, CellId.from_grid(7, 7), PawnZone.HOME_STRETCH, 1)
 	assert_eq(moved.event_type, DomainEvent.TYPE_PAWN_MOVED)
 	assert_false(finished.equals(moved))
-	assert_true(finished.is_valid())
 	assert_true(moved.is_valid())
-	assert_true(moved.is_finished())
+	assert_false(moved.is_finished())
 
 
-func test_event_carries_center_unlike_move_command() -> void:
+func test_event_carries_final_cell_unlike_move_command() -> void:
 	var pawn := PawnId.for_player(PlayerId.GREEN, 1)
+	var home_cell: StringName = Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3]
 	var cmd := MovePawnCommand.new(PlayerId.GREEN, pawn)
-	var event := PawnFinishedEvent.create_finished(
-			pawn,
-			Classic15x15Board.home_stretch_cells_for(PlayerId.GREEN)[3],
-			CellId.CENTER,
-			1)
-	assert_false(cmd.to_dict().has("center_cell_id"),
-			"MovePawnCommand носи намерение, не center дестинация")
+	var event := PawnFinishedEvent.create_finished(pawn, home_cell, home_cell, 1)
+	assert_false(cmd.to_dict().has("final_cell_id"),
+			"MovePawnCommand носи намерение, не финалната клетка")
 	assert_false(cmd.to_dict().has("from_cell_id"))
-	assert_true(event.to_dict().has("center_cell_id"),
+	assert_true(event.to_dict().has("final_cell_id"),
 			"PawnFinished носи факта от GameEngine прибирането")
-	assert_eq(event.center_cell_id, CellId.CENTER)
+	assert_eq(event.final_cell_id, home_cell)
 	assert_true(cmd.is_valid())
 	assert_true(event.is_valid())
 	assert_eq(event.pawn_id, cmd.pawn_id)

@@ -202,11 +202,13 @@ func _setup_awaiting_fourth_finish(
 	_turn.begin_player_turn(state, player_index, 1)
 	var player := state.get_active_player()
 	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var first_home: int = Classic15x15Board.first_home_stretch_path_index()
 	for i in range(1, PlayerState.PAWNS_PER_PLAYER):
-		player.get_pawn_by_index(i).mark_finished(route.size())
+		var idx: int = first_home + i
+		player.get_pawn_by_index(i).mark_finished(idx, route[idx])
 	var pawn := player.get_pawn_by_index(0)
-	var last_index: int = route.size() - 1
-	pawn.set_position(PawnZone.HOME_STRETCH, last_index, route[last_index])
+	var from_index: int = first_home - dice_value
+	pawn.set_position(PawnZone.MAIN_PATH, from_index, route[from_index])
 	state.turn.enter_awaiting_move(dice_value, [pawn.pawn_id])
 	state.dice.set_roll(player.player_id, dice_value)
 	assert_eq(player.count_finished_pawns(), 3)
@@ -231,7 +233,7 @@ func _mark_all_pawns_finished(player: PlayerState) -> void:
 	for i in PlayerState.PAWNS_PER_PLAYER:
 		var pawn := player.get_pawn_by_index(i)
 		var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
-		pawn.mark_finished(route.size())
+		pawn.mark_finished(route.size() - 1, route[route.size() - 1])
 
 
 func _has_player_ranked(events: Array, player_id: StringName, rank: int) -> bool:
