@@ -71,6 +71,11 @@ func start_match(config: MatchConfig) -> void:
 	add_child(animation_queue)
 	_presenter.set_animation_queue(animation_queue)
 
+	var gifts_root := Node2D.new()
+	gifts_root.name = "Gifts"
+	add_child(gifts_root)
+	_presenter.set_gifts_root(gifts_root)
+
 	_spawn_pawn_views(_session.get_state())
 	_wire_ui()
 

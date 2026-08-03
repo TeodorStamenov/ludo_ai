@@ -34,6 +34,8 @@ var _board_view: BoardView = null
 var _hud: GameHUD = null
 ## pawn_id (StringName) → PawnView
 var _pawn_views: Dictionary = {}
+## Контейнерен Node2D за динамично създадени GiftView (#219).
+var _gifts_root: Node2D = null
 ## DomainEvent → view dispatch (#167); споделен с AnimationQueue.
 var _event_binder: EventViewBinder = null
 
@@ -129,6 +131,11 @@ func set_hud(hud: GameHUD) -> void:
 	_sync_event_binder()
 
 
+func set_gifts_root(root: Node2D) -> void:
+	_gifts_root = root
+	_sync_event_binder()
+
+
 func get_hud() -> GameHUD:
 	return _hud
 
@@ -185,6 +192,7 @@ func _sync_event_binder() -> void:
 	_event_binder.set_board_view(_board_view)
 	_event_binder.set_hud(_hud)
 	_event_binder.set_pawn_views(_pawn_views)
+	_event_binder.set_gifts_root(_gifts_root)
 	_event_binder.set_valid_moves_handler(apply_valid_moves_changed)
 	if _animation_queue != null:
 		_animation_queue.set_event_binder(_event_binder)

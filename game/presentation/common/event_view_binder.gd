@@ -17,11 +17,18 @@ extends RefCounted
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
 
+const GIFT_TEXTURE_PATH := "res://rss/gifts/Gift.png"
+
 var _dice_view: DiceView = null
 var _board_view: BoardView = null
 var _hud: GameHUD = null
 ## pawn_id (StringName) → PawnView
 var _pawn_views: Dictionary = {}
+## Контейнерен Node2D за динамично създадени GiftView (GameScreen/GamePresenter #219).
+var _gifts_root: Node2D = null
+## gift_id (StringName) → GiftView — за разлика от пионките, gift views се
+## създават/унищожават реактивно от GiftSpawned/GiftCollected, не при bootstrap.
+var _gift_views: Dictionary = {}
 ## Optional: (ValidMovesChangedEvent) -> void — обикновено GamePresenter.apply_valid_moves_changed.
 ## Ако липсва, binder-ът сам вика PawnView.show_valid_move / hide_valid_move (#170).
 var _valid_moves_handler: Callable = Callable()
@@ -41,6 +48,10 @@ func set_hud(hud: GameHUD) -> void:
 
 func set_pawn_views(views: Dictionary) -> void:
 	_pawn_views = views if views != null else {}
+
+
+func set_gifts_root(root: Node2D) -> void:
+	_gifts_root = root
 
 
 func set_valid_moves_handler(handler: Callable) -> void:
@@ -77,6 +88,8 @@ func present(event: DomainEvent) -> void:
 		_present_match_finished(event as MatchFinishedEvent)
 	elif event is GiftSpawnedEvent:
 		_present_gift_spawned(event as GiftSpawnedEvent)
+	elif event is GiftCollectedEvent:
+		_present_gift_collected(event as GiftCollectedEvent)
 	elif event is PowerUpResolvedEvent:
 		_present_power_up_resolved(event as PowerUpResolvedEvent)
 
@@ -98,6 +111,10 @@ func present_for_playback(event: DomainEvent) -> void:
 		await _present_pawn_sent_home_animated(event as PawnSentHomeEvent)
 	elif event is PawnFinishedEvent:
 		await _present_pawn_finished_animated(event as PawnFinishedEvent)
+	elif event is GiftSpawnedEvent:
+		await _present_gift_spawned_animated(event as GiftSpawnedEvent)
+	elif event is GiftCollectedEvent:
+		await _present_gift_collected_animated(event as GiftCollectedEvent)
 	else:
 		present(event)
 
@@ -405,12 +422,90 @@ func _present_match_finished(event: MatchFinishedEvent) -> void:
 
 
 func _present_gift_spawned(event: GiftSpawnedEvent) -> void:
-	# GiftView wiring — отделна задача; HUD може да наблюдава.
+	if event == null or not event.is_valid():
+		return
+	var gift: GiftView = _ensure_gift_view(event.gift_id)
+	if gift == null:
+		return
+	var target: Vector2 = _local_for_gift(event.cell_id)
+	gift.present_gift_spawned(event, target)
 	_notify_hud(&"present_gift_spawned", event)
+
+
+## Pop-in анимация (#219). Busy/missing board → snap fallback без deadlock.
+func _present_gift_spawned_animated(event: GiftSpawnedEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var gift: GiftView = _ensure_gift_view(event.gift_id)
+	if gift == null:
+		return
+	var target: Vector2 = _local_for_gift(event.cell_id)
+	await AnimationFinishedGate.await_started(
+			gift,
+			GiftView.KIND_SPAWN,
+			gift.present_gift_spawned_animated.bind(event, target)
+	)
+	_notify_hud(&"present_gift_spawned", event)
+
+
+func _present_gift_collected(event: GiftCollectedEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var gift: GiftView = _gift_views.get(event.gift_id) as GiftView
+	_gift_views.erase(event.gift_id)
+	if gift != null and is_instance_valid(gift):
+		gift.present_gift_collected(event)
+	_notify_hud(&"present_gift_collected", event)
+
+
+## Burst + fade преди изчезване (#219). Липсващ view (вече премахнат) → само HUD notify.
+func _present_gift_collected_animated(event: GiftCollectedEvent) -> void:
+	if event == null or not event.is_valid():
+		return
+	var gift: GiftView = _gift_views.get(event.gift_id) as GiftView
+	_gift_views.erase(event.gift_id)
+	if gift != null and is_instance_valid(gift):
+		await AnimationFinishedGate.await_started(
+				gift,
+				GiftView.KIND_COLLECTED,
+				gift.present_gift_collected_animated.bind(event)
+		)
+	_notify_hud(&"present_gift_collected", event)
 
 
 func _present_power_up_resolved(event: PowerUpResolvedEvent) -> void:
 	_notify_hud(&"present_power_up_resolved", event)
+
+
+## Създава (веднъж) или връща съществуващ GiftView за gift_id, добавен в _gifts_root.
+func _ensure_gift_view(gift_id: StringName) -> GiftView:
+	if gift_id == &"" or _gifts_root == null or not is_instance_valid(_gifts_root):
+		return null
+	var existing: GiftView = _gift_views.get(gift_id) as GiftView
+	if existing != null and is_instance_valid(existing):
+		return existing
+	var gift := GiftView.new()
+	gift.name = String(gift_id)
+	_gifts_root.add_child(gift)
+	var tile_w: float = (
+			_board_view.get_tile_display_width()
+			if _board_view != null and is_instance_valid(_board_view) else 0.0)
+	gift.setup(GIFT_TEXTURE_PATH, tile_w)
+	_gift_views[gift_id] = gift
+	return gift
+
+
+## Board cell_id → локална позиция в _gifts_root (аналог на _local_for_pawn).
+func _local_for_gift(cell_id: StringName) -> Vector2:
+	if _gifts_root == null or not is_instance_valid(_gifts_root):
+		return Vector2.ZERO
+	if _board_view == null or not is_instance_valid(_board_view):
+		return Vector2.ZERO
+	if not CellId.is_valid(cell_id):
+		return Vector2.ZERO
+	var board_local: Vector2 = _board_view.get_cell_position_by_id(cell_id)
+	var global_pos: Vector2 = _board_view.to_global(board_local)
+	return _gifts_root.to_local(global_pos)
 
 
 func _pawn_of(pawn_id: StringName) -> PawnView:
