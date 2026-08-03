@@ -23,10 +23,10 @@
 
 ```text
 Presentation ───────► Application ───────► Domain
-     │                      │
-     └────► Platform Adapters ◄──── Ports
-                            │
-                         Content
+	 │                      │
+	 └────► Platform Adapters ◄──── Ports
+							│
+						 Content
 ```
 
 - **Domain** — чисти правила и състояние. Не познава `Node`, сцени, сигнали, input,
@@ -46,24 +46,24 @@ Presentation ───────► Application ───────► Domai
 
 ```text
 Human / AI Controller
-        │
-        ▼
-     Command
-        │
-        ▼
+		│
+		▼
+	 Command
+		│
+		▼
  MatchSession (Application)
-        │
-        ▼
+		│
+		▼
  GameEngine.validate_and_apply(state, command, rng)
-        │
-        ├──► нов GameState
-        ├──► DomainEvent[]
-        └──► CommandError (при невалиден ход)
-                   │
-                   ▼
+		│
+		├──► нов GameState
+		├──► DomainEvent[]
+		└──► CommandError (при невалиден ход)
+				   │
+				   ▼
  GamePresenter / BoardView / HUD
-                   │
-                   └──► анимации, звук, haptics
+				   │
+				   └──► анимации, звук, haptics
 ```
 
 Presentation не мести пионка самостоятелно. То изпраща команда, получава събитие
@@ -113,8 +113,8 @@ game/domain/
 │   ├── modifier_pipeline.gd
 │   └── animal_passive.gd
 └── rng/
-    ├── random_source.gd
-    └── seeded_random_source.gd
+	├── random_source.gd
+	└── seeded_random_source.gd
 ```
 
 ### 4.1 GameState
@@ -347,11 +347,11 @@ game/application/
 │   ├── medium_ai_policy.gd
 │   └── hard_ai_policy.gd
 └── ports/
-    ├── save_repository.gd
-    ├── progress_repository.gd
-    ├── settings_repository.gd
-    ├── ads_service.gd
-    └── telemetry_sink.gd
+	├── save_repository.gd
+	├── progress_repository.gd
+	├── settings_repository.gd
+	├── ads_service.gd
+	└── telemetry_sink.gd
 ```
 
 ### 5.1 MatchConfig
@@ -425,9 +425,9 @@ game/presentation/
 │   ├── results/
 │   └── settings/
 └── common/
-    ├── animation_queue.gd
-    ├── audio_feedback.gd
-    └── haptic_feedback.gd
+	├── animation_queue.gd
+	├── audio_feedback.gd
+	└── haptic_feedback.gd
 ```
 
 ### 6.1 GamePresenter
@@ -489,8 +489,8 @@ content/
 │   ├── extra_turn.tres
 │   └── push.tres
 └── campaign/
-    ├── campaign_definition.tres
-    └── levels/
+	├── campaign_definition.tres
+	└── levels/
 ```
 
 Godot `Resource` файловете са authoring формат. При старт се валидират и
@@ -505,8 +505,8 @@ particles, sounds и визуален gift skin. Смяната на тема н
 
 ```text
 BOOT → MAIN_MENU → MATCH_SETUP/CAMPAIGN → GAME → RESULTS
-                         ▲                         │
-                         └──────── REMATCH ────────┘
+						 ▲                         │
+						 └──────── REMATCH ────────┘
 ```
 
 Препоръчителни Autoload-и:

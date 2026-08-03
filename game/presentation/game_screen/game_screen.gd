@@ -117,10 +117,10 @@ func _update_turn_label(state: GameState) -> void:
 func _on_results_requested(summary: Dictionary) -> void:
 	_dice_button.disabled = true
 	var ranking: Array = summary.get("ranking", [])
-	_turn_label.text = (
-			"Match finished — winner: %s" % String(ranking[0]).capitalize()
-			if not ranking.is_empty() else "Match finished"
-	)
+	if not ranking.is_empty():
+		_turn_label.text = String("Match finished — winner: %s" % String(ranking[0]).capitalize())
+	else:
+		_turn_label.text = "Match finished"
 
 
 func _on_invariant_violated(description: String, _snapshot: Dictionary) -> void:

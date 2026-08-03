@@ -31,36 +31,36 @@ Controller/UI само изпращат `GameCommand`; резултатът ид
 
 ```text
 Controller (Human / AI)
-        │  избира от legal_actions
-        ▼
+		│  избира от legal_actions
+		▼
   CommandBus.submit(cmd)
-        │
-        ▼
+		│
+		▼
   MatchSession.receive_command(cmd)
-        │  stamp sequence; ако presentation pending → drop
-        ▼
+		│  stamp sequence; ако presentation pending → drop
+		▼
   GameEngine.apply_command(state, cmd, rng)
-        │
-        ├── reject → journal reject + command_rejected; state/RNG непроменени
-        └── accept → нов GameState + DomainEvent[]
-                    │
-                    ▼
-              journal: accepted + state_hash
-              EventQueue.enqueue
-              pending_sequence = N
-              events_published(N, events)
-                    │
-                    ├── MatchFinished? → match_finished(summary); стоп
-                    └── иначе чака Presentation…
-                              │
-                              ▼
-                    events_presented(N)   ← UI / MatchSimulator auto
-                              │
-                              ▼
-                    MatchSession._advance()
-                              │
-                              ├── AI  → get_action → CommandBus.submit → цикълът отначало
-                              └── Human → awaiting_human_action(legal_actions)
+		│
+		├── reject → journal reject + command_rejected; state/RNG непроменени
+		└── accept → нов GameState + DomainEvent[]
+					│
+					▼
+			  journal: accepted + state_hash
+			  EventQueue.enqueue
+			  pending_sequence = N
+			  events_published(N, events)
+					│
+					├── MatchFinished? → match_finished(summary); стоп
+					└── иначе чака Presentation…
+							  │
+							  ▼
+					events_presented(N)   ← UI / MatchSimulator auto
+							  │
+							  ▼
+					MatchSession._advance()
+							  │
+							  ├── AI  → get_action → CommandBus.submit → цикълът отначало
+							  └── Human → awaiting_human_action(legal_actions)
 ```
 
 Headless (`MatchSimulator`): няма UI — след `events_published` веднага вика
@@ -72,28 +72,28 @@ Headless (`MatchSimulator`): няма UI — след `events_published` вед�
 
 ```mermaid
 sequenceDiagram
-    participant Cfg as MatchConfig
-    participant MS as MatchSession
-    participant Eng as GameEngine
-    participant Ctrl as Controller
-    participant Pres as Presentation / Simulator
+	participant Cfg as MatchConfig
+	participant MS as MatchSession
+	participant Eng as GameEngine
+	participant Ctrl as Controller
+	participant Pres as Presentation / Simulator
 
-    Cfg->>MS: start(config, …)
-    MS->>Eng: StartMatchCommand
-    Eng-->>MS: MatchStarted, TurnChanged
-    MS->>Pres: events_published
-    Pres->>MS: events_presented
+	Cfg->>MS: start(config, …)
+	MS->>Eng: StartMatchCommand
+	Eng-->>MS: MatchStarted, TurnChanged
+	MS->>Pres: events_published
+	Pres->>MS: events_presented
 
-    loop Докато мачът е активен
-        MS->>Ctrl: _advance (legal_actions)
-        Ctrl->>MS: RollDice или MovePawn (през CommandBus)
-        MS->>Eng: apply_command
-        Eng-->>MS: events (+ евентуално TurnChanged / MatchFinished)
-        MS->>Pres: events_published
-        Pres->>MS: events_presented
-    end
+	loop Докато мачът е активен
+		MS->>Ctrl: _advance (legal_actions)
+		Ctrl->>MS: RollDice или MovePawn (през CommandBus)
+		MS->>Eng: apply_command
+		Eng-->>MS: events (+ евентуално TurnChanged / MatchFinished)
+		MS->>Pres: events_published
+		Pres->>MS: events_presented
+	end
 
-    MS-->>Pres: match_finished(summary)
+	MS-->>Pres: match_finished(summary)
 ```
 
 ### Старт
@@ -132,11 +132,11 @@ sequenceDiagram
 
 ```text
 MATCH_START
-    → AWAITING_ROLL      ← RollDiceCommand
-    → AWAITING_MOVE      ← MovePawnCommand  (ако има валидни пионки)
-    → RESOLVING_MOVE     (вътрешно в engine)
-    → TURN_END
-    → AWAITING_ROLL      (следващ играч)  … или MATCH_FINISHED
+	→ AWAITING_ROLL      ← RollDiceCommand
+	→ AWAITING_MOVE      ← MovePawnCommand  (ако има валидни пионки)
+	→ RESOLVING_MOVE     (вътрешно в engine)
+	→ TURN_END
+	→ AWAITING_ROLL      (следващ играч)  … или MATCH_FINISHED
 ```
 
 Варианти, които session **не** решава сама — engine/TurnRules ги кодират в events:

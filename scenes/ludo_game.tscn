@@ -8,7 +8,7 @@
 script = ExtResource("1_game_script")
 
 [node name="Board" type="Node2D" parent="." unique_id=1071121082]
-position = Vector2(866, 492.5)
+position = Vector2(1, 1)
 script = ExtResource("1_board_script")
 
 [node name="Tiles" type="Node2D" parent="Board" unique_id=664235706]
