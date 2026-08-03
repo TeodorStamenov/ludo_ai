@@ -41,6 +41,7 @@ const PAWN_TEXTURE_AI := "res://rss/pawns/User05.png"
 
 var _presenter: GamePresenter = null
 var _session: MatchSession = null
+var _action_log: MatchActionLog = null
 
 
 func _ready() -> void:
@@ -56,6 +57,9 @@ func _ready() -> void:
 func start_match(config: MatchConfig) -> void:
 	var factory := MatchFactory.new()
 	_session = factory.create_unstarted(config)
+
+	_action_log = MatchActionLog.new()
+	_action_log.begin(_session.get_state().match_id)
 
 	_presenter = GamePresenter.new()
 	add_child(_presenter)
@@ -84,6 +88,8 @@ func _wire_ui() -> void:
 	# autonomous (AI) controllers. TurnChangedEvent идва за всеки ход, независимо
 	# от controller_type, затова тук слушаме директно session.events_published.
 	_session.events_published.connect(_on_session_events_published)
+	_session.command_rejected.connect(_on_session_command_rejected)
+	_session.match_finished.connect(_on_session_match_finished)
 	_presenter.results_requested.connect(_on_results_requested)
 	_session.invariant_violated.connect(_on_invariant_violated)
 	_update_turn_label(_session.get_state())
@@ -97,12 +103,31 @@ func _on_dice_rolled(value: int) -> void:
 	_dice_result.text = str(value)
 
 
-func _on_session_events_published(_sequence: int, events: Array) -> void:
+func _on_session_events_published(sequence: int, events: Array) -> void:
+	if _action_log != null:
+		_action_log.record_events(sequence, events)
 	for event in events:
 		if event is TurnChangedEvent:
 			_turn_label.text = "%s's turn" % String(
 					(event as TurnChangedEvent).new_player_id).capitalize()
 			return
+
+
+func _on_session_command_rejected(command: GameCommand, reason: String) -> void:
+	if _action_log != null:
+		_action_log.record_rejected(command, reason)
+
+
+func _on_session_match_finished(_summary: Dictionary) -> void:
+	if _action_log != null:
+		_action_log.end()
+		_action_log = null
+
+
+func _exit_tree() -> void:
+	if _action_log != null:
+		_action_log.end()
+		_action_log = null
 
 
 func _update_turn_label(state: GameState) -> void:
