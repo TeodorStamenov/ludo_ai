@@ -75,6 +75,18 @@ func all_pawns_in_base(player: PlayerState) -> bool:
 	return true
 
 
+## True ако поне една пионка е в база (bug report: 3 в база + 1 заклещена в
+## home stretch на последната клетка също трябва да получи BASE_ROLL_ATTEMPTS —
+## не само строгия "всичките четири" случай).
+func has_pawn_in_base(player: PlayerState) -> bool:
+	if player == null:
+		return false
+	for entry in player.pawns:
+		if entry is PawnState and (entry as PawnState).is_in_base():
+			return true
+	return false
+
+
 ## Следващ playable индекс след from_index (wrap). ACTIVE_PLAYER_NONE ако няма.
 ## from_index < 0 → ползва state.active_player_index (или 0 при NONE).
 func find_next_player_index(state: GameState, from_index: int = -1) -> int:
@@ -118,7 +130,7 @@ func begin_player_turn(
 	if should_skip_player(player):
 		return false
 	state.set_active_player_index(player_index)
-	state.turn.begin_player_turn(turn_number, all_pawns_in_base(player))
+	state.turn.begin_player_turn(turn_number, has_pawn_in_base(player))
 	return true
 
 
@@ -131,14 +143,15 @@ func _tick_owner_shields(player: PlayerState) -> void:
 			(entry as PawnState).tick_shield()
 
 
-## След известен зар + валидни пионки (#94 YEL-010–013 / YEL-042–045).
-## all_in_base + 1–5 → консумира опит; при оставащи → RETRY_ROLL, иначе TURN_END.
+## След известен зар + валидни пионки (#94 YEL-010–013 / YEL-042–045; bug report:
+## обобщено от строгото "всички в база" до "изобщо няма валиден ход" — покрива
+## и 3 в база + 1 заклещена в home stretch на последната клетка).
+## Няма валиден ход + не 6 → консумира опит; при оставащи → RETRY_ROLL, иначе TURN_END.
 ## Зар 6 не консумира base attempt (YEL-013).
 ## Мутира turn; връща outcome StringName.
 func resolve_after_roll(
 		turn: TurnState,
 		dice_value: int,
-		all_in_base: bool,
 		valid_pawn_ids: Array
 ) -> StringName:
 	if turn == null:
@@ -148,8 +161,10 @@ func resolve_after_roll(
 
 	turn.set_dice_value(dice_value)
 
-	# #94: при всички в база несполучлив зар (≠6) дава до BASE_ROLL_ATTEMPTS опита.
-	if all_in_base and not grants_extra_roll(dice_value):
+	# #94: няма валиден ход при несполучлив зар (≠6) → до BASE_ROLL_ATTEMPTS опита
+	# (base_attempts_remaining вече отразява дали играчът има пионка в база —
+	# TurnRules.begin_player_turn / has_pawn_in_base).
+	if valid_pawn_ids.is_empty() and not grants_extra_roll(dice_value):
 		turn.consume_base_attempt()
 		if turn.has_base_attempts_remaining():
 			turn.clear_dice()

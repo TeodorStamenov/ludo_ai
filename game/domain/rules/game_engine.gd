@@ -277,11 +277,10 @@ func _apply_roll_dice(
 
 	# Клиентът не изпраща лице — авторитетният RNG генерира 1–6.
 	var dice_value: int = rng.next_int(DiceState.VALUE_MIN, DiceState.VALUE_MAX)
-	var all_in_base: bool = _turn_rules.all_pawns_in_base(player)
 	var valid_pawns: Array = _move_rules.collect_valid_pawn_ids(
 			next, player, dice_value)
 	var outcome: StringName = _turn_rules.resolve_after_roll(
-			next.turn, dice_value, all_in_base, valid_pawns)
+			next.turn, dice_value, valid_pawns)
 
 	var events: Array = [
 		DiceRolledEvent.create_rolled(

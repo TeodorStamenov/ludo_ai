@@ -58,9 +58,12 @@ func test_begin_player_turn_sets_base_attempts_yel_003_004() -> void:
 	assert_eq(state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 	assert_true(state.turn.allows_roll_dice())
 
+	# Bug report: 1 пионка на дъската + 3 все още в база пак трябва да получи
+	# BASE_ROLL_ATTEMPTS — has_pawn_in_base (не строгото all_pawns_in_base)
+	# решава броя опити (TurnRules.begin_player_turn).
 	_place_pawn_on_main_path(state.get_player_by_index(1), 0)
 	assert_true(_rules.begin_player_turn(state, 1, 2))
-	assert_eq(state.turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
+	assert_eq(state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 
 
 func test_should_skip_ranked_player() -> void:
@@ -88,7 +91,7 @@ func test_find_next_player_wraps_around() -> void:
 
 func test_resolve_after_roll_base_miss_retries_yel_010() -> void:
 	var turn := TurnState.create_for_player_turn(1, true)
-	var outcome := _rules.resolve_after_roll(turn, 4, true, [])
+	var outcome := _rules.resolve_after_roll(turn, 4, [])
 	assert_eq(outcome, TurnRules.OUTCOME_RETRY_ROLL)
 	assert_true(turn.is_awaiting_roll())
 	assert_eq(turn.base_attempts_remaining, 2)
@@ -98,9 +101,9 @@ func test_resolve_after_roll_base_miss_retries_yel_010() -> void:
 
 func test_resolve_after_roll_base_third_miss_ends_turn_yel_012() -> void:
 	var turn := TurnState.create_for_player_turn(1, true)
-	assert_eq(_rules.resolve_after_roll(turn, 2, true, []), TurnRules.OUTCOME_RETRY_ROLL)
-	assert_eq(_rules.resolve_after_roll(turn, 3, true, []), TurnRules.OUTCOME_RETRY_ROLL)
-	var outcome := _rules.resolve_after_roll(turn, 5, true, [])
+	assert_eq(_rules.resolve_after_roll(turn, 2, []), TurnRules.OUTCOME_RETRY_ROLL)
+	assert_eq(_rules.resolve_after_roll(turn, 3, []), TurnRules.OUTCOME_RETRY_ROLL)
+	var outcome := _rules.resolve_after_roll(turn, 5, [])
 	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)
 	assert_true(turn.is_turn_end())
 
@@ -108,7 +111,7 @@ func test_resolve_after_roll_base_third_miss_ends_turn_yel_012() -> void:
 func test_resolve_after_roll_six_offers_moves_and_grants_extra_yel_013() -> void:
 	var turn := TurnState.create_for_player_turn(1, true)
 	var pawns: Array = [&"green_0", &"green_1"]
-	var outcome := _rules.resolve_after_roll(turn, 6, true, pawns)
+	var outcome := _rules.resolve_after_roll(turn, 6, pawns)
 	assert_eq(outcome, TurnRules.OUTCOME_AWAITING_MOVE)
 	assert_true(turn.is_awaiting_move())
 	assert_true(turn.has_extra_roll_pending())
@@ -118,7 +121,7 @@ func test_resolve_after_roll_six_offers_moves_and_grants_extra_yel_013() -> void
 
 func test_resolve_after_roll_no_moves_with_extra_gives_extra_roll() -> void:
 	var turn := TurnState.create_for_player_turn(2, false)
-	var outcome := _rules.resolve_after_roll(turn, 6, false, [])
+	var outcome := _rules.resolve_after_roll(turn, 6, [])
 	assert_eq(outcome, TurnRules.OUTCOME_EXTRA_ROLL)
 	assert_true(turn.is_awaiting_roll())
 	assert_false(turn.has_extra_roll_pending())
@@ -127,14 +130,14 @@ func test_resolve_after_roll_no_moves_with_extra_gives_extra_roll() -> void:
 
 func test_resolve_after_roll_no_moves_without_extra_ends_turn_yel_045() -> void:
 	var turn := TurnState.create_for_player_turn(2, false)
-	var outcome := _rules.resolve_after_roll(turn, 3, false, [])
+	var outcome := _rules.resolve_after_roll(turn, 3, [])
 	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)
 	assert_true(turn.is_turn_end())
 
 
 func test_resolve_after_move_without_gift_honors_extra_roll() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
-	_rules.resolve_after_roll(turn, 6, false, [&"green_0"])
+	_rules.resolve_after_roll(turn, 6, [&"green_0"])
 	assert_true(turn.has_extra_roll_pending())
 	var outcome := _rules.resolve_after_move(turn, false)
 	assert_eq(outcome, TurnRules.OUTCOME_EXTRA_ROLL)
@@ -144,7 +147,7 @@ func test_resolve_after_move_without_gift_honors_extra_roll() -> void:
 ## #120: класиран играч губи pending extra roll → TURN_END.
 func test_resolve_after_move_player_completed_forces_turn_end() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
-	_rules.resolve_after_roll(turn, 6, false, [&"green_0"])
+	_rules.resolve_after_roll(turn, 6, [&"green_0"])
 	assert_true(turn.has_extra_roll_pending())
 	var outcome := _rules.resolve_after_move(turn, false, true)
 	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)
@@ -154,7 +157,7 @@ func test_resolve_after_move_player_completed_forces_turn_end() -> void:
 
 func test_resolve_after_move_with_gift_enters_power_up() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
-	_rules.resolve_after_roll(turn, 4, false, [&"green_0"])
+	_rules.resolve_after_roll(turn, 4, [&"green_0"])
 	var outcome := _rules.resolve_after_move(turn, true)
 	assert_eq(outcome, TurnRules.OUTCOME_RESOLVING_POWER_UP)
 	assert_true(turn.is_resolving_power_up())
@@ -162,13 +165,13 @@ func test_resolve_after_move_with_gift_enters_power_up() -> void:
 
 func test_resolve_after_power_up_ends_or_extra() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
-	_rules.resolve_after_roll(turn, 4, false, [&"green_0"])
+	_rules.resolve_after_roll(turn, 4, [&"green_0"])
 	_rules.resolve_after_move(turn, true)
 	var outcome := _rules.resolve_after_power_up(turn)
 	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)
 
 	turn = TurnState.create_for_player_turn(1, false)
-	_rules.resolve_after_roll(turn, 6, false, [&"green_0"])
+	_rules.resolve_after_roll(turn, 6, [&"green_0"])
 	_rules.resolve_after_move(turn, true)
 	outcome = _rules.resolve_after_power_up(turn)
 	assert_eq(outcome, TurnRules.OUTCOME_EXTRA_ROLL)

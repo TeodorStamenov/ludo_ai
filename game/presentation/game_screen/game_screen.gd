@@ -70,9 +70,17 @@ func start_match(config: MatchConfig) -> void:
 	var animation_queue := AnimationQueue.new()
 	add_child(animation_queue)
 	_presenter.set_animation_queue(animation_queue)
+	# Turn label чака AnimationQueue да довърши батча (напр. зар анимация), не
+	# суровия events_published сигнал — иначе текстът сменя играча преди
+	# анимацията на зара да е приключила визуално (bug report).
+	animation_queue.all_done.connect(_on_animation_all_done)
 
 	var gifts_root := Node2D.new()
 	gifts_root.name = "Gifts"
+	# $Pawns носи z_index=10 (сцена) — гифтовете трябва да стоят над пионките,
+	# особено по време на reveal анимацията при вземане (#221), когато и
+	# двете временно седят на същата клетка.
+	gifts_root.z_index = 20
 	add_child(gifts_root)
 	_presenter.set_gifts_root(gifts_root)
 
@@ -111,11 +119,18 @@ func _on_dice_rolled(value: int) -> void:
 func _on_session_events_published(sequence: int, events: Array) -> void:
 	if _action_log != null:
 		_action_log.record_events(sequence, events)
-	for event in events:
-		if event is TurnChangedEvent:
-			_turn_label.text = "%s's turn" % String(
-					(event as TurnChangedEvent).new_player_id).capitalize()
-			return
+
+
+## AnimationQueue.all_done — батчът вече е изигран визуално (#169), безопасно
+## е да покажем текущия активен играч (bug report: не по-рано, докато зар/друга
+## анимация все още тече). GamePresenter._on_animation_all_done (свързан преди
+## този listener) може вече да е показал "Match finished" през
+## _on_results_requested — не го презаписвай.
+func _on_animation_all_done(_sequence: int) -> void:
+	var state := _session.get_state()
+	if state != null and state.is_finished():
+		return
+	_update_turn_label(state)
 
 
 func _on_session_command_rejected(command: GameCommand, reason: String) -> void:

@@ -124,7 +124,9 @@ func test_next_player_gets_base_attempts_when_all_in_base_yel_003() -> void:
 	assert_eq(result.state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 
 
-func test_next_player_single_attempt_when_pawn_on_board_yel_004() -> void:
+## Bug report: пионка на дъската + 3 все още в база пак дава BASE_ROLL_ATTEMPTS —
+## has_pawn_in_base (не строгото all_pawns_in_base) решава броя опити.
+func test_next_player_three_attempts_when_pawn_on_board_and_others_in_base() -> void:
 	var state := _setup_awaiting_move_on_spawn(4)
 	var next_player := state.get_player_by_index(1)
 	next_player.get_pawn_by_index(0).exit_base_to_spawn(
@@ -138,7 +140,7 @@ func test_next_player_single_attempt_when_pawn_on_board_yel_004() -> void:
 
 	assert_true(result.accepted)
 	assert_eq(result.state.active_player_index, 1)
-	assert_eq(result.state.turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
+	assert_eq(result.state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 
 
 func test_shield_expires_when_owner_becomes_active_again() -> void:

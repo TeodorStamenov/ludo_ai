@@ -29,6 +29,9 @@ const SELECTED_SCALE := 1.12
 const SELECTED_PULSE_DURATION := 0.45
 const SELECTED_MODULATE := Color(1.45, 1.35, 0.75, 1.0)
 const MOVE_HOP_PX := 10.0
+## По-висок hop за клетка, на която в момента стои друга пионка или подарък —
+## визуален "прескок" ефект вместо плъзгане през/върху заетата клетка (bug report).
+const JUMP_OVER_HOP_PX := 24.0
 ## Продължителност на един hop между съседни клетки (YEL-040 / yellow prototype).
 const STEP_DURATION := 0.18
 ## Hop от база към spawn (YEL-030 / yellow prototype move_to_local).
@@ -188,11 +191,14 @@ func present_pawn_moved(event: PawnMovedEvent, local_target: Vector2) -> void:
 
 ## Hop клетка по клетка след приет MovePawnCommand (#172 / YEL-040).
 ## step_cell_ids / step_locals са exclusive-from → inclusive-to по маршрута.
+## step_jump_over[i] == true → по-висок hop за тази стъпка (клетката вече е
+## заета от друга пионка/подарък — визуален "прескок" вместо плъзгане отгоре).
 ## Емитира animation_finished(KIND_MOVE) веднъж след последната клетка (#169).
 func present_pawn_moved_animated(
 		event: PawnMovedEvent,
 		step_cell_ids: Array[StringName],
-		step_locals: Array[Vector2]
+		step_locals: Array[Vector2],
+		step_jump_over: Array[bool] = []
 ) -> void:
 	if event == null or not event.is_valid():
 		return
@@ -207,7 +213,9 @@ func present_pawn_moved_animated(
 		if CellId.is_valid(cell_id):
 			grid_pos = CellId.to_vec(cell_id)
 			z_index = grid_pos.x + grid_pos.y + 1
-		await _tween_hop_to(step_locals[i], STEP_DURATION)
+		var is_jump: bool = i < step_jump_over.size() and step_jump_over[i]
+		var hop_height: float = JUMP_OVER_HOP_PX if is_jump else MOVE_HOP_PX
+		await _tween_hop_to(step_locals[i], STEP_DURATION, hop_height)
 	var final_local: Vector2 = step_locals[count - 1]
 	_rest_position = final_local
 	position = final_local
@@ -224,10 +232,12 @@ func present_pawn_exited_base(event: PawnExitedBaseEvent, local_target: Vector2)
 
 
 ## Hop от база към spawn след приет MovePawnCommand (#173 / YEL-030).
+## is_jump_over == true → по-висок hop (spawn клетката вече е заета).
 ## Емитира animation_finished(KIND_MOVE) след кацане на spawn (#169).
 func present_pawn_exited_base_animated(
 		event: PawnExitedBaseEvent,
-		local_target: Vector2
+		local_target: Vector2,
+		is_jump_over: bool = false
 ) -> void:
 	if event == null or not event.is_valid():
 		return
@@ -237,7 +247,7 @@ func present_pawn_exited_base_animated(
 		grid_pos = CellId.to_vec(event.spawn_cell_id)
 		z_index = grid_pos.x + grid_pos.y + 1
 	is_moving = true
-	await _tween_hop_to(local_target, EXIT_DURATION)
+	await _tween_hop_to(local_target, EXIT_DURATION, JUMP_OVER_HOP_PX if is_jump_over else MOVE_HOP_PX)
 	_rest_position = local_target
 	position = local_target
 	_action_tween = null
@@ -418,10 +428,10 @@ func move_to_local(local_target: Vector2, duration: float = 0.28) -> void:
 
 
 ## Един hop tween без emit — междинна стъпка или сграден блок за move_to_local.
-func _tween_hop_to(local_target: Vector2, duration: float) -> void:
+func _tween_hop_to(local_target: Vector2, duration: float, hop_height_px: float = MOVE_HOP_PX) -> void:
 	var start: Vector2 = position
 	var mid: Vector2 = (start + local_target) * 0.5
-	mid.y -= MOVE_HOP_PX
+	mid.y -= hop_height_px
 	var hop_in: float = duration * 0.45
 	var hop_out: float = duration * 0.55
 	_action_tween = create_tween()

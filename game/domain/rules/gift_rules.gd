@@ -6,8 +6,10 @@ extends RefCounted
 ## Появяване: seeded интервал от приети команди (§4.5 — един seed управлява
 ## "интервали и клетки за подаръци", същия като зара). Клетката се тегли
 ## измежду свободните клетки от main_loop — main_loop по конструкция никога
-## не включва бази/home stretch/център (#203), тук само изключваме клетки,
-## които вече имат подарък.
+## не включва бази/home stretch/център (#203); тук изключваме клетки, които
+## вече имат подарък, И клетки, на които в момента стои пионка (bug report:
+## подарък не трябва да се появи върху пионка — CellOccupancy е source of
+## truth за заетост, вижте game/domain/model/cell_occupancy.gd).
 ##
 ## Взимането (#204/#206) е в GameEngine — там пионката вече е приложила хода
 ## си и се проверява само финалната ѝ клетка.
@@ -34,14 +36,19 @@ func is_spawn_due(state: GameState) -> bool:
 
 
 ## Свободните клетки от main_loop, на които може да се появи подарък (#202/#203).
+## Изключва клетки с вече стоящ подарък И клетки, заети от пионка.
 func free_spawn_cells(state: GameState) -> Array[StringName]:
 	var free: Array[StringName] = []
 	if state == null or not _uses_classic_board(state):
 		return free
+	var occupancy := CellOccupancy.from_state(state)
 	for entry in Classic15x15Board.main_loop_cell_ids():
 		var cell_id := StringName(str(entry))
-		if state.get_gift_at(cell_id) == null:
-			free.append(cell_id)
+		if state.get_gift_at(cell_id) != null:
+			continue
+		if not occupancy.is_empty(cell_id):
+			continue
+		free.append(cell_id)
 	return free
 
 

@@ -45,7 +45,7 @@ func test_complete_turn_action_extra_roll_keeps_turn_number_and_single_attempt()
 
 func test_resolve_after_move_on_six_enters_extra_roll() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
-	_rules.resolve_after_roll(turn, 6, false, [&"green_0"])
+	_rules.resolve_after_roll(turn, 6, [&"green_0"])
 	assert_true(turn.has_extra_roll_pending())
 
 	var outcome := _rules.resolve_after_move(turn, false)
@@ -59,7 +59,7 @@ func test_resolve_after_move_on_six_enters_extra_roll() -> void:
 
 func test_resolve_after_move_on_non_six_ends_turn_yel_042() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
-	_rules.resolve_after_roll(turn, 4, false, [&"green_0"])
+	_rules.resolve_after_roll(turn, 4, [&"green_0"])
 	assert_false(turn.has_extra_roll_pending())
 
 	var outcome := _rules.resolve_after_move(turn, false)

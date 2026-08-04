@@ -126,7 +126,7 @@ func test_engine_skips_completed_player_on_next_advance() -> void:
 ## player_completed=true отменя pending extra roll → TURN_END (#120 / §12).
 func test_resolve_after_move_completed_clears_extra_roll() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
-	_turn.resolve_after_roll(turn, 6, false, [&"green_0"])
+	_turn.resolve_after_roll(turn, 6, [&"green_0"])
 	assert_true(turn.has_extra_roll_pending())
 	var outcome := _turn.resolve_after_move(turn, false, true)
 	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)

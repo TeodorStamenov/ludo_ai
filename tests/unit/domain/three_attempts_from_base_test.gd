@@ -3,9 +3,11 @@ extends TestCase
 ## docs/V1_GAME_DESIGN.md §3.1; CURRENT_YELLOW_BEHAVIOR YEL-003 / YEL-004 /
 ## YEL-010–014; docs/V1_ARCHITECTURE.md §4.2 / §12 / §14).
 ##
-## Правилото е в TurnRules (#94). Тук: all-in-base → 3 опита; всеки зар 1–5 →
-## retry докато има опити; трети miss → TurnChanged; 6 на произволен опит →
-## AWAITING_MOVE без консумация на опит; поне една пионка извън база → 1 опит.
+## Правилото е в TurnRules (#94). Тук: поне 1 пионка в база (has_pawn_in_base,
+## не строгото all-in-base) → 3 опита; всеки зар 1–5 без валиден ход → retry
+## докато има опити; трети miss → TurnChanged; 6 на произволен опит → AWAITING_MOVE
+## без консумация на опит; НИТО една пионка в база → 1 опит (bug report:
+## обобщено от "всички в база" до "изобщо няма валиден ход").
 
 
 var _rules: TurnRules
@@ -39,8 +41,12 @@ func test_all_pawns_in_base_false_when_any_pawn_finished() -> void:
 	var last_idx: int = route.size() - 1
 	player.get_pawn_by_index(0).mark_finished(last_idx, route[last_idx])
 	assert_false(_rules.all_pawns_in_base(player))
+	# Bug report: 3 все още в база + 1 завършила пак трябва да получи
+	# BASE_ROLL_ATTEMPTS — has_pawn_in_base (не строгото all_pawns_in_base)
+	# решава броя опити.
+	assert_true(_rules.has_pawn_in_base(player))
 	assert_true(_rules.begin_player_turn(state, 0, 1))
-	assert_eq(state.turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
+	assert_eq(state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 
 
 func test_begin_turn_all_in_base_gets_three_attempts_yel_003() -> void:
@@ -51,11 +57,26 @@ func test_begin_turn_all_in_base_gets_three_attempts_yel_003() -> void:
 	assert_true(state.turn.allows_roll_dice())
 
 
-func test_begin_turn_pawn_on_board_gets_single_attempt_yel_004() -> void:
+## Bug report: пионка на дъската + още 3 в база пак получава BASE_ROLL_ATTEMPTS —
+## само когато НИТО една пионка не е в база остава единствен опит (YEL-004).
+func test_begin_turn_mixed_base_and_board_still_gets_three_attempts() -> void:
 	var state := _setup_in_progress()
 	var player := state.get_active_player()
 	player.get_pawn_by_index(0).exit_base_to_spawn(
 			Classic15x15Board.spawn_cell_for(player.player_id))
+	assert_true(_rules.has_pawn_in_base(player))
+	assert_true(_rules.begin_player_turn(state, 0, 1))
+	assert_eq(state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
+
+
+func test_begin_turn_no_pawns_in_base_gets_single_attempt_yel_004() -> void:
+	var state := _setup_in_progress()
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var last_idx: int = route.size() - 1
+	for i in PlayerState.PAWNS_PER_PLAYER:
+		player.get_pawn_by_index(i).mark_finished(last_idx, route[last_idx])
+	assert_false(_rules.has_pawn_in_base(player))
 	assert_true(_rules.begin_player_turn(state, 0, 1))
 	assert_eq(state.turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
 
@@ -140,6 +161,43 @@ func test_third_base_miss_ends_turn_and_advances_yel_012() -> void:
 	assert_eq(changed.previous_player_id, player_before)
 	assert_eq(changed.new_player_index, current.active_player_index)
 	assert_eq(changed.new_player_id, PlayerId.YELLOW)
+
+
+## Bug report: 3 в база + 1 пионка заклещена в home stretch на последната клетка
+## (само dice=1 я довършва, всичко друго overshoot-ва) — играчът пак трябва да
+## получи BASE_ROLL_ATTEMPTS, не само 1 хвърляне.
+func test_three_in_base_plus_stuck_home_stretch_pawn_gets_three_attempts() -> void:
+	var state := _setup_in_progress()
+	var player := state.get_active_player()
+	var route := Classic15x15Board.player_route_cell_ids_for(player.player_id)
+	var last_idx: int = route.size() - 1
+	player.get_pawn_by_index(0).set_position(
+			PawnZone.HOME_STRETCH, last_idx, route[last_idx])
+	assert_true(_rules.begin_player_turn(state, 0, 1))
+	assert_eq(state.turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
+
+	var current := state
+	for expected_remaining in [2, 1]:
+		var rng := _fixed_rng(3)
+		var cmd := RollDiceCommand.create_for_player(current.get_active_player_id())
+		current.stamp_command(cmd)
+		var result := _engine.validate_and_apply(current, cmd, rng)
+		assert_true(result.accepted)
+		assert_true(result.state.turn.is_awaiting_roll(),
+				"няма валиден ход (base пионки чакат 6, home stretch пионката overshoot-ва) → retry")
+		assert_eq(result.state.turn.base_attempts_remaining, expected_remaining)
+		assert_eq(result.state.turn.valid_pawn_ids.size(), 0)
+		current = result.state
+
+	var active_before: int = current.active_player_index
+	var rng3 := _fixed_rng(4)
+	var cmd3 := RollDiceCommand.create_for_player(current.get_active_player_id())
+	current.stamp_command(cmd3)
+	var result3 := _engine.validate_and_apply(current, cmd3, rng3)
+	assert_true(result3.accepted)
+	assert_ne(result3.state.active_player_index, active_before,
+			"трети miss → TURN_END + смяна на играча")
+	assert_true(result3.events[1] is TurnChangedEvent)
 
 
 func test_six_on_first_attempt_offers_moves_yel_013() -> void:
@@ -245,11 +303,11 @@ func test_move_pawn_rejected_during_base_retry() -> void:
 
 func test_resolve_after_roll_miss_outcomes_match_yel_010_012() -> void:
 	var turn := TurnState.create_for_player_turn(1, true)
-	assert_eq(_rules.resolve_after_roll(turn, 2, true, []), TurnRules.OUTCOME_RETRY_ROLL)
+	assert_eq(_rules.resolve_after_roll(turn, 2, []), TurnRules.OUTCOME_RETRY_ROLL)
 	assert_eq(turn.base_attempts_remaining, 2)
-	assert_eq(_rules.resolve_after_roll(turn, 3, true, []), TurnRules.OUTCOME_RETRY_ROLL)
+	assert_eq(_rules.resolve_after_roll(turn, 3, []), TurnRules.OUTCOME_RETRY_ROLL)
 	assert_eq(turn.base_attempts_remaining, 1)
-	assert_eq(_rules.resolve_after_roll(turn, 4, true, []), TurnRules.OUTCOME_TURN_END)
+	assert_eq(_rules.resolve_after_roll(turn, 4, []), TurnRules.OUTCOME_TURN_END)
 	assert_true(turn.is_turn_end())
 
 
@@ -257,7 +315,7 @@ func test_resolve_after_roll_six_does_not_consume_base_attempt() -> void:
 	var turn := TurnState.create_for_player_turn(1, true)
 	assert_eq(turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 	var outcome := _rules.resolve_after_roll(
-			turn, 6, true, [&"green_0", &"green_1", &"green_2", &"green_3"])
+			turn, 6, [&"green_0", &"green_1", &"green_2", &"green_3"])
 	assert_eq(outcome, TurnRules.OUTCOME_AWAITING_MOVE)
 	assert_eq(turn.base_attempts_remaining, TurnState.BASE_ROLL_ATTEMPTS)
 	assert_true(turn.has_extra_roll_pending())
@@ -266,7 +324,7 @@ func test_resolve_after_roll_six_does_not_consume_base_attempt() -> void:
 func test_resolve_after_roll_non_base_miss_ends_without_retry() -> void:
 	var turn := TurnState.create_for_player_turn(1, false)
 	assert_eq(turn.base_attempts_remaining, TurnState.SINGLE_ROLL_ATTEMPTS)
-	var outcome := _rules.resolve_after_roll(turn, 3, false, [])
+	var outcome := _rules.resolve_after_roll(turn, 3, [])
 	assert_eq(outcome, TurnRules.OUTCOME_TURN_END)
 	assert_true(turn.is_turn_end())
 

@@ -17,7 +17,7 @@ extends RefCounted
 ## Не валидира правила и не мести логически пионки — само отразява вече
 ## настъпили факти върху DiceView / PawnView / BoardView / HUD.
 
-const GIFT_TEXTURE_PATH := "res://rss/gifts/Gift.png"
+const GIFT_TEXTURE_PATH := "res://rss/gifts/GiftNew.png"
 
 var _dice_view: DiceView = null
 var _board_view: BoardView = null
@@ -187,18 +187,20 @@ func _present_pawn_moved_animated(event: PawnMovedEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
-	await _dissolve_stack_before_departure(pawn)
+	_dissolve_stack_before_departure(pawn)
 	var step_cell_ids: Array[StringName] = _resolve_move_step_cell_ids(event)
 	var step_locals: Array[Vector2] = []
+	var step_jump_over: Array[bool] = []
 	for cell_id in step_cell_ids:
 		step_locals.append(_local_for_pawn(pawn, cell_id))
+		step_jump_over.append(_is_cell_occupied_for_jump(cell_id, event.pawn_id))
 	if step_cell_ids.is_empty() or step_locals.is_empty():
 		return
 	if not pawn.is_moving:
 		await AnimationFinishedGate.await_started(
 				pawn,
 				PawnView.KIND_MOVE,
-				pawn.present_pawn_moved_animated.bind(event, step_cell_ids, step_locals)
+				pawn.present_pawn_moved_animated.bind(event, step_cell_ids, step_locals, step_jump_over)
 		)
 	else:
 		pawn.present_pawn_moved(event, step_locals[step_locals.size() - 1])
@@ -256,13 +258,14 @@ func _present_pawn_exited_base_animated(event: PawnExitedBaseEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
-	await _dissolve_stack_before_departure(pawn)
+	_dissolve_stack_before_departure(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.spawn_cell_id)
+	var is_jump: bool = _is_cell_occupied_for_jump(event.spawn_cell_id, event.pawn_id)
 	if not pawn.is_moving:
 		await AnimationFinishedGate.await_started(
 				pawn,
 				PawnView.KIND_MOVE,
-				pawn.present_pawn_exited_base_animated.bind(event, target)
+				pawn.present_pawn_exited_base_animated.bind(event, target, is_jump)
 		)
 	else:
 		pawn.present_pawn_exited_base(event, target)
@@ -286,7 +289,7 @@ func _present_pawn_sent_home_animated(event: PawnSentHomeEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
-	await _dissolve_stack_before_departure(pawn)
+	_dissolve_stack_before_departure(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.base_cell_id)
 	if not pawn.is_moving:
 		await AnimationFinishedGate.await_started(
@@ -317,7 +320,7 @@ func _present_pawn_finished_animated(event: PawnFinishedEvent) -> void:
 	var pawn: PawnView = _pawn_of(event.pawn_id)
 	if pawn == null:
 		return
-	await _dissolve_stack_before_departure(pawn)
+	_dissolve_stack_before_departure(pawn)
 	var target: Vector2 = _local_for_pawn(pawn, event.final_cell_id)
 	if not pawn.is_moving:
 		await AnimationFinishedGate.await_started(
@@ -387,7 +390,12 @@ func _dissolve_stack_snap(pawn: PawnView) -> void:
 		partner.present_stack_dissolved()
 
 
-## Анимирано разпадане преди hop (#174): партньорът settle-ва; напускащата тръгва от offset.
+## Разпадане на купчина при departure (#174). Умишлено НЕ се await-ва от
+## caller-ите (bug report: изглеждаше като бъг двете пионки да "нулират" и да
+## се наслагват в центъра, преди избраната изобщо да тръгне) — тук само
+## изчистваме stack membership-а синхронно (без визуален скок за напускащата),
+## а партньорът settle-ва към центъра ПАРАЛЕЛНО с departure hop-а на
+## напускащата, не преди него.
 func _dissolve_stack_before_departure(pawn: PawnView) -> void:
 	if pawn == null or not pawn.is_stacked:
 		return
@@ -506,6 +514,26 @@ func _local_for_gift(cell_id: StringName) -> Vector2:
 	var board_local: Vector2 = _board_view.get_cell_position_by_id(cell_id)
 	var global_pos: Vector2 = _board_view.to_global(board_local)
 	return _gifts_root.to_local(global_pos)
+
+
+## True ако cell_id в момента е заета от друга пионка (различна от
+## excluding_pawn_id) или от активен GiftView — hop-ът към/над тази клетка
+## трябва да е по-висок за визуален "прескок" ефект (bug report).
+func _is_cell_occupied_for_jump(cell_id: StringName, excluding_pawn_id: StringName) -> bool:
+	if not CellId.is_valid(cell_id):
+		return false
+	var target_grid: Vector2i = CellId.to_vec(cell_id)
+	for key in _pawn_views.keys():
+		if key == excluding_pawn_id:
+			continue
+		var other: PawnView = _pawn_views[key] as PawnView
+		if other != null and is_instance_valid(other) and other.grid_pos == target_grid:
+			return true
+	for entry in _gift_views.values():
+		var gift := entry as GiftView
+		if gift != null and is_instance_valid(gift) and gift.cell_id == cell_id:
+			return true
+	return false
 
 
 func _pawn_of(pawn_id: StringName) -> PawnView:
