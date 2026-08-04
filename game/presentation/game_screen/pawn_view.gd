@@ -97,8 +97,10 @@ func _ready() -> void:
 	_ensure_colorblind_marker()
 
 
-func setup(texture_path: String, tile_width_px: float) -> void:
-	texture = load(texture_path) as Texture2D
+## sprite идва от AnimalDefinition.sprite (content/animals/*.tres; #233) —
+## Presentation не хардкодва пътища към текстури.
+func setup(sprite: Texture2D, tile_width_px: float) -> void:
+	texture = sprite
 	centered = true
 	if texture == null:
 		return

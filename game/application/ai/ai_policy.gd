@@ -24,3 +24,4 @@ extends RefCounted
 func choose_action(_state_view: Dictionary, _legal_actions: Array) -> GameCommand:
 	push_error("AIPolicy.choose_action: не е имплементирано в базовия клас")
 	return null
+ 

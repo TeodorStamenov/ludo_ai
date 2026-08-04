@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bir3r5lixyg04"
-path="res://.godot/imported/User05.png-8e63997c59cdeb18f1ca89f6fffdc5bf.ctex"
+uid="uid://cb0lrc730q1cd"
+path="res://.godot/imported/Cow.png-d78ad76efc592e50185ed24240f9d858.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://rss/pawns/User05.png"
-dest_files=["res://.godot/imported/User05.png-8e63997c59cdeb18f1ca89f6fffdc5bf.ctex"]
+source_file="res://rss/pawns/Cow.png"
+dest_files=["res://.godot/imported/Cow.png-d78ad76efc592e50185ed24240f9d858.ctex"]
 
 [params]
 

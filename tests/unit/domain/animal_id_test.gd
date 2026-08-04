@@ -4,7 +4,7 @@ extends TestCase
 ## content/animals/).
 ##
 ## Покрива:
-##   - Петте v1 животни с стабилни StringName ID-та.
+##   - Шестте v1 животни с стабилни StringName ID-та.
 ##   - DEFAULT и STARTER набори.
 ##   - is_valid() / is_starter().
 ##   - Domain слой: extends RefCounted, път game/domain/ids/.
@@ -39,15 +39,16 @@ func test_animal_constants_have_expected_values() -> void:
 	assert_eq(AnimalId.DOG, &"dog")
 	assert_eq(AnimalId.COW, &"cow")
 	assert_eq(AnimalId.HEN, &"hen")
+	assert_eq(AnimalId.SHEEP, &"sheep")
 
 
 func test_default_is_pig() -> void:
 	assert_eq(AnimalId.DEFAULT, AnimalId.PIG)
 
 
-func test_count_is_five() -> void:
-	assert_eq(AnimalId.COUNT, 5)
-	assert_eq(AnimalId.ALL.size(), 5)
+func test_count_is_six() -> void:
+	assert_eq(AnimalId.COUNT, 6)
+	assert_eq(AnimalId.ALL.size(), 6)
 
 
 func test_all_entries_are_valid() -> void:
@@ -91,6 +92,7 @@ func test_is_starter_false_for_campaign_unlocks() -> void:
 	assert_false(AnimalId.is_starter(AnimalId.DOG))
 	assert_false(AnimalId.is_starter(AnimalId.COW))
 	assert_false(AnimalId.is_starter(AnimalId.HEN))
+	assert_false(AnimalId.is_starter(AnimalId.SHEEP))
 
 
 func test_is_starter_false_for_unknown() -> void:

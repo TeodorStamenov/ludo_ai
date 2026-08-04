@@ -25,12 +25,6 @@ extends Node
 
 const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 
-## Спрайт по controller_type (не по цвят/seat) — темата/skin-ът е content-driven
-## по-късно (AnimalDefinition); засега разграничаваме human/AI само по текстура,
-## без tint (§6.3).
-const PAWN_TEXTURE_HUMAN := "res://rss/pawns/User03.png"
-const PAWN_TEXTURE_AI := "res://rss/pawns/User05.png"
-
 @onready var _board: BoardView = $Board
 @onready var _pawns_root: Node2D = $Pawns
 @onready var _dice_view: DiceView = $UI/DiceViewportContainer/SubViewport/DiceWorld/Dice
@@ -42,6 +36,8 @@ const PAWN_TEXTURE_AI := "res://rss/pawns/User05.png"
 var _presenter: GamePresenter = null
 var _session: MatchSession = null
 var _action_log: MatchActionLog = null
+## animal_id → AnimalDefinition (content/animals/*.tres, #233).
+var _animals := AnimalRegistry.new()
 
 
 func _ready() -> void:
@@ -163,7 +159,7 @@ func _on_results_requested(summary: Dictionary) -> void:
 	_dice_button.disabled = true
 	var ranking: Array = summary.get("ranking", [])
 	if not ranking.is_empty():
-		_turn_label.text = String("Match finished — winner: %s" % String(ranking[0]).capitalize())
+		_turn_label.text = "Match finished — winner: %s" % String(ranking[0]).capitalize()
 	else:
 		_turn_label.text = "Match finished"
 
@@ -190,11 +186,16 @@ func _spawn_pawn_views(state: GameState) -> void:
 		seat_root.name = String(player.player_id).capitalize()
 		_pawns_root.add_child(seat_root)
 
+		# Спрайтът идва от животното на seat-а (AnimalDefinition.sprite, #233),
+		# не от controller_type — човек и AI с едно и също животно изглеждат
+		# еднакво, точно както в Match Setup.
 		var seat_config := (
 				state.match_config.get_seat(player.player_id)
 				if state.match_config != null else null)
-		var is_human := seat_config != null and seat_config.is_human()
-		var texture_path := PAWN_TEXTURE_HUMAN if is_human else PAWN_TEXTURE_AI
+		var animal_id: StringName = (
+				seat_config.animal_id if seat_config != null else AnimalId.DEFAULT)
+		var sprite: Texture2D = _animals.sprite_for(animal_id)
+		var colorblind_icon: Texture2D = _colorblind_icon_for(animal_id)
 
 		for pawn_entry in player.pawns:
 			var pawn_state := pawn_entry as PawnState
@@ -207,7 +208,9 @@ func _spawn_pawn_views(state: GameState) -> void:
 			seat_root.add_child(pawn_view)
 
 			var tile_w: float = _board.get_tile_display_width()
-			pawn_view.setup(texture_path, tile_w)
+			pawn_view.setup(sprite, tile_w)
+			if colorblind_icon != null:
+				pawn_view.set_colorblind_icon(colorblind_icon)
 			# grid_pos/z_index: PawnView поддържа тези сама след първия ход
 			# (_apply_cell_pose), но при spawn трябва да ги зададем ръчно —
 			# иначе z_index=0 губи срещу tiles с по-висок painter's-algorithm ред
@@ -216,6 +219,15 @@ func _spawn_pawn_views(state: GameState) -> void:
 			pawn_view.z_index = pawn_view.grid_pos.x + pawn_view.grid_pos.y + 1
 			pawn_view.set_rest_position(_local_position_for(seat_root, pawn_state.cell_id))
 			_presenter.register_pawn_view(pawn_view)
+
+
+## Colorblind икона от AnimalDefinition (§6.3). null → PawnView пада към
+## процедурна форма по player_id; записите още нямат авторизирани икони.
+func _colorblind_icon_for(animal_id: StringName) -> Texture2D:
+	var definition := _animals.definition_for(animal_id)
+	if definition == null:
+		return null
+	return definition.colorblind_icon
 
 
 func _local_position_for(parent_node: Node2D, cell_id: StringName) -> Vector2:
@@ -228,7 +240,9 @@ func _local_position_for(parent_node: Node2D, cell_id: StringName) -> Vector2:
 ## срещуположни бази (MatchConfig.DEFAULT_SEATS_2P).
 static func _default_match_config() -> MatchConfig:
 	var config := MatchConfig.create_two_player_opposite()
-	config.configure_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.DEFAULT)
+	# Различни животни на двата seat-а — спрайтът вече идва от AnimalDefinition
+	# (#233), така че еднакво животно би направило страните неразличими.
+	config.configure_seat(PlayerId.GREEN, MatchConfig.ControllerType.HUMAN, AnimalId.PIG)
 	config.configure_seat(
-			PlayerId.YELLOW, MatchConfig.ControllerType.AI, AnimalId.DEFAULT, AIDifficulty.EASY)
+			PlayerId.YELLOW, MatchConfig.ControllerType.AI, AnimalId.COW, AIDifficulty.EASY)
 	return config
