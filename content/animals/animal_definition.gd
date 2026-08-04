@@ -24,12 +24,11 @@ extends Resource
 @export var colorblind_icon: Texture2D = null
 
 
+## Делегира към AnimalDefinitionValidator (#231) — там са стабилните error
+## codes; тук остава само удобният bool (същият прецедент като
+## MatchConfig.is_valid() / BoardDefinition.is_valid()).
 func is_valid() -> bool:
-	if not AnimalId.is_valid(animal_id):
-		return false
-	if display_name.is_empty():
-		return false
-	return passive_script != null
+	return AnimalDefinitionValidator.validate(self).ok
 
 
 ## Инстанцира passive_script-а. null при липсващ/невалиден (не extends AnimalPassive) скрипт.
