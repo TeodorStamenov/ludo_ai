@@ -14,7 +14,9 @@ extends RefCounted
 ## AI не се нуждае от специална логика за пасивите — те са числови
 ## модификатори в самата игрова логика, еднакви за Human и AI.
 ##
-## Пълната имплементация е обхваната от задача "Създаване на AnimalPassive интерфейс".
+## Базовият клас връща стойностите непроменени (identity) — конкретните
+## животни extend-ват този клас и override-ват само хуковете, които им трябват
+## (напр. AnimalDefinition.passive_script, content/animals/README.md; #223).
 
 
 func modify_teleport_distance(base: int) -> int:
