@@ -11,9 +11,10 @@ extends RefCounted
 ## прототипен roll; adapter-ът само гейтва forced лицето.
 
 
-## True само в editor / debug export (`OS.is_debug_build()`).
+## True само в editor / debug export. Делегира на DebugMode, за да има едно
+## място, което решава дали debug инструментариумът е разрешен.
 static func is_authorized() -> bool:
-	return OS.is_debug_build()
+	return DebugMode.is_authorized()
 
 
 ## Инстанция при authorized debug build; иначе null (caller скрива UI).

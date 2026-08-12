@@ -70,6 +70,30 @@ func get_cell_node(cell_id: StringName) -> Node2D:
 	return _cell_nodes.get(cell_id) as Node2D
 
 
+## Най-близкият cell_id до локална позиция, или &"" ако няма клетка в радиус
+## max_distance. Обратното на get_cell_position_by_id() — нужно е за
+## debug подредбата, където клик по дъската трябва да стане клетка.
+##
+## Търсене по най-близък център вместо Area2D на всяка плочка: плочките са
+## стотици и нямат collision (виж _add_tile), а изометричните ромбове биха
+## изисквали полигони. За единичен клик обхождането е пренебрежимо.
+func cell_id_at_local_position(
+		local_pos: Vector2,
+		max_distance: float = 0.0
+) -> StringName:
+	var limit: float = max_distance if max_distance > 0.0 else get_tile_display_width() * 0.5
+	var best_id: StringName = &""
+	var best_distance_sq: float = limit * limit
+	for key in _cell_nodes.keys():
+		var cell_id := StringName(str(key))
+		var distance_sq: float = (
+				_cell_positions.position_of(cell_id).distance_squared_to(local_pos))
+		if distance_sq <= best_distance_sq:
+			best_distance_sq = distance_sq
+			best_id = cell_id
+	return best_id
+
+
 func _ensure_board_definition() -> void:
 	if _board_definition != null:
 		return

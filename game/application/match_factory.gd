@@ -31,19 +31,26 @@ func create(config: MatchConfig, state: GameState = null) -> MatchSession:
 ## GameScreen, което трябва да bind-не GamePresenter преди първия
 ## events_published батч. Извикващият трябва да викне session.begin() след
 ## presenter.bind(session). create() = create_unstarted() + session.begin().
-func create_unstarted(config: MatchConfig, state: GameState = null) -> MatchSession:
+##
+## rng: опционален инжектиран източник (debug ScriptedRandomSource). При null
+## се строи детерминиран SeededRandomSource както обикновено.
+func create_unstarted(
+		config: MatchConfig,
+		state: GameState = null,
+		rng: RandomSource = null
+) -> MatchSession:
 	assert(config != null, "MatchFactory.create_unstarted: config не може да е null")
 	assert(config.is_valid(), "MatchFactory.create_unstarted: невалиден MatchConfig")
 
 	var resolved_state: GameState = (
 			state if state != null else GameState.create_from_match_config(config))
-	# Предпочита GameState.rng_state при mid-match restore (#60);
-	# иначе детерминиран RNG от MatchConfig.rng_seed.
-	var rng: RandomSource
-	if resolved_state.has_rng_state():
-		rng = resolved_state.create_random_source_from_state()
-	else:
-		rng = config.create_random_source()
+	# Предпочита инжектиран RNG (debug), после GameState.rng_state при
+	# mid-match restore (#60); иначе детерминиран RNG от MatchConfig.rng_seed.
+	if rng == null:
+		if resolved_state.has_rng_state():
+			rng = resolved_state.create_random_source_from_state()
+		else:
+			rng = config.create_random_source()
 	var engine: GameEngine = _engine if _engine != null else GameEngine.new()
 	var controllers := _build_controllers(config)
 	var event_queue := EventQueue.new()

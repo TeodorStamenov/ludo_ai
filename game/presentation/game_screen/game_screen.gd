@@ -32,19 +32,34 @@ const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 @onready var _dice_result: Label = $UI/DiceResult
 @onready var _turn_label: Label = $UI/TurnLabel
 @onready var _debug_rolls: HBoxContainer = $UI/DebugRolls
+@onready var _debug_power_ups: HBoxContainer = $UI/DebugPowerUps
+@onready var _debug_setup_panel: VBoxContainer = $UI/DebugSetup
+@onready var _debug_mode_pawns: Button = $UI/DebugSetup/ModeRow/ModePawns
+@onready var _debug_mode_gifts: Button = $UI/DebugSetup/ModeRow/ModeGifts
+@onready var _debug_start_button: Button = $UI/DebugSetup/ActionRow/StartButton
+@onready var _debug_clear_button: Button = $UI/DebugSetup/ActionRow/ClearButton
+@onready var _debug_setup_status: Label = $UI/DebugSetup/SetupStatus
 
 var _presenter: GamePresenter = null
 var _session: MatchSession = null
 var _action_log: MatchActionLog = null
 ## animal_id → AnimalDefinition (content/animals/*.tres, #233).
 var _animals := AnimalRegistry.new()
+## Debug-only: подменя зара / power-up-а. null извън debug build.
+var _scripted_rng: ScriptedRandomSource = null
+## Debug-only: визуална подредба на дъската преди старт. null извън debug build.
+var _debug_setup: DebugScenarioSetup = null
 
 
 func _ready() -> void:
-	# Debug-only forced rolls се решават на domain ниво (seeded RNG) — няма
-	# authorized начин да инжектираме конкретно лице през RollDiceCommand.
-	_debug_rolls.visible = false
-	_debug_rolls.process_mode = Node.PROCESS_MODE_DISABLED
+	# Целият developer инструментариум е зад DebugMode — в release build
+	# панелите се скриват и не получават input.
+	var debug_enabled: bool = DebugMode.is_authorized()
+	for panel in [_debug_rolls, _debug_power_ups, _debug_setup_panel]:
+		panel.visible = debug_enabled
+		panel.process_mode = (
+				Node.PROCESS_MODE_INHERIT if debug_enabled
+				else Node.PROCESS_MODE_DISABLED)
 
 	start_match(_default_match_config())
 
@@ -52,7 +67,13 @@ func _ready() -> void:
 ## Единствен вход отвън (§6). AppFlow/MatchSetup ще викат това с истински config.
 func start_match(config: MatchConfig) -> void:
 	var factory := MatchFactory.new()
-	_session = factory.create_unstarted(config)
+	# В debug build gameplay случайността минава през ScriptedRandomSource, за
+	# да могат бутоните да заредят конкретен зар / power-up. Обвитият източник
+	# остава детерминираният seeded RNG, така че мачът е възпроизводим.
+	_scripted_rng = (
+			ScriptedRandomSource.new(config.create_random_source())
+			if DebugMode.is_authorized() else null)
+	_session = factory.create_unstarted(config, null, _scripted_rng)
 
 	_action_log = MatchActionLog.new()
 	_action_log.begin(_session.get_state().match_id)
@@ -83,6 +104,13 @@ func start_match(config: MatchConfig) -> void:
 	_spawn_pawn_views(_session.get_state())
 	_wire_ui()
 
+	if DebugMode.is_authorized():
+		# begin() се отлага — първо подреждаме дъската, после Старт (виж
+		# _on_debug_start_requested за причината подредбата да се прилага
+		# СЛЕД StartMatchCommand).
+		_enter_debug_setup(gifts_root)
+		return
+
 	# Presentation вече е bind-нат — безопасно да подадем StartMatchCommand.
 	_session.begin()
 
@@ -102,6 +130,125 @@ func _wire_ui() -> void:
 	_presenter.results_requested.connect(_on_results_requested)
 	_session.invariant_violated.connect(_on_invariant_violated)
 	_update_turn_label(_session.get_state())
+
+
+# ── Debug инструментариум (само при DebugMode.is_authorized) ──────────────────
+
+## Влиза в режим подредба и свързва debug панелите. begin() се вика чак при
+## натиснат „Старт" (_on_debug_start_requested).
+func _enter_debug_setup(gifts_root: Node2D) -> void:
+	_debug_setup = DebugScenarioSetup.new()
+	_debug_setup.name = "DebugScenarioSetup"
+	add_child(_debug_setup)
+	_debug_setup.start_requested.connect(_on_debug_start_requested)
+	_debug_setup.enter(_board, _pawn_view_map(), gifts_root)
+
+	for i in _debug_rolls.get_child_count():
+		var roll_button := _debug_rolls.get_child(i) as Button
+		if roll_button != null:
+			roll_button.pressed.connect(_on_debug_roll_pressed.bind(i + 1))
+
+	for i in _debug_power_ups.get_child_count():
+		var power_up_button := _debug_power_ups.get_child(i) as Button
+		if power_up_button != null and i < PowerUpId.ALL.size():
+			power_up_button.pressed.connect(
+					_on_debug_power_up_pressed.bind(PowerUpId.ALL[i]))
+
+	_debug_mode_pawns.pressed.connect(_on_debug_mode_pressed.bind(DebugScenarioSetup.Mode.PAWNS))
+	_debug_mode_gifts.pressed.connect(_on_debug_mode_pressed.bind(DebugScenarioSetup.Mode.GIFTS))
+	_debug_start_button.pressed.connect(_on_debug_start_requested)
+	_debug_clear_button.pressed.connect(_on_debug_clear_pressed)
+	_dice_button.disabled = true
+
+
+## StartMatchCommand изгражда GameState от нулата (GameEngine._apply_start_match),
+## затова подредбата се прилага СЛЕД begin(), синхронно в същия call stack —
+## преди AI таймер да е успял да реагира.
+func _on_debug_start_requested() -> void:
+	if _debug_setup == null or not _debug_setup.is_active():
+		return
+
+	_session.begin()
+	var state: GameState = _session.get_state()
+
+	if not _debug_setup.apply_to_state(state):
+		# Частично приложената подредба не се чисти ръчно: повторно натискане на
+		# „Старт" вика begin() отново, а StartMatchCommand изгражда ново чисто
+		# състояние, върху което намеренията се прилагат наново.
+		_debug_setup_status.text = "Невалидна подредба: %s" % _debug_setup.get_last_error()
+		push_warning("DebugScenarioSetup: %s" % _debug_setup.get_last_error())
+		return
+
+	# begin_player_turn е изчислил base_attempts_remaining при всички пионки в
+	# база — след подредбата се преизчислява. Ходът остава AWAITING_ROLL, а
+	# единственото легално действие там е хвърляне, затова вече излъченият
+	# awaiting_human_action prompt остава валиден.
+	TurnRules.new().begin_player_turn(
+			state, state.active_player_index, maxi(state.turn.turn_number, 1))
+
+	_debug_setup.exit()
+	_debug_setup_panel.visible = false
+	_dice_button.disabled = false
+
+	# clear_pawn_views() ПРЕДИ пресъздаването: _spawn_pawn_views освобождава
+	# старите PawnView-ове, а GamePresenter.register_pawn_view не проверява
+	# is_instance_valid — без това би пипнал вече освободени инстанции.
+	_presenter.clear_pawn_views()
+	_spawn_pawn_views(state)
+	_present_state_gifts(state)
+	_update_turn_label(state)
+
+
+## Показва подаръците от състоянието през нормалния snap път на binder-а.
+func _present_state_gifts(state: GameState) -> void:
+	var binder: EventViewBinder = _presenter.get_event_binder()
+	if binder == null:
+		return
+	for entry in state.gifts:
+		var gift := entry as GiftState
+		if gift != null:
+			binder.present(GiftSpawnedEvent.create_from_state(gift, 0))
+
+
+func _on_debug_roll_pressed(face: int) -> void:
+	if _scripted_rng == null:
+		return
+	var adapter := DebugDiceAdapter.create_authorized()
+	if adapter == null:
+		return
+	_scripted_rng.force_next_face(adapter.request_forced_face(face))
+
+
+func _on_debug_power_up_pressed(power_up_id: StringName) -> void:
+	if _scripted_rng == null:
+		return
+	_scripted_rng.force_next_power_up(power_up_id)
+
+
+func _on_debug_mode_pressed(mode: int) -> void:
+	if _debug_setup == null:
+		return
+	_debug_setup.set_mode(mode)
+	_debug_mode_pawns.button_pressed = mode == DebugScenarioSetup.Mode.PAWNS
+	_debug_mode_gifts.button_pressed = mode == DebugScenarioSetup.Mode.GIFTS
+
+
+func _on_debug_clear_pressed() -> void:
+	if _debug_setup == null:
+		return
+	_debug_setup.clear_arrangement(_session.get_state())
+	_debug_setup_status.text = "Подреди дъската, после Старт"
+
+
+## pawn_id → PawnView за всички живи пионки под $Pawns.
+func _pawn_view_map() -> Dictionary:
+	var result: Dictionary = {}
+	for seat_root in _pawns_root.get_children():
+		for child in seat_root.get_children():
+			var pawn := child as PawnView
+			if pawn != null:
+				result[pawn.pawn_id] = pawn
+	return result
 
 
 func _on_dice_button_pressed() -> void:

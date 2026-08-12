@@ -100,5 +100,74 @@ custom_minimum_size = Vector2(44, 32)
 layout_mode = 2
 text = "6"
 
+[node name="DebugPowerUps" type="HBoxContainer" parent="UI"]
+offset_left = 10.0
+offset_top = 127.0
+offset_right = 410.0
+offset_bottom = 163.0
+theme_override_constants/separation = 6
+
+[node name="PowerUp0" type="Button" parent="UI/DebugPowerUps"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+text = "Телепорт"
+
+[node name="PowerUp1" type="Button" parent="UI/DebugPowerUps"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+text = "Щит"
+
+[node name="PowerUp2" type="Button" parent="UI/DebugPowerUps"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+text = "Ход+"
+
+[node name="PowerUp3" type="Button" parent="UI/DebugPowerUps"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+text = "Бутане"
+
+[node name="DebugSetup" type="VBoxContainer" parent="UI"]
+offset_left = 10.0
+offset_top = 169.0
+offset_right = 410.0
+offset_bottom = 265.0
+theme_override_constants/separation = 6
+
+[node name="ModeRow" type="HBoxContainer" parent="UI/DebugSetup"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ModePawns" type="Button" parent="UI/DebugSetup/ModeRow"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+toggle_mode = true
+button_pressed = true
+text = "Пионки"
+
+[node name="ModeGifts" type="Button" parent="UI/DebugSetup/ModeRow"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+toggle_mode = true
+text = "Подаръци"
+
+[node name="ActionRow" type="HBoxContainer" parent="UI/DebugSetup"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="StartButton" type="Button" parent="UI/DebugSetup/ActionRow"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+text = "Старт"
+
+[node name="ClearButton" type="Button" parent="UI/DebugSetup/ActionRow"]
+custom_minimum_size = Vector2(88, 32)
+layout_mode = 2
+text = "Изчисти"
+
+[node name="SetupStatus" type="Label" parent="UI/DebugSetup"]
+layout_mode = 2
+text = "Подреди дъската, после Старт"
+
 [node name="Camera2D" type="Camera2D" parent="." unique_id=977336210]
 position = Vector2(508, 300)
