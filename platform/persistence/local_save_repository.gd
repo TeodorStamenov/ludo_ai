@@ -8,15 +8,14 @@ extends SaveRepository
 ##   profile.json        — ProfileData (#242)
 ##   active_match.json   — MatchSession snapshot / ActiveMatchSave (#244)
 ##
-## Атомичен запис: write to .tmp → remove old .json → rename .tmp → .json
+## Атомичен запис (#248): AtomicFileWriter.write() — .tmp → rename → .json.
 ## Всеки файл съдържа envelope {schema_version, saved_at, payload}.
 ##
 ## Envelope schema_version (SCHEMA_VERSION по-долу) версионира файловия
-## формат; той е независим от SettingsData.SCHEMA_VERSION /
-## ProfileData.SCHEMA_VERSION, които версионират съдържанието на payload-а
-## (#245) — settings/profile се мигрират чрез съответния модел при четене,
-## envelope несъответствие само се логва (форматът на файла не се е менял
-## още; ще получи собствена миграция, когато се наложи).
+## формат; четенето минава през SaveMigrationPipeline (#249), независимо от
+## SettingsData.SCHEMA_VERSION / ProfileData.SCHEMA_VERSION, които версионират
+## съдържанието на payload-а (#245) — settings/profile се мигрират чрез
+## съответния модел СЛЕД envelope миграцията.
 
 const SCHEMA_VERSION := 1
 
@@ -127,35 +126,18 @@ func record_match_result(summary: Dictionary) -> void:
 
 # --- Private helpers ---
 
+## Атомичен запис (#248, AtomicFileWriter) на envelope-а около payload-а.
 func _atomic_write(filename: String, payload: Dictionary) -> bool:
-	var tmp_name := filename.get_basename() + ".tmp"
 	var envelope := {
 		"schema_version": SCHEMA_VERSION,
 		"saved_at": Time.get_datetime_string_from_system(),
 		"payload": payload,
 	}
-	var file := FileAccess.open("user://" + tmp_name, FileAccess.WRITE)
-	if not file:
-		push_error("LocalSaveRepository: cannot write '%s' (error %d)" % [
-			tmp_name, FileAccess.get_open_error()])
-		return false
-	file.store_string(JSON.stringify(envelope, "\t"))
-	file = null
-
-	var dir := DirAccess.open("user://")
-	if not dir:
-		push_error("LocalSaveRepository: cannot open user:// dir")
-		return false
-	if dir.file_exists(filename):
-		dir.remove(filename)
-	var err := dir.rename(tmp_name, filename)
-	if err != OK:
-		push_error("LocalSaveRepository: rename '%s' -> '%s' failed: %d" % [
-			tmp_name, filename, err])
-		return false
-	return true
+	return AtomicFileWriter.write("user://" + filename, JSON.stringify(envelope, "\t"))
 
 
+## Чете envelope-а и връща мигрирания payload (#249, SaveMigrationPipeline) —
+## по-стар/pre-envelope формат вече не се губи тихо.
 func _read_payload(filename: String) -> Dictionary:
 	var path := "user://" + filename
 	if not FileAccess.file_exists(path):
@@ -171,11 +153,10 @@ func _read_payload(filename: String) -> Dictionary:
 	if not parsed is Dictionary:
 		push_error("LocalSaveRepository: malformed JSON in '%s'" % path)
 		return {}
-	var schema: int = parsed.get("schema_version", 0)
-	if schema != SCHEMA_VERSION:
-		push_warning("LocalSaveRepository: envelope schema_version mismatch in '%s' (got %d)" % [
-			filename, schema])
-	return parsed.get("payload", {})
+	if not SaveMigrationPipeline.is_envelope_supported(parsed):
+		push_warning(
+				"LocalSaveRepository: envelope schema_version е от бъдещето в '%s'" % filename)
+	return SaveMigrationPipeline.migrate_envelope(parsed)
 
 
 ## payload-ът минава през SettingsData.from_dict(), което мигрира по-стари

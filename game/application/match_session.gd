@@ -15,6 +15,8 @@ extends RefCounted
 ##   - след потвърждение прогресира автоматично: задейства AI или
 ##     сигнализира Presentation за очакван human input;
 ##   - прави snapshot след стабилна фаза (to_snapshot / get_last_stable_snapshot);
+##   - при инжектиран SaveRepository автоматично персистира този snapshot
+##     (active_match.json) и го изчиства при завършен мач (#250);
 ##   - възстановява се от snapshot без StartMatchCommand (restore_from_snapshot);
 ##   - притежава GameplayJournal за активния мач (replay / bug report / #132–#137);
 ##   - след приета команда проверява §12 инварианти (#142); при нарушение
@@ -55,6 +57,7 @@ var _command_bus: CommandBus = null
 var _journal: GameplayJournal = null
 var _telemetry: TelemetrySink = null
 var _debug_match_buffer: DebugMatchBuffer = null
+var _save_repository: SaveRepository = null
 var _pending_sequence: int = -1
 var _active: bool = false
 var _last_stable_snapshot: Dictionary = {}
@@ -110,6 +113,15 @@ func begin() -> void:
 	receive_command(StartMatchCommand.new(_config))
 
 
+## Продължава прогреса след restore_from_snapshot() (#251). Вика се СЛЕД
+## bind-ване на Presentation — огледално на begin() спрямо prepare(). No-op
+## ако мачът вече е приключил (IN_PROGRESS проверката е станала в restore
+## и е записана в _active).
+func resume() -> void:
+	if _active:
+		_advance()
+
+
 ## Опционален TelemetrySink: при invariant violation пише bug report bundle (#143).
 func set_telemetry_sink(sink: TelemetrySink) -> void:
 	_telemetry = sink
@@ -127,6 +139,18 @@ func set_debug_match_buffer(buffer: DebugMatchBuffer) -> void:
 
 func get_debug_match_buffer() -> DebugMatchBuffer:
 	return _debug_match_buffer
+
+
+## Опционален SaveRepository: автоматичен snapshot на всяка стабилна фаза
+## (events_presented) + изчистване на active_match.json при завършен мач
+## (#250). null (по подразбиране) = без auto-save — извикващият сам решава
+## кога да пише user://active_match.json.
+func set_save_repository(repository: SaveRepository) -> void:
+	_save_repository = repository
+
+
+func get_save_repository() -> SaveRepository:
+	return _save_repository
 
 
 ## True ако мачът е спрян заради нарушен §12 инвариант (#142).
@@ -198,6 +222,11 @@ func receive_command(command: GameCommand) -> void:
 		var summary := _build_summary()
 		_archive_debug_match(summary)
 		_record_normal_match_summary(summary)
+		# Завършен мач не е "прекъснат" — active_match.json не бива да
+		# остане, иначе следващото стартиране би опитало да resume-не вече
+		# приключил мач (#250 / #251).
+		if _save_repository != null:
+			_save_repository.clear_match_snapshot()
 		match_finished.emit(summary)
 
 
@@ -210,8 +239,19 @@ func events_presented(sequence: int) -> void:
 		_event_queue.acknowledge(sequence)
 	_pending_sequence = -1
 	_last_stable_snapshot = to_snapshot()
+	_save_active_match_snapshot()
 	if _active:
 		_advance()
+
+
+## Персистира последния стабилен snapshot, ако е инжектиран SaveRepository
+## (#250). Стабилна фаза = Presentation е доиграл целия батч — нищо не е
+## mid-resolution. Не пише, ако мачът вече е приключил (_active вече false
+## по това време — виж receive_command._is_match_over).
+func _save_active_match_snapshot() -> void:
+	if _save_repository == null or not _active:
+		return
+	_save_repository.save_match_snapshot(_last_stable_snapshot)
 
 
 func _advance() -> void:
@@ -355,7 +395,12 @@ static func is_snapshot_valid(snapshot: Dictionary) -> bool:
 ## Възстановява MatchSession от snapshot payload (§5.2 / §9 / #130).
 ## Без StartMatchCommand — запазва GameState, RNG и command_sequence.
 ## При невалиден snapshot връща false и не мутира session (§12).
-## След успех: стабилна фаза (без presentation pending); при IN_PROGRESS вика _advance().
+## След успех: стабилна фаза (без presentation pending). НЕ вика _advance() —
+## извикващият трябва да викне resume() СЛЕД bind-ване на Presentation
+## (огледално на prepare()/begin() за create_unstarted(); #251 фикс: иначе
+## AI команда / awaiting_human_action от _advance() се излъчва преди
+## GameScreen да е свързал presenter-а/UI-то и се губи безследно —
+## _pending_sequence остава завинаги зает и мачът замръзва).
 func restore_from_snapshot(
 		snapshot: Dictionary,
 		engine: GameEngine = null,
@@ -389,8 +434,6 @@ func restore_from_snapshot(
 
 	_setup_command_bus()
 	_begin_journal()
-	if _active:
-		_advance()
 	return true
 
 

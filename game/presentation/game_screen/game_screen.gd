@@ -22,6 +22,10 @@ extends Node
 ## MatchSession.begin() след GamePresenter.bind() — иначе първият
 ## MatchStarted/TurnChanged батч няма абонат (MatchSession.start() го излъчва
 ## синхронно).
+##
+## #251: _ready() първо проверява за запазен active_match.json
+## (SaveRepository.has_match_snapshot) и продължава от него (_resume_match),
+## преди да падне към нов мач (start_match).
 
 const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 
@@ -45,6 +49,8 @@ var _session: MatchSession = null
 var _action_log: MatchActionLog = null
 ## animal_id → AnimalDefinition (content/animals/*.tres, #233).
 var _animals := AnimalRegistry.new()
+## Auto-save на активния мач (#250) + resume при старт (#251).
+var _save_repository: SaveRepository = LocalSaveRepository.new()
 ## Debug-only: подменя зара / power-up-а. null извън debug build.
 var _scripted_rng: ScriptedRandomSource = null
 ## Debug-only: визуална подредба на дъската преди старт. null извън debug build.
@@ -61,15 +67,14 @@ func _ready() -> void:
 				Node.PROCESS_MODE_INHERIT if debug_enabled
 				else Node.PROCESS_MODE_DISABLED)
 
+	if _try_resume_active_match():
+		return
 	start_match(_default_match_config())
 
 
 ## Единствен вход отвън (§6). AppFlow/MatchSetup ще викат това с истински config.
 func start_match(config: MatchConfig) -> void:
 	var factory := MatchFactory.new()
-	# Темата е presentation-only (#234) — BoardThemeRegistry пада към
-	# ThemeId.DEFAULT, ако config.theme_id все още няма собствен .tres.
-	_board.theme_id = config.theme_id
 	# В debug build gameplay случайността минава през ScriptedRandomSource, за
 	# да могат бутоните да заредят конкретен зар / power-up. Обвитият източник
 	# остава детерминираният seeded RNG, така че мачът е възпроизводим.
@@ -77,6 +82,65 @@ func start_match(config: MatchConfig) -> void:
 			ScriptedRandomSource.new(config.create_random_source())
 			if DebugMode.is_authorized() else null)
 	_session = factory.create_unstarted(config, null, _scripted_rng)
+	var gifts_root := _bind_session_presentation()
+
+	if DebugMode.is_authorized():
+		# begin() се отлага — първо подреждаме дъската, после Старт (виж
+		# _on_debug_start_requested за причината подредбата да се прилага
+		# СЛЕД StartMatchCommand).
+		_enter_debug_setup(gifts_root)
+		return
+
+	# Presentation вече е bind-нат — безопасно да подадем StartMatchCommand.
+	_session.begin()
+
+
+## #251: продължава прекъснат мач от запазен snapshot вместо да стартира нов.
+## Пропуска debug подредбата — мачът вече е в ход, няма какво да се подрежда.
+func _resume_match(snapshot: Dictionary) -> void:
+	var factory := MatchFactory.new()
+	_session = factory.create_from_snapshot(snapshot)
+	if _session == null:
+		push_error("GameScreen: create_from_snapshot неуспешен въпреки валиден snapshot")
+		start_match(_default_match_config())
+		return
+	_bind_session_presentation()
+	_debug_setup_panel.visible = false
+	# resume() (не begin() — StartMatchCommand би презаписал прогреса от
+	# нулата) вика _advance() СЕГА, след като Presentation вече е свързан.
+	# Ако се извика по-рано (вътре в restore_from_snapshot), AI командата /
+	# awaiting_human_action се излъчват преди някой да слуша и се губят
+	# безследно — мачът замръзва трайно (_pending_sequence never acked).
+	_session.resume()
+
+
+## #251: ако има запазен активен мач, продължава от него. Връща true ако е
+## продължил (тогава _ready() не бива да вика start_match() отгоре).
+func _try_resume_active_match() -> bool:
+	if not _save_repository.has_match_snapshot():
+		return false
+	var snapshot := _save_repository.load_match_snapshot()
+	if not MatchSession.is_snapshot_valid(snapshot):
+		push_warning("GameScreen: невалиден active_match.json — стартирам нов мач")
+		_save_repository.clear_match_snapshot()
+		return false
+	_resume_match(snapshot)
+	return true
+
+
+## Споделената презентационна обвръзка за фрешо стартирана И възстановена
+## сесия (#251) — _session трябва вече да е зададена. Връща gifts_root, за да
+## може start_match() да го подаде на debug подредбата (само за fresh старт).
+func _bind_session_presentation() -> Node2D:
+	# Темата е presentation-only (#234) — идва от match_config-а на сесията,
+	# еднакво за нов и възстановен мач; BoardThemeRegistry пада към
+	# ThemeId.DEFAULT, ако все още няма собствен .tres.
+	var match_config: MatchConfig = _session.get_state().match_config
+	if match_config != null:
+		_board.theme_id = match_config.theme_id
+
+	# Auto-save на всяка стабилна фаза + изчистване при край на мача (#250).
+	_session.set_save_repository(_save_repository)
 
 	_action_log = MatchActionLog.new()
 	_action_log.begin(_session.get_state().match_id)
@@ -106,16 +170,7 @@ func start_match(config: MatchConfig) -> void:
 
 	_spawn_pawn_views(_session.get_state())
 	_wire_ui()
-
-	if DebugMode.is_authorized():
-		# begin() се отлага — първо подреждаме дъската, после Старт (виж
-		# _on_debug_start_requested за причината подредбата да се прилага
-		# СЛЕД StartMatchCommand).
-		_enter_debug_setup(gifts_root)
-		return
-
-	# Presentation вече е bind-нат — безопасно да подадем StartMatchCommand.
-	_session.begin()
+	return gifts_root
 
 
 func _wire_ui() -> void:
