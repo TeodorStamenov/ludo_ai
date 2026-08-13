@@ -4,19 +4,18 @@ extends Node2D
 ## Визуална дъска от BoardDefinition (docs/V1_ARCHITECTURE.md §6.2).
 ##
 ## Строи геометрията от BoardDefinition.cells; позиции чрез CellPositionMap.
-## Текстурите са временен CHIP mapping до BoardThemeDefinition.
+## Текстурите идват от BoardThemeRegistry (content/themes/*.tres, #234) —
+## текущата дъска е съдържанието на "jungle" темата (ThemeId.DEFAULT).
 ## Не пази текущ играч, зар, маршрути или правила.
-
-const CHIP_RED := "res://rss/CHIP/07.png"
-const CHIP_GREEN := "res://rss/CHIP/03.png"
-const CHIP_YELLOW := "res://rss/CHIP/02.png"
-const CHIP_CYAN := "res://rss/CHIP/04.png"
-const CHIP_ORANGE := "res://rss/CHIP/01.png"
-const CHIP_PURPLE := "res://rss/CHIP/05.png"
 
 @export var board_scale: float = 0.5:
 	set(value):
 		board_scale = value
+		_build_board()
+
+@export var theme_id: StringName = ThemeId.DEFAULT:
+	set(value):
+		theme_id = value
 		_build_board()
 
 @export var rebuild_board: bool = false:
@@ -31,6 +30,8 @@ var _cell_owners: Dictionary = {}
 var _cell_nodes: Dictionary = {}
 ## Пълен cell_id → локална изометрична позиция (15×15).
 var _cell_positions: CellPositionMap = CellPositionMap.new(0.5)
+## theme_id → BoardThemeDefinition (content/themes/*.tres).
+var _themes := BoardThemeRegistry.new()
 
 
 func _ready() -> void:
@@ -118,38 +119,26 @@ func _rebuild_cell_owners() -> void:
 			_cell_owners[StringName(cell)] = player_id
 
 
-func _texture_path_for_cell(cell: CellDefinition) -> String:
+func _texture_for_cell(cell: CellDefinition, theme: BoardThemeDefinition) -> Texture2D:
+	if theme == null:
+		return null
 	match cell.cell_type:
 		CellType.CENTER:
-			return CHIP_RED
-		CellType.PATH:
-			return CHIP_PURPLE
+			return theme.center_texture
 		CellType.BASE, CellType.SPAWN, CellType.HOME:
-			return _player_chip_path(_cell_owners.get(cell.cell_id, &"") as StringName)
+			var owner_texture := theme.texture_for_player(
+					_cell_owners.get(cell.cell_id, &"") as StringName)
+			return owner_texture if owner_texture != null else theme.path_texture
 		_:
-			return CHIP_PURPLE
+			return theme.path_texture
 
 
-func _player_chip_path(player_id: StringName) -> String:
-	match player_id:
-		PlayerId.GREEN:
-			return CHIP_GREEN
-		PlayerId.ORANGE:
-			return CHIP_ORANGE
-		PlayerId.YELLOW:
-			return CHIP_YELLOW
-		PlayerId.CYAN:
-			return CHIP_CYAN
-		_:
-			return CHIP_PURPLE
-
-
-func _add_tile(texture_path: String, cell: CellDefinition, parent_node: Node) -> Sprite2D:
+func _add_tile(texture: Texture2D, cell: CellDefinition, parent_node: Node) -> Sprite2D:
 	var cell_id: StringName = cell.cell_id
 	var sprite := Sprite2D.new()
 	sprite.name = String(cell_id)
 	sprite.set_meta(&"cell_id", cell_id)
-	sprite.texture = load(texture_path)
+	sprite.texture = texture
 	sprite.position = _cell_positions.position_of(cell_id)
 	sprite.scale = Vector2(board_scale, board_scale)
 	sprite.centered = true
@@ -201,5 +190,9 @@ func _build_board() -> void:
 	_ensure_board_definition()
 	_cell_positions.rebuild(board_scale)
 
+	var theme: BoardThemeDefinition = _themes.definition_for_or_default(theme_id)
+	if theme == null:
+		push_error("BoardView: няма нито една заредена тема (theme_id='%s')" % theme_id)
+		return
 	for cell in _sorted_cells():
-		_add_tile(_texture_path_for_cell(cell), cell, tiles_node)
+		_add_tile(_texture_for_cell(cell, theme), cell, tiles_node)

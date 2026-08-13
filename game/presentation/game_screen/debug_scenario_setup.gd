@@ -37,9 +37,6 @@ var _active: bool = false
 var _mode: int = Mode.PAWNS
 var _selected_pawn_id: StringName = &""
 var _last_error: String = ""
-## Клик върху пионка идва през Area2D (input фаза) и би стигнал и до
-## _unhandled_input — този флаг спира второто обработване.
-var _consume_next_click: bool = false
 
 ## pawn_id (StringName) → cell_id (StringName)
 var _pawn_cells: Dictionary = {}
@@ -70,10 +67,6 @@ func enter(board: BoardView, pawn_views: Dictionary, gifts_root: Node2D) -> void
 	_mode = Mode.PAWNS
 	_selected_pawn_id = &""
 	_last_error = ""
-	for pawn_view in _pawn_views.values():
-		var pawn := pawn_view as PawnView
-		if pawn != null and not pawn.clicked.is_connected(_on_pawn_clicked):
-			pawn.clicked.connect(_on_pawn_clicked)
 	set_process_unhandled_input(true)
 
 
@@ -82,10 +75,6 @@ func exit() -> void:
 	_active = false
 	_clear_selection()
 	set_process_unhandled_input(false)
-	for pawn_view in _pawn_views.values():
-		var pawn := pawn_view as PawnView
-		if pawn != null and pawn.clicked.is_connected(_on_pawn_clicked):
-			pawn.clicked.disconnect(_on_pawn_clicked)
 	_free_gift_previews()
 
 
@@ -164,15 +153,28 @@ func _apply_pawn(state: GameState, pawn_id: StringName, cell_id: StringName) -> 
 
 
 # ── Вход ──────────────────────────────────────────────────────────────────────
+#
+# Едно-единствено _unhandled_input, без PawnView.clicked/Area2D: physics
+# picking (Area2D.input_event) и _unhandled_input вървят по различни,
+# несинхронизирани тактове в Godot (picking е на физическия тик,
+# unhandled_input — веднага при събитието). Опит да се комбинират двата
+# (флаг „consume следващия клик") гасеше грешния клик, защото флагът се
+# вдигаше след като съответният unhandled_input вече беше минал — кликът
+# върху пионка не правеше нищо, а следващият (по клетката) биваше изяден.
+# Затова и селекцията на пионка, и посочването на клетка минават оттук.
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _active or _board == null:
 		return
 	if not _is_primary_press(event):
 		return
-	if _consume_next_click:
-		_consume_next_click = false
-		return
+
+	if _mode == Mode.PAWNS:
+		var pawn_id := _pawn_under_pointer()
+		if pawn_id != &"":
+			_select_pawn(pawn_id)
+			get_viewport().set_input_as_handled()
+			return
 
 	var cell_id := _cell_under_pointer()
 	if cell_id == &"":
@@ -184,13 +186,31 @@ func _unhandled_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 
-func _on_pawn_clicked(pawn: PawnView) -> void:
-	if not _active or _mode != Mode.PAWNS or pawn == null:
-		return
-	_consume_next_click = true
+func _select_pawn(pawn_id: StringName) -> void:
 	_clear_selection()
-	_selected_pawn_id = pawn.pawn_id
-	pawn.set_selected(true)
+	_selected_pawn_id = pawn_id
+	var pawn := _pawn_views.get(pawn_id) as PawnView
+	if pawn != null and is_instance_valid(pawn):
+		pawn.set_selected(true)
+
+
+## Най-близката пионка до показалеца в рамките на прага, или &"" ако няма.
+## Радиусът е по-малък от този на клетка (cell_id_at_local_position), за да
+## не поглъща кликове по съседни празни клетки.
+func _pawn_under_pointer() -> StringName:
+	var mouse_global: Vector2 = _board.get_global_mouse_position()
+	var limit: float = _board.get_tile_display_width() * 0.4
+	var best_id: StringName = &""
+	var best_distance_sq: float = limit * limit
+	for key in _pawn_views.keys():
+		var pawn := _pawn_views[key] as PawnView
+		if pawn == null or not is_instance_valid(pawn):
+			continue
+		var distance_sq: float = pawn.global_position.distance_squared_to(mouse_global)
+		if distance_sq <= best_distance_sq:
+			best_distance_sq = distance_sq
+			best_id = StringName(str(key))
+	return best_id
 
 
 func _cell_under_pointer() -> StringName:

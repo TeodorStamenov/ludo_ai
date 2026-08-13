@@ -100,72 +100,72 @@ custom_minimum_size = Vector2(44, 32)
 layout_mode = 2
 text = "6"
 
-[node name="DebugPowerUps" type="HBoxContainer" parent="UI"]
+[node name="DebugPowerUps" type="HBoxContainer" parent="UI" unique_id=651770922]
 offset_left = 10.0
 offset_top = 127.0
 offset_right = 410.0
 offset_bottom = 163.0
 theme_override_constants/separation = 6
 
-[node name="PowerUp0" type="Button" parent="UI/DebugPowerUps"]
+[node name="PowerUp0" type="Button" parent="UI/DebugPowerUps" unique_id=719821483]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 text = "Телепорт"
 
-[node name="PowerUp1" type="Button" parent="UI/DebugPowerUps"]
+[node name="PowerUp1" type="Button" parent="UI/DebugPowerUps" unique_id=1581905710]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 text = "Щит"
 
-[node name="PowerUp2" type="Button" parent="UI/DebugPowerUps"]
+[node name="PowerUp2" type="Button" parent="UI/DebugPowerUps" unique_id=2064282528]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 text = "Ход+"
 
-[node name="PowerUp3" type="Button" parent="UI/DebugPowerUps"]
+[node name="PowerUp3" type="Button" parent="UI/DebugPowerUps" unique_id=158614651]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 text = "Бутане"
 
-[node name="DebugSetup" type="VBoxContainer" parent="UI"]
+[node name="DebugSetup" type="VBoxContainer" parent="UI" unique_id=660535978]
 offset_left = 10.0
 offset_top = 169.0
 offset_right = 410.0
 offset_bottom = 265.0
 theme_override_constants/separation = 6
 
-[node name="ModeRow" type="HBoxContainer" parent="UI/DebugSetup"]
+[node name="ModeRow" type="HBoxContainer" parent="UI/DebugSetup" unique_id=1208516849]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="ModePawns" type="Button" parent="UI/DebugSetup/ModeRow"]
+[node name="ModePawns" type="Button" parent="UI/DebugSetup/ModeRow" unique_id=1193127700]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 toggle_mode = true
 button_pressed = true
 text = "Пионки"
 
-[node name="ModeGifts" type="Button" parent="UI/DebugSetup/ModeRow"]
+[node name="ModeGifts" type="Button" parent="UI/DebugSetup/ModeRow" unique_id=246681594]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 toggle_mode = true
 text = "Подаръци"
 
-[node name="ActionRow" type="HBoxContainer" parent="UI/DebugSetup"]
+[node name="ActionRow" type="HBoxContainer" parent="UI/DebugSetup" unique_id=1159759226]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="StartButton" type="Button" parent="UI/DebugSetup/ActionRow"]
+[node name="StartButton" type="Button" parent="UI/DebugSetup/ActionRow" unique_id=1595033795]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 text = "Старт"
 
-[node name="ClearButton" type="Button" parent="UI/DebugSetup/ActionRow"]
+[node name="ClearButton" type="Button" parent="UI/DebugSetup/ActionRow" unique_id=1791267563]
 custom_minimum_size = Vector2(88, 32)
 layout_mode = 2
 text = "Изчисти"
 
-[node name="SetupStatus" type="Label" parent="UI/DebugSetup"]
+[node name="SetupStatus" type="Label" parent="UI/DebugSetup" unique_id=1658326725]
 layout_mode = 2
 text = "Подреди дъската, после Старт"
 

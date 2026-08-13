@@ -67,6 +67,9 @@ func _ready() -> void:
 ## Единствен вход отвън (§6). AppFlow/MatchSetup ще викат това с истински config.
 func start_match(config: MatchConfig) -> void:
 	var factory := MatchFactory.new()
+	# Темата е presentation-only (#234) — BoardThemeRegistry пада към
+	# ThemeId.DEFAULT, ако config.theme_id все още няма собствен .tres.
+	_board.theme_id = config.theme_id
 	# В debug build gameplay случайността минава през ScriptedRandomSource, за
 	# да могат бутоните да заредят конкретен зар / power-up. Обвитият източник
 	# остава детерминираният seeded RNG, така че мачът е възпроизводим.
