@@ -1,32 +1,28 @@
 class_name LocalSaveRepository
 extends SaveRepository
-## Файлово базирана имплементация на всички persistence порти
+## Файлово базирана имплементация на SaveRepository
 ## (docs/V1_ARCHITECTURE.md, раздели 9, 10).
 ##
 ## Управлява три JSON файла в user://:
-##   settings.json      — звук, музика, haptics, auto-move, colorblind
-##   profile.json       — XP, unlocks, campaign progress, статистика
-##   active_match.json  — snapshot за resume след прекъсване
+##   settings.json      — SettingsData (#243)
+##   profile.json        — ProfileData (#242)
+##   active_match.json   — MatchSession snapshot / ActiveMatchSave (#244)
 ##
 ## Атомичен запис: write to .tmp → remove old .json → rename .tmp → .json
-## Всеки файл съдържа schema_version, saved_at и payload.
+## Всеки файл съдържа envelope {schema_version, saved_at, payload}.
 ##
-## В допълнение към SaveRepository имплементира методите на
-## SettingsRepository и ProgressRepository (duck-typed от application слоя).
+## Envelope schema_version (SCHEMA_VERSION по-долу) версионира файловия
+## формат; той е независим от SettingsData.SCHEMA_VERSION /
+## ProfileData.SCHEMA_VERSION, които версионират съдържанието на payload-а
+## (#245) — settings/profile се мигрират чрез съответния модел при четене,
+## envelope несъответствие само се логва (форматът на файла не се е менял
+## още; ще получи собствена миграция, когато се наложи).
 
 const SCHEMA_VERSION := 1
 
 const _SETTINGS_FILE := "settings.json"
 const _PROFILE_FILE  := "profile.json"
 const _MATCH_FILE    := "active_match.json"
-
-const _SETTINGS_DEFAULTS := {
-	"music_volume": 1.0,
-	"sfx_volume": 1.0,
-	"haptics_enabled": true,
-	"auto_move_single": true,
-	"colorblind_mode": false,
-}
 
 # --- SaveRepository: settings ---
 
@@ -35,10 +31,11 @@ func save_settings(data: Dictionary) -> bool:
 
 
 func load_settings() -> Dictionary:
-	var payload := _read_payload(_SETTINGS_FILE)
-	if payload.is_empty():
-		return _SETTINGS_DEFAULTS.duplicate()
-	return _merge_with_defaults(payload, _SETTINGS_DEFAULTS)
+	return _load_settings_data().to_dict()
+
+
+func get_default_settings() -> Dictionary:
+	return SettingsData.create_default().to_dict()
 
 
 # --- SaveRepository: profile ---
@@ -48,7 +45,7 @@ func save_profile(data: Dictionary) -> bool:
 
 
 func load_profile() -> Dictionary:
-	return _read_payload(_PROFILE_FILE)
+	return _load_profile_data().to_dict()
 
 
 # --- SaveRepository: match snapshot ---
@@ -79,61 +76,53 @@ func has_match_snapshot() -> bool:
 	return FileAccess.file_exists("user://" + _MATCH_FILE)
 
 
-# --- SettingsRepository interface (duck-typed) ---
-
-func get_default_settings() -> Dictionary:
-	return _SETTINGS_DEFAULTS.duplicate()
-
-
-# --- ProgressRepository interface (duck-typed) ---
+# --- SaveRepository: профил (XP / unlocks / статистика) ---
 
 func get_xp() -> int:
-	return _profile_get("xp", 0)
+	return _load_profile_data().xp
 
 
 func add_xp(amount: int) -> int:
 	var profile := _load_profile_data()
-	profile["xp"] = profile.get("xp", 0) + amount
-	save_profile(profile)
-	return profile["xp"]
+	profile.add_xp(amount)
+	save_profile(profile.to_dict())
+	return profile.xp
 
 
 func get_unlocks() -> Array:
-	return _profile_get("unlocks", [])
+	var result: Array = []
+	for item_id in _load_profile_data().unlocks:
+		result.append(String(item_id))
+	return result
 
 
 func unlock(item_id: StringName) -> void:
 	var profile := _load_profile_data()
-	var unlocks: Array = profile.get("unlocks", [])
-	var key := str(item_id)
-	if key not in unlocks:
-		unlocks.append(key)
-		profile["unlocks"] = unlocks
-		save_profile(profile)
+	if profile.has_unlock(item_id):
+		return
+	profile.add_unlock(item_id)
+	save_profile(profile.to_dict())
 
 
 func is_unlocked(item_id: StringName) -> bool:
-	return str(item_id) in get_unlocks()
+	return _load_profile_data().has_unlock(item_id)
 
 
 func get_statistics() -> Dictionary:
-	return _profile_get("statistics", _empty_statistics())
+	var profile := _load_profile_data()
+	return {
+		"matches_played": profile.matches_played,
+		"matches_won": profile.matches_won,
+		"gifts_collected": profile.gifts_collected,
+		"pawns_captured": profile.pawns_captured,
+		"pawns_finished": profile.pawns_finished,
+	}
 
 
 func record_match_result(summary: Dictionary) -> void:
 	var profile := _load_profile_data()
-	var stats: Dictionary = get_statistics()
-	stats["matches_played"] = stats.get("matches_played", 0) + 1
-	if summary.get("rank", 999) == 1:
-		stats["matches_won"] = stats.get("matches_won", 0) + 1
-	stats["gifts_collected"] = (stats.get("gifts_collected", 0)
-		+ summary.get("gifts_collected", 0))
-	stats["pawns_captured"] = (stats.get("pawns_captured", 0)
-		+ summary.get("pawns_captured", 0))
-	stats["pawns_finished"] = (stats.get("pawns_finished", 0)
-		+ summary.get("pawns_finished", 0))
-	profile["statistics"] = stats
-	save_profile(profile)
+	profile.record_match_result(summary)
+	save_profile(profile.to_dict())
 
 
 # --- Private helpers ---
@@ -184,34 +173,24 @@ func _read_payload(filename: String) -> Dictionary:
 		return {}
 	var schema: int = parsed.get("schema_version", 0)
 	if schema != SCHEMA_VERSION:
-		push_warning("LocalSaveRepository: schema_version mismatch in '%s' (got %d)" % [
+		push_warning("LocalSaveRepository: envelope schema_version mismatch in '%s' (got %d)" % [
 			filename, schema])
 	return parsed.get("payload", {})
 
 
-func _load_profile_data() -> Dictionary:
+## payload-ът минава през SettingsData.from_dict(), което мигрира по-стари
+## schema_version и попълва липсващи полета от defaults (#245).
+func _load_settings_data() -> SettingsData:
+	var payload := _read_payload(_SETTINGS_FILE)
+	if payload.is_empty():
+		return SettingsData.create_default()
+	return SettingsData.from_dict(payload)
+
+
+## payload-ът минава през ProfileData.from_dict(), което мигрира по-стари
+## schema_version и попълва липсващи полета с нулеви стойности (#245).
+func _load_profile_data() -> ProfileData:
 	var payload := _read_payload(_PROFILE_FILE)
 	if payload.is_empty():
-		return {"xp": 0, "unlocks": [], "statistics": _empty_statistics()}
-	return payload
-
-
-func _profile_get(key: String, default_val: Variant) -> Variant:
-	return _load_profile_data().get(key, default_val)
-
-
-func _merge_with_defaults(data: Dictionary, defaults: Dictionary) -> Dictionary:
-	var result := defaults.duplicate()
-	for key: String in data:
-		result[key] = data[key]
-	return result
-
-
-func _empty_statistics() -> Dictionary:
-	return {
-		"matches_played": 0,
-		"matches_won": 0,
-		"gifts_collected": 0,
-		"pawns_captured": 0,
-		"pawns_finished": 0,
-	}
+		return ProfileData.new()
+	return ProfileData.from_dict(payload)

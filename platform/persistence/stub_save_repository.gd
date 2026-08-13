@@ -1,17 +1,10 @@
 class_name StubSaveRepository
 extends SaveRepository
-## In-memory имплементация на SaveRepository + SettingsRepository +
-## ProgressRepository за използване в тестове.
+## In-memory имплементация на SaveRepository за използване в тестове.
 ##
 ## Не пише нищо на диск. Данните живеят само в паметта за времето на теста.
-
-const _SETTINGS_DEFAULTS := {
-	"music_volume": 1.0,
-	"sfx_volume": 1.0,
-	"haptics_enabled": true,
-	"auto_move_single": true,
-	"colorblind_mode": false,
-}
+## Ползва SettingsData/ProfileData за същата defaults/migrate логика като
+## LocalSaveRepository (#242 / #243 / #245), без файлов I/O.
 
 var _settings: Dictionary = {}
 var _profile: Dictionary = {}
@@ -28,11 +21,12 @@ func save_settings(data: Dictionary) -> bool:
 
 func load_settings() -> Dictionary:
 	if _settings.is_empty():
-		return _SETTINGS_DEFAULTS.duplicate()
-	var result := _SETTINGS_DEFAULTS.duplicate()
-	for key: String in _settings:
-		result[key] = _settings[key]
-	return result
+		return SettingsData.create_default().to_dict()
+	return SettingsData.from_dict(_settings).to_dict()
+
+
+func get_default_settings() -> Dictionary:
+	return SettingsData.create_default().to_dict()
 
 
 # --- SaveRepository: profile ---
@@ -43,7 +37,7 @@ func save_profile(data: Dictionary) -> bool:
 
 
 func load_profile() -> Dictionary:
-	return _profile.duplicate(true)
+	return _load_profile_data().to_dict()
 
 
 # --- SaveRepository: match snapshot ---
@@ -68,58 +62,56 @@ func has_match_snapshot() -> bool:
 	return _has_snapshot
 
 
-# --- SettingsRepository interface (duck-typed) ---
-
-func get_default_settings() -> Dictionary:
-	return _SETTINGS_DEFAULTS.duplicate()
-
-
-# --- ProgressRepository interface (duck-typed) ---
+# --- SaveRepository: профил (XP / unlocks / статистика) ---
 
 func get_xp() -> int:
-	return _profile.get("xp", 0)
+	return _load_profile_data().xp
 
 
 func add_xp(amount: int) -> int:
-	_profile["xp"] = _profile.get("xp", 0) + amount
-	return _profile["xp"]
+	var profile := _load_profile_data()
+	profile.add_xp(amount)
+	_profile = profile.to_dict()
+	return profile.xp
 
 
 func get_unlocks() -> Array:
-	return _profile.get("unlocks", [])
+	var result: Array = []
+	for item_id in _load_profile_data().unlocks:
+		result.append(String(item_id))
+	return result
 
 
 func unlock(item_id: StringName) -> void:
-	var unlocks: Array = _profile.get("unlocks", [])
-	var key := str(item_id)
-	if key not in unlocks:
-		unlocks.append(key)
-		_profile["unlocks"] = unlocks
+	var profile := _load_profile_data()
+	if profile.has_unlock(item_id):
+		return
+	profile.add_unlock(item_id)
+	_profile = profile.to_dict()
 
 
 func is_unlocked(item_id: StringName) -> bool:
-	return str(item_id) in get_unlocks()
+	return _load_profile_data().has_unlock(item_id)
 
 
 func get_statistics() -> Dictionary:
-	return _profile.get("statistics", {
-		"matches_played": 0,
-		"matches_won": 0,
-		"gifts_collected": 0,
-		"pawns_captured": 0,
-		"pawns_finished": 0,
-	})
+	var profile := _load_profile_data()
+	return {
+		"matches_played": profile.matches_played,
+		"matches_won": profile.matches_won,
+		"gifts_collected": profile.gifts_collected,
+		"pawns_captured": profile.pawns_captured,
+		"pawns_finished": profile.pawns_finished,
+	}
 
 
 func record_match_result(summary: Dictionary) -> void:
-	var stats: Dictionary = get_statistics()
-	stats["matches_played"] = stats.get("matches_played", 0) + 1
-	if summary.get("rank", 999) == 1:
-		stats["matches_won"] = stats.get("matches_won", 0) + 1
-	stats["gifts_collected"] = (stats.get("gifts_collected", 0)
-		+ summary.get("gifts_collected", 0))
-	stats["pawns_captured"] = (stats.get("pawns_captured", 0)
-		+ summary.get("pawns_captured", 0))
-	stats["pawns_finished"] = (stats.get("pawns_finished", 0)
-		+ summary.get("pawns_finished", 0))
-	_profile["statistics"] = stats
+	var profile := _load_profile_data()
+	profile.record_match_result(summary)
+	_profile = profile.to_dict()
+
+
+func _load_profile_data() -> ProfileData:
+	if _profile.is_empty():
+		return ProfileData.new()
+	return ProfileData.from_dict(_profile)

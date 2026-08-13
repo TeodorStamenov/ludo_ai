@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## Съдържа класирането на играчите и агрегирана статистика за мача.
 ## Произвежда се от MatchSession при MatchFinished и се подава към
-## Application слоя за XP изчисление, Results екран и ProgressRepository.
+## Application слоя за XP изчисление, Results екран и SaveRepository.record_match_result.
 ##
 ## Application „MatchSummary“ (#145) е Dictionary payload-ът от to_dict() /
 ## to_player_summary() плюс session метаданни (command_sequence) —
@@ -76,7 +76,7 @@ class PlayerStanding extends RefCounted:
 		return controller_type == MatchConfig.ControllerType.AI
 
 
-	## Flat Dictionary за ProgressRepository.record_match_result (платформен договор).
+	## Flat Dictionary за SaveRepository.record_match_result (платформен договор).
 	func to_progress_summary() -> Dictionary:
 		return {
 			"rank": rank,
@@ -311,7 +311,7 @@ func total_pawns_finished() -> int:
 	return total
 
 
-## Flat summary за ProgressRepository за даден играч; {} ако липсва.
+## Flat summary за SaveRepository.record_match_result за даден играч; {} ако липсва.
 func to_player_summary(player_id: StringName) -> Dictionary:
 	var standing := get_standing(player_id)
 	if standing == null:
