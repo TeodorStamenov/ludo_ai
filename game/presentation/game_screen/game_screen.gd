@@ -7,16 +7,17 @@ extends Node
 ##
 ## Поток:
 ##   AppFlow.navigate_to_game(config)
-##     → GameScreen._on_match_config_received(config)
-##     → MatchFactory.build(config)  → MatchSession
+##     → GameScreen._ready() чете app_flow.pending_match_config
+##     → start_match(config) → MatchFactory.create_unstarted(config) → MatchSession
 ##     → GamePresenter.bind(session)
 ##
 ## #177: свързва текущата ludo_game.tscn (Board/Pawns/UI/Camera2D — вече
 ## мигрирали към BoardView/PawnView/DiceView) към MatchSession + GamePresenter,
 ## вместо старата ръчна gameplay логика в scripts/ludo_game.gd.
 ##
-## AppFlow/MainMenu/MatchSetup не съществуват още (§8) — до тогава start_match()
-## приема хардкоднат default MatchConfig, за да остане екранът playable.
+## #287/#289/#290: AppFlow/MainMenu/MatchSetup вече съществуват. Без AppFlow
+## (пряко F6 върху тази сцена) start_match() пада към хардкоднат default
+## MatchConfig, за да остане екранът самостоятелно playable.
 ##
 ## Presentation gate (§3 / #177 фикс): MatchFactory.create_unstarted() +
 ## MatchSession.begin() след GamePresenter.bind() — иначе първият
@@ -26,6 +27,13 @@ extends Node
 ## #251: _ready() първо проверява за запазен active_match.json
 ## (SaveRepository.has_match_snapshot) и продължава от него (_resume_match),
 ## преди да падне към нов мач (start_match).
+##
+## #287/#288: ако `/root/AppFlow` е наличен (Bootstrap → AppFlow.navigate_to_game),
+## _save_repository/_animals/_telemetry_sink идват от него (споделени между
+## екраните), а не се строят наново тук; ако AppFlow е задал pending_match_config
+## (Match Setup path), той се ползва вместо resume-проверката/default config.
+## Без AppFlow (пряко F6 върху тази сцена в редактора) поведението е
+## непроменено — екранът остава самостоятелно playable.
 
 const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 
@@ -47,10 +55,15 @@ const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 var _presenter: GamePresenter = null
 var _session: MatchSession = null
 var _action_log: MatchActionLog = null
-## animal_id → AnimalDefinition (content/animals/*.tres, #233).
-var _animals := AnimalRegistry.new()
-## Auto-save на активния мач (#250) + resume при старт (#251).
-var _save_repository: SaveRepository = LocalSaveRepository.new()
+## animal_id → AnimalDefinition (content/animals/*.tres, #233). Взето от
+## AppFlow в _ready(), ако е наличен — иначе построено локално (#287).
+var _animals: AnimalRegistry = null
+## Auto-save на активния мач (#250) + resume при старт (#251). Взето от
+## AppFlow в _ready(), ако е наличен — иначе построено локално (#287).
+var _save_repository: SaveRepository = null
+## Bug report bundles / match summary log (#143/#145). null = без telemetry
+## (напр. самостоятелен run без AppFlow).
+var _telemetry_sink: TelemetrySink = null
 ## Debug-only: подменя зара / power-up-а. null извън debug build.
 var _scripted_rng: ScriptedRandomSource = null
 ## Debug-only: визуална подредба на дъската преди старт. null извън debug build.
@@ -67,12 +80,28 @@ func _ready() -> void:
 				Node.PROCESS_MODE_INHERIT if debug_enabled
 				else Node.PROCESS_MODE_DISABLED)
 
+	var app_flow := get_node_or_null(^"/root/AppFlow")
+	_save_repository = (
+			app_flow.save_repository if app_flow != null and app_flow.save_repository != null
+			else LocalSaveRepository.new())
+	_animals = (
+			app_flow.animal_registry if app_flow != null and app_flow.animal_registry != null
+			else AnimalRegistry.new())
+	_telemetry_sink = app_flow.telemetry_sink if app_flow != null else null
+
+	if app_flow != null and app_flow.pending_match_config != null:
+		var config: MatchConfig = app_flow.pending_match_config
+		app_flow.pending_match_config = null
+		start_match(config)
+		return
+
 	if _try_resume_active_match():
 		return
 	start_match(_default_match_config())
 
 
-## Единствен вход отвън (§6). AppFlow/MatchSetup ще викат това с истински config.
+## Единствен вход отвън (§6) — _ready() го вика с app_flow.pending_match_config
+## (реален config от Match Setup) или с _default_match_config() (standalone run).
 func start_match(config: MatchConfig) -> void:
 	var factory := MatchFactory.new()
 	# В debug build gameplay случайността минава през ScriptedRandomSource, за
@@ -141,6 +170,9 @@ func _bind_session_presentation() -> Node2D:
 
 	# Auto-save на всяка стабилна фаза + изчистване при край на мача (#250).
 	_session.set_save_repository(_save_repository)
+	# Bug report bundles / match summary log (#143/#145) — null извън AppFlow.
+	if _telemetry_sink != null:
+		_session.set_telemetry_sink(_telemetry_sink)
 
 	_action_log = MatchActionLog.new()
 	_action_log.begin(_session.get_state().match_id)

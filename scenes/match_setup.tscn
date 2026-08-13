@@ -1,0 +1,102 @@
+[gd_scene load_steps=2 format=3 uid="uid://match_setup_scene_01"]
+
+[ext_resource type="Script" path="res://game/presentation/menus/match_setup/match_setup.gd" id="1_match_setup"]
+
+[node name="MatchSetup" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_match_setup")
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.86, 0.9, 0.78, 1)
+
+[node name="Panel" type="VBoxContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -220.0
+offset_right = 220.0
+offset_bottom = 220.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Panel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+text = "Нова игра"
+
+[node name="PlayerCountRow" type="HBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PlayerCountLabel" type="Label" parent="Panel/PlayerCountRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(72, 0)
+text = "Играчи:"
+
+[node name="Count2Button" type="Button" parent="Panel/PlayerCountRow"]
+layout_mode = 2
+toggle_mode = true
+text = "2"
+
+[node name="Count3Button" type="Button" parent="Panel/PlayerCountRow"]
+layout_mode = 2
+toggle_mode = true
+text = "3"
+
+[node name="Count4Button" type="Button" parent="Panel/PlayerCountRow"]
+layout_mode = 2
+toggle_mode = true
+text = "4"
+
+[node name="ThemeRow" type="HBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ThemeLabel" type="Label" parent="Panel/ThemeRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(72, 0)
+text = "Тема:"
+
+[node name="ThemeOption" type="OptionButton" parent="Panel/ThemeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SeatsContainer" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ErrorLabel" type="Label" parent="Panel"]
+layout_mode = 2
+horizontal_alignment = 1
+modulate = Color(0.8, 0.2, 0.2, 1)
+text = ""
+
+[node name="ActionsRow" type="HBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="BackButton" type="Button" parent="Panel/ActionsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 48)
+size_flags_horizontal = 3
+text = "Назад"
+
+[node name="StartButton" type="Button" parent="Panel/ActionsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 48)
+size_flags_horizontal = 3
+text = "Старт"

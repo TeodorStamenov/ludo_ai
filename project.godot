@@ -11,9 +11,13 @@ config_version=5
 [application]
 
 config/name="LudoAI"
-run/main_scene="res://scenes/ludo_game.tscn"
+run/main_scene="res://scenes/bootstrap.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
+
+[autoload]
+
+AppFlow="*res://app/app_flow.gd"
 
 [editor_plugins]
 
