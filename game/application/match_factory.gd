@@ -61,7 +61,12 @@ func create_unstarted(
 
 ## Resume от MatchSession.to_snapshot() / SaveRepository.active_match payload (§9).
 ## Null при невалиден snapshot — без частична инициализация.
-func create_from_snapshot(snapshot: Dictionary) -> MatchSession:
+##
+## rng: опционален инжектиран източник (debug ScriptedRandomSource) — огледално
+## на create_unstarted(). MatchSession.restore_from_snapshot() синхронизира
+## подадения източник със запазения rng_state (state.restore_rng); при null
+## сам изгражда SeededRandomSource от snapshot-а, както преди.
+func create_from_snapshot(snapshot: Dictionary, rng: RandomSource = null) -> MatchSession:
 	if not MatchSession.is_snapshot_valid(snapshot):
 		push_error("MatchFactory.create_from_snapshot: невалиден snapshot")
 		return null
@@ -71,7 +76,6 @@ func create_from_snapshot(snapshot: Dictionary) -> MatchSession:
 		push_error("MatchFactory.create_from_snapshot: липсва валиден MatchConfig")
 		return null
 	var config: MatchConfig = state.match_config
-	var rng: RandomSource = state.create_random_source_from_state()
 	var engine: GameEngine = _engine if _engine != null else GameEngine.new()
 	var controllers := _build_controllers(config)
 	var session := MatchSession.new()

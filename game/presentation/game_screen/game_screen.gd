@@ -43,6 +43,7 @@ const PAWN_SCENE := preload("res://scenes/pawn.tscn")
 @onready var _dice_button: Button = $UI/DiceButton
 @onready var _dice_result: Label = $UI/DiceResult
 @onready var _turn_label: Label = $UI/TurnLabel
+@onready var _main_menu_button: Button = $UI/MainMenuButton
 @onready var _debug_rolls: HBoxContainer = $UI/DebugRolls
 @onready var _debug_power_ups: HBoxContainer = $UI/DebugPowerUps
 @onready var _debug_setup_panel: VBoxContainer = $UI/DebugSetup
@@ -64,6 +65,9 @@ var _save_repository: SaveRepository = null
 ## Bug report bundles / match summary log (#143/#145). null = без telemetry
 ## (напр. самостоятелен run без AppFlow).
 var _telemetry_sink: TelemetrySink = null
+## Взето от AppFlow autoload в _ready(). null извън AppFlow (напр. самостоятелен
+## F6 run) — тогава бутонът за главно меню е disabled, вместо да навигира.
+var _app_flow: Node = null
 ## Debug-only: подменя зара / power-up-а. null извън debug build.
 var _scripted_rng: ScriptedRandomSource = null
 ## Debug-only: визуална подредба на дъската преди старт. null извън debug build.
@@ -80,18 +84,19 @@ func _ready() -> void:
 				Node.PROCESS_MODE_INHERIT if debug_enabled
 				else Node.PROCESS_MODE_DISABLED)
 
-	var app_flow := get_node_or_null(^"/root/AppFlow")
+	_app_flow = get_node_or_null(^"/root/AppFlow")
 	_save_repository = (
-			app_flow.save_repository if app_flow != null and app_flow.save_repository != null
+			_app_flow.save_repository if _app_flow != null and _app_flow.save_repository != null
 			else LocalSaveRepository.new())
 	_animals = (
-			app_flow.animal_registry if app_flow != null and app_flow.animal_registry != null
+			_app_flow.animal_registry if _app_flow != null and _app_flow.animal_registry != null
 			else AnimalRegistry.new())
-	_telemetry_sink = app_flow.telemetry_sink if app_flow != null else null
+	_telemetry_sink = _app_flow.telemetry_sink if _app_flow != null else null
+	_main_menu_button.disabled = _app_flow == null
 
-	if app_flow != null and app_flow.pending_match_config != null:
-		var config: MatchConfig = app_flow.pending_match_config
-		app_flow.pending_match_config = null
+	if _app_flow != null and _app_flow.pending_match_config != null:
+		var config: MatchConfig = _app_flow.pending_match_config
+		_app_flow.pending_match_config = null
 		start_match(config)
 		return
 
@@ -128,13 +133,28 @@ func start_match(config: MatchConfig) -> void:
 ## Пропуска debug подредбата — мачът вече е в ход, няма какво да се подрежда.
 func _resume_match(snapshot: Dictionary) -> void:
 	var factory := MatchFactory.new()
-	_session = factory.create_from_snapshot(snapshot)
+	# Без това resume-нат мач губи debug forcing-а на зара/power-up-а (#292
+	# бъг): create_unstarted() го получава от start_match(), но
+	# create_from_snapshot() преди изобщо не приемаше инжектиран RNG, затова
+	# resume-натата сесия винаги ползваше гол SeededRandomSource — бутоните
+	# "1"–"6" не бяха дори свързани (виж _wire_debug_force_buttons по-долу).
+	_scripted_rng = ScriptedRandomSource.new() if DebugMode.is_authorized() else null
+	_session = factory.create_from_snapshot(snapshot, _scripted_rng)
 	if _session == null:
 		push_error("GameScreen: create_from_snapshot неуспешен въпреки валиден snapshot")
 		start_match(_default_match_config())
 		return
 	_bind_session_presentation()
 	_debug_setup_panel.visible = false
+	if DebugMode.is_authorized():
+		_wire_debug_force_buttons()
+	# _bind_session_presentation() пресъздава pawn views (_spawn_pawn_views), но
+	# не и gift views — GiftView-овете обикновено се появяват само през живи
+	# GiftSpawnedEvent-и по време на игра. При resume вече взетите подаръци от
+	# snapshot-а нямат такова събитие, затова трябва изрично да ги покажем
+	# (огледално на _present_state_gifts в debug flow-а, #293 бъг: подаръците
+	# изчезваха визуално след връщане в главното меню и обратно в мача).
+	_present_state_gifts(_session.get_state())
 	# resume() (не begin() — StartMatchCommand би презаписал прогреса от
 	# нулата) вика _advance() СЕГА, след като Presentation вече е свързан.
 	# Ако се извика по-рано (вътре в restore_from_snapshot), AI командата /
@@ -208,6 +228,8 @@ func _bind_session_presentation() -> Node2D:
 func _wire_ui() -> void:
 	if not _dice_button.pressed.is_connected(_on_dice_button_pressed):
 		_dice_button.pressed.connect(_on_dice_button_pressed)
+	if not _main_menu_button.pressed.is_connected(_on_main_menu_button_pressed):
+		_main_menu_button.pressed.connect(_on_main_menu_button_pressed)
 	if not _dice_view.dice_rolled.is_connected(_on_dice_rolled):
 		_dice_view.dice_rolled.connect(_on_dice_rolled)
 	# awaiting_human_action (и оттам state_view_changed/human_action_available)
@@ -233,6 +255,20 @@ func _enter_debug_setup(gifts_root: Node2D) -> void:
 	_debug_setup.start_requested.connect(_on_debug_start_requested)
 	_debug_setup.enter(_board, _pawn_view_map(), gifts_root)
 
+	_wire_debug_force_buttons()
+
+	_debug_mode_pawns.pressed.connect(_on_debug_mode_pressed.bind(DebugScenarioSetup.Mode.PAWNS))
+	_debug_mode_gifts.pressed.connect(_on_debug_mode_pressed.bind(DebugScenarioSetup.Mode.GIFTS))
+	_debug_start_button.pressed.connect(_on_debug_start_requested)
+	_debug_clear_button.pressed.connect(_on_debug_clear_pressed)
+	_dice_button.disabled = true
+
+
+## Свързва бутоните "1"–"6" и power-up-овете с _scripted_rng (#292 бъг) —
+## извиква се и от _enter_debug_setup (fresh старт) И от _resume_match
+## (продължен мач), тъй като _debug_rolls/_debug_power_ups остават видими
+## след DebugMode проверката в _ready(), независимо кой от двата пътя е взел.
+func _wire_debug_force_buttons() -> void:
 	for i in _debug_rolls.get_child_count():
 		var roll_button := _debug_rolls.get_child(i) as Button
 		if roll_button != null:
@@ -243,12 +279,6 @@ func _enter_debug_setup(gifts_root: Node2D) -> void:
 		if power_up_button != null and i < PowerUpId.ALL.size():
 			power_up_button.pressed.connect(
 					_on_debug_power_up_pressed.bind(PowerUpId.ALL[i]))
-
-	_debug_mode_pawns.pressed.connect(_on_debug_mode_pressed.bind(DebugScenarioSetup.Mode.PAWNS))
-	_debug_mode_gifts.pressed.connect(_on_debug_mode_pressed.bind(DebugScenarioSetup.Mode.GIFTS))
-	_debug_start_button.pressed.connect(_on_debug_start_requested)
-	_debug_clear_button.pressed.connect(_on_debug_clear_pressed)
-	_dice_button.disabled = true
 
 
 ## StartMatchCommand изгражда GameState от нулата (GameEngine._apply_start_match),
@@ -347,6 +377,13 @@ func _on_dice_button_pressed() -> void:
 
 func _on_dice_rolled(value: int) -> void:
 	_dice_result.text = str(value)
+
+
+## Мачът вече е auto-save-нат на всяка стабилна фаза (#250) — не се налага
+## изричен save тук; при връщане в играта resume-ва от последния snapshot.
+func _on_main_menu_button_pressed() -> void:
+	if _app_flow != null:
+		_app_flow.navigate_to_main_menu()
 
 
 func _on_session_events_published(sequence: int, events: Array) -> void:

@@ -38,6 +38,11 @@ theme_override_font_sizes/font_size = 32
 horizontal_alignment = 1
 text = "Cosy Ludo"
 
+[node name="ResumeGameButton" type="Button" parent="Panel"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 56)
+text = "Продължи играта"
+
 [node name="NewGameButton" type="Button" parent="Panel"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 56)

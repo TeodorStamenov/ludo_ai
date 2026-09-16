@@ -63,6 +63,17 @@ offset_right = 250.0
 offset_bottom = 75.0
 text = "Cyan's Turn"
 
+[node name="MainMenuButton" type="Button" parent="UI" unique_id=1738299441]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -140.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 50.0
+grow_horizontal = 0
+text = "Главно меню"
+
 [node name="DebugRolls" type="HBoxContainer" parent="UI" unique_id=759640400]
 offset_left = 10.0
 offset_top = 85.0
